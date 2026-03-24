@@ -1,0 +1,290 @@
+-- depot/lib/schema/types.march
+-- PostgreSQL OID ↔ March type mapping.
+--
+-- PostgreSQL assigns every data type a unique Object Identifier (OID).
+-- The wire protocol uses OIDs in RowDescription messages to tell us the
+-- type of each column.  This module maps between those OIDs and a
+-- higher-level MarchType ADT so the rest of the driver can work with
+-- typed values rather than raw OID integers.
+--
+-- Reference: pg_type system catalog, PostgreSQL 16.
+-- https://www.postgresql.org/docs/current/catalog-pg-type.html
+
+mod SchemaTypes do
+
+-- ---- March-side type representation ----
+
+type MarchType =
+    TBool
+  | TInt16
+  | TInt32
+  | TInt64
+  | TFloat32
+  | TFloat64
+  | TNumeric
+  | TText
+  | TVarchar
+  | TChar
+  | TBytea
+  | TDate
+  | TTime
+  | TTimestamp
+  | TTimestampTz
+  | TInterval
+  | TJson
+  | TJsonb
+  | TUuid
+  | TArray(MarchType)
+  | TUnknown(Int)
+
+-- ---- Well-known OIDs ----
+-- These are stable across all PostgreSQL installations.
+
+fn oid_bool()        do 16 end
+fn oid_bytea()       do 17 end
+fn oid_int8()        do 20 end
+fn oid_int2()        do 21 end
+fn oid_int4()        do 23 end
+fn oid_text()        do 25 end
+fn oid_oid()         do 26 end
+fn oid_json()        do 114 end
+fn oid_float4()      do 700 end
+fn oid_float8()      do 701 end
+fn oid_varchar()     do 1043 end
+fn oid_date()        do 1082 end
+fn oid_time()        do 1083 end
+fn oid_timestamp()   do 1114 end
+fn oid_timestamptz() do 1184 end
+fn oid_interval()    do 1186 end
+fn oid_numeric()     do 1700 end
+fn oid_char()        do 18 end
+fn oid_uuid()        do 2950 end
+fn oid_jsonb()       do 3802 end
+
+-- Array OIDs for the most common base types.
+fn oid_bool_array()      do 1000 end
+fn oid_int2_array()      do 1005 end
+fn oid_int4_array()      do 1007 end
+fn oid_int8_array()      do 1016 end
+fn oid_float4_array()    do 1021 end
+fn oid_float8_array()    do 1022 end
+fn oid_text_array()      do 1009 end
+fn oid_varchar_array()   do 1015 end
+fn oid_uuid_array()      do 2951 end
+fn oid_json_array()      do 199 end
+fn oid_jsonb_array()     do 3807 end
+fn oid_date_array()      do 1182 end
+fn oid_timestamp_array() do 1115 end
+fn oid_timestamptz_array() do 1185 end
+fn oid_numeric_array()   do 1231 end
+fn oid_bytea_array()     do 1001 end
+
+-- ---- OID → MarchType ----
+
+fn from_oid(oid) do
+  if oid == 16 then TBool
+  else if oid == 17 then TBytea
+  else if oid == 18 then TChar
+  else if oid == 20 then TInt64
+  else if oid == 21 then TInt16
+  else if oid == 23 then TInt32
+  else if oid == 25 then TText
+  else if oid == 26 then TInt32
+  else if oid == 114 then TJson
+  else if oid == 199 then TArray(TJson)
+  else if oid == 700 then TFloat32
+  else if oid == 701 then TFloat64
+  else if oid == 1000 then TArray(TBool)
+  else if oid == 1001 then TArray(TBytea)
+  else if oid == 1005 then TArray(TInt16)
+  else if oid == 1007 then TArray(TInt32)
+  else if oid == 1009 then TArray(TText)
+  else if oid == 1015 then TArray(TVarchar)
+  else if oid == 1016 then TArray(TInt64)
+  else if oid == 1021 then TArray(TFloat32)
+  else if oid == 1022 then TArray(TFloat64)
+  else if oid == 1043 then TVarchar
+  else if oid == 1082 then TDate
+  else if oid == 1083 then TTime
+  else if oid == 1114 then TTimestamp
+  else if oid == 1115 then TArray(TTimestamp)
+  else if oid == 1182 then TArray(TDate)
+  else if oid == 1184 then TTimestampTz
+  else if oid == 1185 then TArray(TTimestampTz)
+  else if oid == 1186 then TInterval
+  else if oid == 1231 then TArray(TNumeric)
+  else if oid == 1700 then TNumeric
+  else if oid == 2950 then TUuid
+  else if oid == 2951 then TArray(TUuid)
+  else if oid == 3802 then TJsonb
+  else if oid == 3807 then TArray(TJsonb)
+  else TUnknown(oid)
+end
+
+-- ---- MarchType → OID ----
+-- Returns the base-type OID (not array OID).
+
+fn to_oid(t) do
+  match t do
+  | TBool        -> 16
+  | TBytea       -> 17
+  | TChar        -> 18
+  | TInt64       -> 20
+  | TInt16       -> 21
+  | TInt32       -> 23
+  | TText        -> 25
+  | TJson        -> 114
+  | TFloat32     -> 700
+  | TFloat64     -> 701
+  | TVarchar     -> 1043
+  | TDate        -> 1082
+  | TTime        -> 1083
+  | TTimestamp   -> 1114
+  | TTimestampTz -> 1184
+  | TInterval    -> 1186
+  | TNumeric     -> 1700
+  | TUuid        -> 2950
+  | TJsonb       -> 3802
+  | TArray(_)    -> 0
+  | TUnknown(oid) -> oid
+  end
+end
+
+-- ---- Display helpers ----
+
+fn type_name(t) do
+  match t do
+  | TBool        -> "bool"
+  | TBytea       -> "bytea"
+  | TChar        -> "char"
+  | TInt16       -> "int2"
+  | TInt32       -> "int4"
+  | TInt64       -> "int8"
+  | TFloat32     -> "float4"
+  | TFloat64     -> "float8"
+  | TNumeric     -> "numeric"
+  | TText        -> "text"
+  | TVarchar     -> "varchar"
+  | TDate        -> "date"
+  | TTime        -> "time"
+  | TTimestamp   -> "timestamp"
+  | TTimestampTz -> "timestamptz"
+  | TInterval    -> "interval"
+  | TJson        -> "json"
+  | TJsonb       -> "jsonb"
+  | TUuid        -> "uuid"
+  | TArray(inner) -> type_name(inner) ++ "[]"
+  | TUnknown(oid) -> "unknown(" ++ int_to_string(oid) ++ ")"
+  end
+end
+
+-- ---- Size information ----
+-- Returns the fixed wire size for a type, or -1 for variable-length.
+
+fn type_size(t) do
+  match t do
+  | TBool        -> 1
+  | TChar        -> 1
+  | TInt16       -> 2
+  | TInt32       -> 4
+  | TInt64       -> 8
+  | TFloat32     -> 4
+  | TFloat64     -> 8
+  | TUuid        -> 16
+  | _            -> -1
+  end
+end
+
+-- ---- Type predicates ----
+
+fn is_numeric(t) do
+  match t do
+  | TInt16   -> true
+  | TInt32   -> true
+  | TInt64   -> true
+  | TFloat32 -> true
+  | TFloat64 -> true
+  | TNumeric -> true
+  | _        -> false
+  end
+end
+
+fn is_text(t) do
+  match t do
+  | TText    -> true
+  | TVarchar -> true
+  | TChar    -> true
+  | _        -> false
+  end
+end
+
+fn is_temporal(t) do
+  match t do
+  | TDate        -> true
+  | TTime        -> true
+  | TTimestamp   -> true
+  | TTimestampTz -> true
+  | TInterval    -> true
+  | _            -> false
+  end
+end
+
+fn is_json(t) do
+  match t do
+  | TJson  -> true
+  | TJsonb -> true
+  | _      -> false
+  end
+end
+
+fn is_array(t) do
+  match t do
+  | TArray(_) -> true
+  | _         -> false
+  end
+end
+
+-- ---- Text format parsing ----
+-- Parse a text-format wire value into a typed March value.
+-- All values arrive as strings in the text protocol; this converts
+-- them based on the column's MarchType.
+
+type TypedValue =
+    VBool(Bool)
+  | VInt(Int)
+  | VFloat(Float)
+  | VString(String)
+  | VNull
+  | VBytes(Bytes)
+  | VUnparsed(String)
+
+fn parse_text_value(t, text) do
+  match t do
+  | TBool ->
+    if text == "t" then VBool(true)
+    else if text == "true" then VBool(true)
+    else VBool(false)
+  | TInt16 -> VInt(string_to_int(text))
+  | TInt32 -> VInt(string_to_int(text))
+  | TInt64 -> VInt(string_to_int(text))
+  | TFloat32 -> VFloat(string_to_float(text))
+  | TFloat64 -> VFloat(string_to_float(text))
+  | TNumeric -> VFloat(string_to_float(text))
+  | TText    -> VString(text)
+  | TVarchar -> VString(text)
+  | TChar    -> VString(text)
+  | TDate        -> VString(text)
+  | TTime        -> VString(text)
+  | TTimestamp   -> VString(text)
+  | TTimestampTz -> VString(text)
+  | TInterval    -> VString(text)
+  | TJson  -> VString(text)
+  | TJsonb -> VString(text)
+  | TUuid  -> VString(text)
+  | TBytea -> VString(text)
+  | TArray(_) -> VString(text)
+  | TUnknown(_) -> VUnparsed(text)
+  end
+end
+
+end
