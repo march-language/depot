@@ -7,7 +7,7 @@
 
 mod WireEncode do
 
-pub fn i32_be(n : Int) : Bytes do
+fn i32_be(n : Int) : Bytes do
   Bytes.from_list([
     (n / 16777216) % 256,
     (n / 65536)    % 256,
@@ -16,24 +16,24 @@ pub fn i32_be(n : Int) : Bytes do
   ])
 end
 
-pub fn i16_be(n : Int) : Bytes do
+fn i16_be(n : Int) : Bytes do
   Bytes.from_list([(n / 256) % 256, n % 256])
 end
 
-pub fn cstring(s : String) : Bytes do
+fn cstring(s : String) : Bytes do
   Bytes.concat(Bytes.from_string(s), Bytes.from_list([0]))
 end
 
 -- length includes itself (4 bytes) but NOT the type byte
-pub fn length_prefix(payload : Bytes) : Bytes do
+fn length_prefix(payload : Bytes) : Bytes do
   Bytes.concat(i32_be(Bytes.length(payload) + 4), payload)
 end
 
-pub fn frame(type_byte : Int, payload : Bytes) : Bytes do
+fn frame(type_byte : Int, payload : Bytes) : Bytes do
   Bytes.concat(Bytes.from_list([type_byte]), length_prefix(payload))
 end
 
-pub fn encode(msg : FrontendMessage) : Bytes do
+fn encode(msg : FrontendMessage) : Bytes do
   match msg do
   | Startup(params) ->
     let pairs = Map.fold(Bytes.empty(), params, fn acc -> fn k -> fn v ->

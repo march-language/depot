@@ -6,7 +6,7 @@
 mod WireMessage do
 
 -- Frontend messages (client -> server)
-pub type FrontendMessage =
+type FrontendMessage =
     Startup(Map(String, String))          -- user, database, application_name
   | Query(String)                         -- simple query protocol
   | Parse(String, String, List(Int))      -- name, query, param_oids
@@ -21,16 +21,16 @@ pub type FrontendMessage =
   | SASLInitialResponse(String, Bytes)    -- mechanism, data
   | SASLResponse(Bytes)
 
-pub type DescribeTarget = DescribeStatement(String) | DescribePortal(String)
-pub type CloseTarget    = CloseStatement(String)    | ClosePortal(String)
+type DescribeTarget = DescribeStatement(String) | DescribePortal(String)
+type CloseTarget    = CloseStatement(String)    | ClosePortal(String)
 
-pub type Param =
+type Param =
     ParamNull
   | ParamText(String)
   | ParamBinary(Bytes)
 
 -- Backend messages (server -> client)
-pub type BackendMessage =
+type BackendMessage =
     AuthOk
   | AuthMD5(Bytes)                        -- 4-byte salt
   | AuthSASL(List(String))                -- mechanism list
@@ -51,9 +51,9 @@ pub type BackendMessage =
   | NoData
   | PortalSuspended
 
-pub type TransactionStatus = Idle | InTransaction | InFailedTransaction
+type TransactionStatus = Idle | InTransaction | InFailedTransaction
 
-pub type FieldDesc = FieldDesc(
+type FieldDesc = FieldDesc(
   String,   -- column name
   Int,      -- table OID (0 = not a table column)
   Int,      -- attribute number
@@ -63,7 +63,7 @@ pub type FieldDesc = FieldDesc(
   Int       -- format (0 = text, 1 = binary)
 )
 
-pub type ErrorFields = {
+type ErrorFields = {
   severity : String,
   code     : String,     -- SQLSTATE e.g. "23505"
   message  : String,

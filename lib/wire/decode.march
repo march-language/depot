@@ -1,0 +1,193 @@
+-- depot/lib/wire/decode.march
+-- Binary decoding of PostgreSQL backend messages.
+-- Compiled together with message.march; uses BackendMessage, ErrorFields,
+-- FieldDesc, TransactionStatus constructors defined there.
+--
+-- Key syntax rule followed throughout:
+--   let-bindings are only valid in fn...do bodies and match arm bodies.
+--   if/then/else branches must be single expressions — use a helper fn or
+--   match-on-tuple when destructuring is needed.
+--
+-- Public API:
+--   decode(type_byte, payload)  : Result(BackendMessage, String)
+--   recv_msg(fd)                : Result(BackendMessage, String)
+
+mod WireDecode do
+
+-- ---- Cursor helpers ----
+
+fn read_u16(b, pos) do
+  Bytes.get(b, pos) * 256 + Bytes.get(b, pos + 1)
+end
+
+fn read_i32(b, pos) do
+  let raw =
+    Bytes.get(b, pos)     * 16777216 +
+    Bytes.get(b, pos + 1) * 65536    +
+    Bytes.get(b, pos + 2) * 256      +
+    Bytes.get(b, pos + 3)
+  if raw >= 2147483648 then raw - 4294967296 else raw
+end
+
+-- Returns (string, next_pos).
+fn read_cstring(b, pos) do
+  fn go(i, acc) do
+    let byte = Bytes.get(b, i)
+    if byte == 0 then (Bytes.to_string(Bytes.from_list(reverse(acc))), i + 1)
+    else go(i + 1, Cons(byte, acc))
+  end
+  go(pos, Nil)
+end
+
+-- Returns (Option(Bytes), next_pos).
+fn read_bytes_field(b, pos) do
+  let len = read_i32(b, pos)
+  if len == -1 then (None, pos + 4)
+  else (Some(Bytes.slice(b, pos + 4, len)), pos + 4 + len)
+end
+
+-- ---- ErrorResponse / NoticeResponse field parsing ----
+
+fn parse_error_fields(b, pos) do
+  fn go(i, severity, code, message, detail, hint, position) do
+    if i >= Bytes.length(b) then
+      { severity = severity, code = code, message = message,
+        detail = detail, hint = hint, position = position }
+    else match Bytes.get(b, i) do
+      | 0 ->
+        { severity = severity, code = code, message = message,
+          detail = detail, hint = hint, position = position }
+      | field_type ->
+        let (value, next) = read_cstring(b, i + 1)
+        -- ASCII: S=83 C=67 M=77 D=68 H=72
+        if      field_type == 83 then go(next, value,    code,    message, detail,        hint,        position)
+        else if field_type == 67 then go(next, severity, value,   message, detail,        hint,        position)
+        else if field_type == 77 then go(next, severity, code,    value,   detail,        hint,        position)
+        else if field_type == 68 then go(next, severity, code,    message, Some(value),   hint,        position)
+        else if field_type == 72 then go(next, severity, code,    message, detail,        Some(value), position)
+        else                          go(next, severity, code,    message, detail,        hint,        position)
+    end
+  end
+  go(pos, "", "", "", None, None, None)
+end
+
+-- ---- RowDescription parsing ----
+
+fn parse_one_field_desc(b, pos) do
+  let (name, pos1) = read_cstring(b, pos)
+  let table_oid = read_i32(b, pos1)
+  let attr_num  = read_u16(b, pos1 + 4)
+  let type_oid  = read_i32(b, pos1 + 6)
+  let type_size = read_u16(b, pos1 + 10)
+  let type_mod  = read_i32(b, pos1 + 12)
+  let format    = read_u16(b, pos1 + 16)
+  (FieldDesc(name, table_oid, attr_num, type_oid, type_size, type_mod, format), pos1 + 18)
+end
+
+fn parse_field_descs(b, pos, n, acc) do
+  if n == 0 then reverse(acc)
+  else match parse_one_field_desc(b, pos) do
+    | (fd, next) -> parse_field_descs(b, next, n - 1, Cons(fd, acc))
+  end
+end
+
+-- ---- DataRow column parsing ----
+
+fn parse_data_columns(b, pos, n, acc) do
+  if n == 0 then reverse(acc)
+  else match read_bytes_field(b, pos) do
+    | (col, next) -> parse_data_columns(b, next, n - 1, Cons(col, acc))
+  end
+end
+
+-- ---- AuthSASL mechanism list parsing ----
+
+fn parse_sasl_mechanisms(b, pos, acc) do
+  if pos >= Bytes.length(b) then reverse(acc)
+  else
+    if Bytes.get(b, pos) == 0 then reverse(acc)
+    else match read_cstring(b, pos) do
+      | (mech, next) -> parse_sasl_mechanisms(b, next, Cons(mech, acc))
+    end
+end
+
+-- ---- Per-type sub-decoders (all return Result(BackendMessage, String)) ----
+
+fn decode_auth(payload) do
+  let auth_type = read_i32(payload, 0)
+  if      auth_type == 0  then Ok(AuthOk)
+  else if auth_type == 5  then Ok(AuthMD5(Bytes.slice(payload, 4, 4)))
+  else if auth_type == 10 then Ok(AuthSASL(parse_sasl_mechanisms(payload, 4, Nil)))
+  else if auth_type == 11 then Ok(AuthSASLContinue(Bytes.slice(payload, 4, Bytes.length(payload) - 4)))
+  else if auth_type == 12 then Ok(AuthSASLFinal(Bytes.slice(payload, 4, Bytes.length(payload) - 4)))
+  else Err("unsupported auth type: " ++ int_to_string(auth_type))
+end
+
+fn decode_param_status(payload) do
+  match read_cstring(payload, 0) do
+  | (name, pos) ->
+    match read_cstring(payload, pos) do
+    | (value, _) -> Ok(ParameterStatus(name, value))
+    end
+  end
+end
+
+fn decode_ready(payload) do
+  let b = Bytes.get(payload, 0)
+  Ok(ReadyForQuery(
+    if b == 84 then InTransaction
+    else if b == 69 then InFailedTransaction
+    else Idle))
+end
+
+fn decode_command_complete(payload) do
+  match read_cstring(payload, 0) do
+  | (tag, _) -> Ok(CommandComplete(tag))
+  end
+end
+
+-- ---- Main decode ----
+
+fn decode(type_byte, payload) do
+  if      type_byte == 82  then decode_auth(payload)
+  else if type_byte == 75  then Ok(BackendKeyData(read_i32(payload, 0), read_i32(payload, 4)))
+  else if type_byte == 83  then decode_param_status(payload)
+  else if type_byte == 90  then decode_ready(payload)
+  else if type_byte == 84  then Ok(RowDescription(parse_field_descs(payload, 2, read_u16(payload, 0), Nil)))
+  else if type_byte == 68  then Ok(DataRow(parse_data_columns(payload, 2, read_u16(payload, 0), Nil)))
+  else if type_byte == 67  then decode_command_complete(payload)
+  else if type_byte == 73  then Ok(EmptyQueryResponse)
+  else if type_byte == 69  then Ok(ErrorResponse(parse_error_fields(payload, 0)))
+  else if type_byte == 78  then Ok(NoticeResponse(parse_error_fields(payload, 0)))
+  else if type_byte == 49  then Ok(ParseComplete)
+  else if type_byte == 50  then Ok(BindComplete)
+  else if type_byte == 51  then Ok(CloseComplete)
+  else if type_byte == 110 then Ok(NoData)
+  else if type_byte == 115 then Ok(PortalSuspended)
+  else Err("unknown backend message type: " ++ int_to_string(type_byte))
+end
+
+-- ---- Socket receive ----
+
+-- Read one complete backend message from a TCP socket fd.
+-- Wire format: type_byte(1) + length_i32(4, includes itself) + payload(length-4).
+fn recv_msg(fd) do
+  match tcp_recv_exact(fd, 5) do
+  | Err(e)     -> Err("recv header: " ++ e)
+  | Ok(header) ->
+    let type_byte   = Bytes.get(header, 0)
+    let msg_len     = read_i32(header, 1)
+    let payload_len = msg_len - 4
+    if payload_len < 0 then
+      Err("invalid message: negative payload length")
+    else if payload_len == 0 then
+      decode(type_byte, Bytes.empty())
+    else
+      match tcp_recv_exact(fd, payload_len) do
+      | Err(e)      -> Err("recv payload: " ++ e)
+      | Ok(payload) -> decode(type_byte, payload)
+      end
+  end
+end
+
+end
