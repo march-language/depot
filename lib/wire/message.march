@@ -1,0 +1,75 @@
+-- depot/src/wire/message.march
+-- PostgreSQL wire protocol message types.
+-- Note: this file cannot be compiled standalone — types are referenced by
+-- encode.march and decode.march which must be compiled together.
+
+mod WireMessage do
+
+-- Frontend messages (client -> server)
+pub type FrontendMessage =
+    Startup(Map(String, String))          -- user, database, application_name
+  | Query(String)                         -- simple query protocol
+  | Parse(String, String, List(Int))      -- name, query, param_oids
+  | Bind(String, String, List(Param))     -- portal, stmt, params
+  | Execute(String, Int)                  -- portal, max_rows (0 = all)
+  | Describe(DescribeTarget)
+  | Close(CloseTarget)
+  | Sync
+  | Flush
+  | Terminate
+  | PasswordMessage(String)               -- MD5 or cleartext password
+  | SASLInitialResponse(String, Bytes)    -- mechanism, data
+  | SASLResponse(Bytes)
+
+pub type DescribeTarget = DescribeStatement(String) | DescribePortal(String)
+pub type CloseTarget    = CloseStatement(String)    | ClosePortal(String)
+
+pub type Param =
+    ParamNull
+  | ParamText(String)
+  | ParamBinary(Bytes)
+
+-- Backend messages (server -> client)
+pub type BackendMessage =
+    AuthOk
+  | AuthMD5(Bytes)                        -- 4-byte salt
+  | AuthSASL(List(String))                -- mechanism list
+  | AuthSASLContinue(Bytes)
+  | AuthSASLFinal(Bytes)
+  | BackendKeyData(Int, Int)              -- pid, secret
+  | ParameterStatus(String, String)       -- name, value
+  | ReadyForQuery(TransactionStatus)
+  | RowDescription(List(FieldDesc))
+  | DataRow(List(Option(Bytes)))          -- None = SQL NULL
+  | CommandComplete(String)               -- tag e.g. "SELECT 42"
+  | EmptyQueryResponse
+  | ErrorResponse(ErrorFields)
+  | NoticeResponse(ErrorFields)
+  | ParseComplete
+  | BindComplete
+  | CloseComplete
+  | NoData
+  | PortalSuspended
+
+pub type TransactionStatus = Idle | InTransaction | InFailedTransaction
+
+pub type FieldDesc = FieldDesc(
+  String,   -- column name
+  Int,      -- table OID (0 = not a table column)
+  Int,      -- attribute number
+  Int,      -- type OID
+  Int,      -- type size (-1 = variable)
+  Int,      -- type modifier
+  Int       -- format (0 = text, 1 = binary)
+)
+
+pub type ErrorFields = {
+  severity : String,
+  code     : String,     -- SQLSTATE e.g. "23505"
+  message  : String,
+  detail   : Option(String),
+  hint     : Option(String),
+  position : Option(Int)
+}
+
+end

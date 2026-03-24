@@ -1,0 +1,8 @@
+[package]
+name = "depot"
+version = "0.1.0"
+type = "lib"
+description = "Depot database library for March"
+author = ""
+
+[deps]
