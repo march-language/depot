@@ -1,0 +1,65 @@
+-- depot/lib/message.march
+-- PostgreSQL wire protocol message types (v3.0).
+
+mod Message do
+
+type FrontendMessage =
+    Startup(Map(String, String))
+  | Query(String)
+  | Parse(String, String, List(Int))
+  | Bind(String, String, List(Param))
+  | Execute(String, Int)
+  | Describe(DescribeTarget)
+  | Close(CloseTarget)
+  | Sync
+  | Flush
+  | Terminate
+  | PasswordMessage(String)
+  | SASLInitialResponse(String, Bytes)
+  | SASLResponse(Bytes)
+
+type DescribeTarget = DescribeStatement(String) | DescribePortal(String)
+type CloseTarget    = CloseStatement(String)    | ClosePortal(String)
+
+type Param =
+    ParamNull
+  | ParamText(String)
+  | ParamBinary(Bytes)
+
+type BackendMessage =
+    AuthOk
+  | AuthMD5(Bytes)
+  | AuthSASL(List(String))
+  | AuthSASLContinue(Bytes)
+  | AuthSASLFinal(Bytes)
+  | BackendKeyData(Int, Int)
+  | ParameterStatus(String, String)
+  | ReadyForQuery(TransactionStatus)
+  | RowDescription(List(FieldDesc))
+  | DataRow(List(Option(Bytes)))
+  | CommandComplete(String)
+  | EmptyQueryResponse
+  | ErrorResponse(ErrorFields)
+  | NoticeResponse(ErrorFields)
+  | ParseComplete
+  | BindComplete
+  | CloseComplete
+  | NoData
+  | PortalSuspended
+
+type TransactionStatus = Idle | InTransaction | InFailedTransaction
+
+type FieldDesc = FieldDesc(
+  String, Int, Int, Int, Int, Int, Int
+)
+
+type ErrorFields = {
+  severity : String,
+  code     : String,
+  message  : String,
+  detail   : Option(String),
+  hint     : Option(String),
+  position : Option(Int)
+}
+
+end

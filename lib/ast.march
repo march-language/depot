@@ -1,13 +1,7 @@
--- depot/lib/query/ast.march
+-- depot/lib/ast.march
 -- Query builder ADT — a typed representation of SQL queries.
--- Pure data: no IO, no SQL strings. The compile step turns these into SQL.
---
--- Inspired by Ecto.Query (Elixir) and Diesel's QueryDsl (Rust).
--- All operations return a new Query value — immutable, pipe-friendly.
 
-mod QueryAst do
-
--- ---- Core query type ----
+mod Ast do
 
 type Query = Query(QueryFields)
 
@@ -24,63 +18,44 @@ type QueryFields = {
   distinct_ : Bool
 }
 
--- ---- From clause ----
-
 type FromClause =
-    FromTable(String)                    -- table name
-  | FromSubquery(Query, String)          -- (subquery, alias)
-
--- ---- Select expressions ----
+    FromTable(String)
+  | FromSubquery(Query, String)
 
 type SelectExpr =
-    SelectAll                            -- *
-  | SelectExpr(Expr)                     -- single expression
-  | SelectAs(Expr, String)               -- expression AS alias
-
--- ---- Where expressions ----
+    SelectAll
+  | SelectExpr(Expr)
+  | SelectAs(Expr, String)
 
 type WhereExpr =
-    Where(Expr)                          -- AND-combined by default
-  | OrWhere(Expr)                        -- OR-combined
-
--- ---- Join clause ----
+    Where(Expr)
+  | OrWhere(Expr)
 
 type JoinKind = Inner | Left | Right | FullOuter | Cross
 
 type JoinClause = JoinClause(JoinKind, String, Expr)
-  -- (kind, table_name, on_condition)
-
--- ---- Order expressions ----
 
 type SortDir = Asc | Desc | AscNullsFirst | DescNullsLast
 
 type OrderExpr = OrderExpr(Expr, SortDir)
 
--- ---- Expression ADT ----
-
 type Expr =
-  -- Literals
     Lit(SqlValue)
-  -- Column reference
-  | Col(String)                          -- unqualified: "name"
-  | QCol(String, String)                 -- qualified: "users"."name"
-  -- Comparison operators
+  | Col(String)
+  | QCol(String, String)
   | Eq(Expr, Expr)
   | Neq(Expr, Expr)
   | Lt(Expr, Expr)
   | Gt(Expr, Expr)
   | Lte(Expr, Expr)
   | Gte(Expr, Expr)
-  -- Logical operators
   | And(Expr, Expr)
   | Or(Expr, Expr)
   | Not(Expr)
-  -- Arithmetic
   | Add(Expr, Expr)
   | Sub(Expr, Expr)
   | Mul(Expr, Expr)
   | Div(Expr, Expr)
-  -- SQL special
   | IsNull(Expr)
   | IsNotNull(Expr)
   | In(Expr, List(Expr))
@@ -88,24 +63,17 @@ type Expr =
   | Between(Expr, Expr, Expr)
   | Like(Expr, String)
   | ILike(Expr, String)
-  -- Aggregates
   | Count(Expr)
   | Sum(Expr)
   | Avg(Expr)
   | Min(Expr)
   | Max(Expr)
   | CountAll
-  -- Subquery
   | Exists(Query)
   | SubqueryExpr(Query)
-  -- Function call
   | FnCall(String, List(Expr))
-  -- Parameterized placeholder ($1, $2, ...)
   | Param(Int)
-  -- Raw SQL fragment (escape hatch)
   | Raw(String)
-
--- ---- SQL values ----
 
 type SqlValue =
     PInt(Int)

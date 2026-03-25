@@ -1,11 +1,7 @@
--- depot/src/wire/encode.march
+-- depot/lib/encode.march
 -- Binary encoding of PostgreSQL frontend messages.
--- Requires Wire.Message types to be available (compile alongside message.march).
---
--- NOTE: this file cannot be compiled standalone — it references constructors
--- defined in message.march (FrontendMessage, Param, DescribeTarget, CloseTarget).
 
-mod WireEncode do
+mod Encode do
 
 fn i32_be(n : Int) : Bytes do
   Bytes.from_list([
@@ -24,7 +20,6 @@ fn cstring(s : String) : Bytes do
   Bytes.concat(Bytes.from_string(s), Bytes.from_list([0]))
 end
 
--- length includes itself (4 bytes) but NOT the type byte
 fn length_prefix(payload : Bytes) : Bytes do
   Bytes.concat(i32_be(Bytes.length(payload) + 4), payload)
 end
@@ -42,27 +37,27 @@ fn encode(msg : FrontendMessage) : Bytes do
     let payload = Bytes.concat(i32_be(196608), Bytes.concat(pairs, Bytes.from_list([0])))
     length_prefix(payload)
   | Query(sql) ->
-    frame(81, cstring(sql))                 -- 'Q' = 81
+    frame(81, cstring(sql))
   | Parse(name, sql, oids) ->
     let oid_bytes = List.fold_left(Bytes.empty(), oids, fn (acc, oid) ->
       Bytes.concat(acc, i32_be(oid)))
     let payload = Bytes.concat(
       Bytes.concat(cstring(name), cstring(sql)),
       Bytes.concat(i16_be(List.length(oids)), oid_bytes))
-    frame(80, payload)                      -- 'P' = 80
+    frame(80, payload)
   | Bind(portal, stmt, params) ->
     encode_bind(portal, stmt, params)
   | Execute(portal, max_rows) ->
-    frame(69, Bytes.concat(cstring(portal), i32_be(max_rows)))  -- 'E' = 69
-  | Sync      -> frame(83, Bytes.empty())   -- 'S' = 83
-  | Flush     -> frame(72, Bytes.empty())   -- 'H' = 72
-  | Terminate -> frame(88, Bytes.empty())   -- 'X' = 88
+    frame(69, Bytes.concat(cstring(portal), i32_be(max_rows)))
+  | Sync      -> frame(83, Bytes.empty())
+  | Flush     -> frame(72, Bytes.empty())
+  | Terminate -> frame(88, Bytes.empty())
   | PasswordMessage(pw) ->
-    frame(112, cstring(pw))                 -- 'p' = 112
+    frame(112, cstring(pw))
   | Describe(DescribeStatement(name)) ->
-    frame(68, Bytes.concat(Bytes.from_list([83]), cstring(name)))  -- 'D'+'S'
+    frame(68, Bytes.concat(Bytes.from_list([83]), cstring(name)))
   | Describe(DescribePortal(name)) ->
-    frame(68, Bytes.concat(Bytes.from_list([80]), cstring(name)))  -- 'D'+'P'
+    frame(68, Bytes.concat(Bytes.from_list([80]), cstring(name)))
   | _ -> panic("encode: unimplemented message type")
   end
 end
@@ -79,13 +74,12 @@ fn encode_bind(portal, stmt, params) do
       Bytes.concat(acc, Bytes.concat(i32_be(Bytes.length(b)), b))
     end
   )
-  -- one format code (0 = text) covering all params; one result format code (0 = text)
   let payload = Bytes.concat(
     Bytes.concat(cstring(portal), cstring(stmt)),
     Bytes.concat(i16_be(1), Bytes.concat(i16_be(0),
       Bytes.concat(i16_be(n), Bytes.concat(param_bytes,
         Bytes.concat(i16_be(1), i16_be(0)))))))
-  frame(66, payload)                        -- 'B' = 66
+  frame(66, payload)
 end
 
 end

@@ -1,29 +1,15 @@
--- depot/lib/query/compile.march
--- Compiles a Query ADT into a parameterized SQL string + param list.
---
--- Pure function: no IO, no side effects.
--- Output: (sql_string, List(Param)) ready for the extended query protocol.
---
--- The compiler walks the Query structure and emits standard PostgreSQL SQL.
--- Literal values are either inlined (for simple query) or converted to
--- $N parameters (for prepared statements).
+-- depot/lib/compile.march
+-- Compiles a Query ADT into parameterized SQL or inline SQL.
 
-mod QueryCompile do
-
--- ---- Compilation result ----
+mod Compile do
 
 type CompiledQuery = {
   sql    : String,
   params : List(Param)
 }
 
--- ---- Compile entry point ----
+fn compile(q) do compile_parameterized(q) end
 
-fn compile(q) do
-  compile_parameterized(q)
-end
-
--- Compile with $N parameter placeholders for the extended query protocol.
 fn compile_parameterized(q) do
   match q do
   | Query(f) ->
@@ -37,16 +23,14 @@ fn compile_parameterized(q) do
     let (order_sql, s7) = compile_orders(f.orders, s6)
     let limit_sql = compile_limit(f.limit_)
     let offset_sql = compile_offset(f.offset_)
-    let distinct_prefix = if f.distinct_ then "DISTINCT " else ""
-    let sql = "SELECT " ++ distinct_prefix ++ select_sql
-              ++ " FROM " ++ from_sql
+    let dp = if f.distinct_ then "DISTINCT " else ""
+    let sql = "SELECT " ++ dp ++ select_sql ++ " FROM " ++ from_sql
               ++ join_sql ++ where_sql ++ group_sql
               ++ having_sql ++ order_sql ++ limit_sql ++ offset_sql
-    { sql = sql, params = reverse(s7.params) }
+    { sql = sql, params = reverse_list(s7.params) }
   end
 end
 
--- Compile with literal values inlined (for simple query protocol).
 fn compile_inline(q) do
   match q do
   | Query(f) ->
@@ -59,15 +43,14 @@ fn compile_inline(q) do
     let order_sql = compile_orders_inline(f.orders)
     let limit_sql = compile_limit(f.limit_)
     let offset_sql = compile_offset(f.offset_)
-    let distinct_prefix = if f.distinct_ then "DISTINCT " else ""
-    "SELECT " ++ distinct_prefix ++ select_sql
-    ++ " FROM " ++ from_sql
+    let dp = if f.distinct_ then "DISTINCT " else ""
+    "SELECT " ++ dp ++ select_sql ++ " FROM " ++ from_sql
     ++ join_sql ++ where_sql ++ group_sql
     ++ having_sql ++ order_sql ++ limit_sql ++ offset_sql
   end
 end
 
--- ---- SELECT clause ----
+-- ---- SELECT ----
 
 pfn compile_select(f, state) do
   match f.selects do
@@ -78,17 +61,16 @@ end
 
 pfn compile_select_exprs(items, state, acc) do
   match items do
-  | Nil -> (join_strs(reverse(acc), ", "), state)
+  | Nil -> (join_strs(reverse_list(acc), ", "), state)
   | Cons(item, rest) ->
     match item do
-    | SelectAll ->
-      compile_select_exprs(rest, state, Cons("*", acc))
+    | SelectAll -> compile_select_exprs(rest, state, Cons("*", acc))
     | SelectExpr(e) ->
       let (s, st) = compile_expr(e, state)
       compile_select_exprs(rest, st, Cons(s, acc))
-    | SelectAs(e, alias_name) ->
+    | SelectAs(e, a) ->
       let (s, st) = compile_expr(e, state)
-      compile_select_exprs(rest, st, Cons(s ++ " AS " ++ quote_ident(alias_name), acc))
+      compile_select_exprs(rest, st, Cons(s ++ " AS " ++ quote_ident(a), acc))
     end
   end
 end
@@ -106,7 +88,7 @@ pfn compile_select_inline(f) do
   end
 end
 
--- ---- FROM clause ----
+-- ---- FROM ----
 
 pfn compile_from(from_clause, state) do
   match from_clause do
@@ -122,12 +104,11 @@ end
 pfn compile_from_inline(from_clause) do
   match from_clause do
   | FromTable(name) -> quote_ident(name)
-  | FromSubquery(subq, alias_name) ->
-    "(" ++ compile_inline(subq) ++ ") AS " ++ quote_ident(alias_name)
+  | FromSubquery(subq, a) -> "(" ++ compile_inline(subq) ++ ") AS " ++ quote_ident(a)
   end
 end
 
--- ---- JOIN clauses ----
+-- ---- JOIN ----
 
 pfn compile_joins(joins, state) do
   match joins do
@@ -140,16 +121,13 @@ pfn compile_joins_acc(joins, state, acc) do
   match joins do
   | Nil -> (acc, state)
   | Cons(JoinClause(kind, table, on_expr), rest) ->
-    let kind_str = match kind do
-      | Inner -> " INNER JOIN "
-      | Left -> " LEFT JOIN "
-      | Right -> " RIGHT JOIN "
-      | FullOuter -> " FULL OUTER JOIN "
+    let k = match kind do
+      | Inner -> " INNER JOIN " | Left -> " LEFT JOIN "
+      | Right -> " RIGHT JOIN " | FullOuter -> " FULL OUTER JOIN "
       | Cross -> " CROSS JOIN "
     end
     let (on_sql, st) = compile_expr(on_expr, state)
-    let clause = kind_str ++ quote_ident(table) ++ " ON " ++ on_sql
-    compile_joins_acc(rest, st, acc ++ clause)
+    compile_joins_acc(rest, st, acc ++ k ++ quote_ident(table) ++ " ON " ++ on_sql)
   end
 end
 
@@ -157,26 +135,23 @@ pfn compile_joins_inline(joins) do
   match joins do
   | Nil -> ""
   | Cons(JoinClause(kind, table, on_expr), rest) ->
-    let kind_str = match kind do
-      | Inner -> " INNER JOIN "
-      | Left -> " LEFT JOIN "
-      | Right -> " RIGHT JOIN "
-      | FullOuter -> " FULL OUTER JOIN "
+    let k = match kind do
+      | Inner -> " INNER JOIN " | Left -> " LEFT JOIN "
+      | Right -> " RIGHT JOIN " | FullOuter -> " FULL OUTER JOIN "
       | Cross -> " CROSS JOIN "
     end
-    kind_str ++ quote_ident(table) ++ " ON " ++ compile_expr_inline(on_expr)
-    ++ compile_joins_inline(rest)
+    k ++ quote_ident(table) ++ " ON " ++ compile_expr_inline(on_expr) ++ compile_joins_inline(rest)
   end
 end
 
--- ---- WHERE clause ----
+-- ---- WHERE ----
 
 pfn compile_wheres(wheres, state) do
   match wheres do
   | Nil -> ("", state)
   | _ ->
     let (parts, st) = compile_where_parts(wheres, state, Nil)
-    (" WHERE " ++ join_where_parts(reverse(parts)), st)
+    (" WHERE " ++ join_where_parts(reverse_list(parts)), st)
   end
 end
 
@@ -223,14 +198,14 @@ pfn compile_wheres_inline(wheres) do
   end
 end
 
--- ---- GROUP BY clause ----
+-- ---- GROUP BY ----
 
 pfn compile_group_bys(exprs, state) do
   match exprs do
   | Nil -> ("", state)
   | _ ->
     let (parts, st) = compile_expr_list(exprs, state, Nil)
-    (" GROUP BY " ++ join_strs(reverse(parts), ", "), st)
+    (" GROUP BY " ++ join_strs(reverse_list(parts), ", "), st)
   end
 end
 
@@ -241,18 +216,14 @@ pfn compile_group_bys_inline(exprs) do
   end
 end
 
--- ---- HAVING clause ----
+-- ---- HAVING ----
 
 pfn compile_havings(havings, state) do
-  compile_wheres_as(havings, state, " HAVING ")
-end
-
-pfn compile_wheres_as(wheres, state, prefix) do
-  match wheres do
+  match havings do
   | Nil -> ("", state)
   | _ ->
-    let (parts, st) = compile_where_parts(wheres, state, Nil)
-    (prefix ++ join_where_parts(reverse(parts)), st)
+    let (parts, st) = compile_where_parts(havings, state, Nil)
+    (" HAVING " ++ join_where_parts(reverse_list(parts)), st)
   end
 end
 
@@ -270,14 +241,14 @@ pfn compile_havings_inline(havings) do
   end
 end
 
--- ---- ORDER BY clause ----
+-- ---- ORDER BY ----
 
 pfn compile_orders(orders, state) do
   match orders do
   | Nil -> ("", state)
   | _ ->
     let (parts, st) = compile_order_parts(orders, state, Nil)
-    (" ORDER BY " ++ join_strs(reverse(parts), ", "), st)
+    (" ORDER BY " ++ join_strs(reverse_list(parts), ", "), st)
   end
 end
 
@@ -286,13 +257,11 @@ pfn compile_order_parts(orders, state, acc) do
   | Nil -> (acc, state)
   | Cons(OrderExpr(e, dir), rest) ->
     let (s, st) = compile_expr(e, state)
-    let dir_str = match dir do
-      | Asc -> " ASC"
-      | Desc -> " DESC"
-      | AscNullsFirst -> " ASC NULLS FIRST"
-      | DescNullsLast -> " DESC NULLS LAST"
+    let d = match dir do
+      | Asc -> " ASC" | Desc -> " DESC"
+      | AscNullsFirst -> " ASC NULLS FIRST" | DescNullsLast -> " DESC NULLS LAST"
     end
-    compile_order_parts(rest, st, Cons(s ++ dir_str, acc))
+    compile_order_parts(rest, st, Cons(s ++ d, acc))
   end
 end
 
@@ -302,13 +271,11 @@ pfn compile_orders_inline(orders) do
   | _ -> " ORDER BY " ++ join_strs(list_map(orders, fn o ->
       match o do
       | OrderExpr(e, dir) ->
-        let dir_str = match dir do
-          | Asc -> " ASC"
-          | Desc -> " DESC"
-          | AscNullsFirst -> " ASC NULLS FIRST"
-          | DescNullsLast -> " DESC NULLS LAST"
+        let d = match dir do
+          | Asc -> " ASC" | Desc -> " DESC"
+          | AscNullsFirst -> " ASC NULLS FIRST" | DescNullsLast -> " DESC NULLS LAST"
         end
-        compile_expr_inline(e) ++ dir_str
+        compile_expr_inline(e) ++ d
       end
     ), ", ")
   end
@@ -317,17 +284,11 @@ end
 -- ---- LIMIT / OFFSET ----
 
 pfn compile_limit(lim) do
-  match lim do
-  | None -> ""
-  | Some(n) -> " LIMIT " ++ int_to_string(n)
-  end
+  match lim do | None -> "" | Some(n) -> " LIMIT " ++ int_to_string(n) end
 end
 
 pfn compile_offset(off) do
-  match off do
-  | None -> ""
-  | Some(n) -> " OFFSET " ++ int_to_string(n)
-  end
+  match off do | None -> "" | Some(n) -> " OFFSET " ++ int_to_string(n) end
 end
 
 -- ---- Expression compiler (parameterized) ----
@@ -335,7 +296,7 @@ end
 pfn compile_expr(e, state) do
   match e do
   | Lit(v) ->
-    let new_count = state.param_count + 1
+    let nc = state.param_count + 1
     let param = match v do
       | PInt(n) -> ParamText(int_to_string(n))
       | PFloat(f_) -> ParamText(float_to_string(f_))
@@ -343,10 +304,9 @@ pfn compile_expr(e, state) do
       | PBool(b) -> ParamText(if b then "t" else "f")
       | PNull -> ParamNull
     end
-    ("$" ++ int_to_string(new_count),
-     { param_count = new_count, params = Cons(param, state.params) })
+    ("$" ++ int_to_string(nc), { param_count = nc, params = Cons(param, state.params) })
   | Col(name) -> (quote_ident(name), state)
-  | QCol(table, name) -> (quote_ident(table) ++ "." ++ quote_ident(name), state)
+  | QCol(t, name) -> (quote_ident(t) ++ "." ++ quote_ident(name), state)
   | Eq(l, r) -> compile_binop(l, " = ", r, state)
   | Neq(l, r) -> compile_binop(l, " <> ", r, state)
   | Lt(l, r) -> compile_binop(l, " < ", r, state)
@@ -370,14 +330,14 @@ pfn compile_expr(e, state) do
     (s ++ " IS NOT NULL", st)
   | Like(inner, pat) ->
     let (s, st) = compile_expr(inner, state)
-    let new_count = st.param_count + 1
-    (s ++ " LIKE $" ++ int_to_string(new_count),
-     { param_count = new_count, params = Cons(ParamText(pat), st.params) })
+    let nc = st.param_count + 1
+    (s ++ " LIKE $" ++ int_to_string(nc),
+     { param_count = nc, params = Cons(ParamText(pat), st.params) })
   | ILike(inner, pat) ->
     let (s, st) = compile_expr(inner, state)
-    let new_count = st.param_count + 1
-    (s ++ " ILIKE $" ++ int_to_string(new_count),
-     { param_count = new_count, params = Cons(ParamText(pat), st.params) })
+    let nc = st.param_count + 1
+    (s ++ " ILIKE $" ++ int_to_string(nc),
+     { param_count = nc, params = Cons(ParamText(pat), st.params) })
   | Count(inner) -> compile_agg("COUNT", inner, state)
   | Sum(inner) -> compile_agg("SUM", inner, state)
   | Avg(inner) -> compile_agg("AVG", inner, state)
@@ -416,13 +376,13 @@ pfn compile_expr_list(exprs, state, acc) do
   end
 end
 
--- ---- Expression compiler (inline literals) ----
+-- ---- Expression compiler (inline) ----
 
 pfn compile_expr_inline(e) do
   match e do
   | Lit(v) -> sql_value_to_string(v)
   | Col(name) -> quote_ident(name)
-  | QCol(table, name) -> quote_ident(table) ++ "." ++ quote_ident(name)
+  | QCol(t, name) -> quote_ident(t) ++ "." ++ quote_ident(name)
   | Eq(l, r) -> compile_expr_inline(l) ++ " = " ++ compile_expr_inline(r)
   | Neq(l, r) -> compile_expr_inline(l) ++ " <> " ++ compile_expr_inline(r)
   | Lt(l, r) -> compile_expr_inline(l) ++ " < " ++ compile_expr_inline(r)
@@ -452,78 +412,40 @@ pfn compile_expr_inline(e) do
   end
 end
 
--- ---- SQL string helpers ----
+-- ---- String helpers ----
 
 pfn sql_value_to_string(v) do
   match v do
-  | PInt(n) -> int_to_string(n)
-  | PFloat(f_) -> float_to_string(f_)
-  | PString(s) -> quote_string(s)
-  | PBool(b) -> if b then "TRUE" else "FALSE"
+  | PInt(n) -> int_to_string(n) | PFloat(f_) -> float_to_string(f_)
+  | PString(s) -> quote_string(s) | PBool(b) -> if b then "TRUE" else "FALSE"
   | PNull -> "NULL"
   end
 end
 
--- Quote an identifier with double quotes (PostgreSQL convention).
-pfn quote_ident(name) do
-  "\"" ++ name ++ "\""
-end
-
--- Quote a string literal with single quotes (escaping embedded quotes).
-pfn quote_string(s) do
-  "'" ++ escape_quotes(s) ++ "'"
-end
-
-pfn escape_quotes(s) do
-  -- Simple implementation: replace ' with ''
-  -- For production, would also handle backslash escaping
-  string_replace(s, "'", "''")
-end
-
-pfn string_replace(s, from, to) do
-  -- Placeholder: March string library would provide this
-  -- For now, pass through (SQL injection concern acknowledged)
-  s
-end
-
--- ---- List helpers ----
+pfn quote_ident(name) do "\"" ++ name ++ "\"" end
+pfn quote_string(s) do "'" ++ s ++ "'" end
 
 pfn list_map(xs, f) do
-  match xs do
-  | Nil -> Nil
-  | Cons(x, rest) -> Cons(f(x), list_map(rest, f))
-  end
+  match xs do | Nil -> Nil | Cons(x, rest) -> Cons(f(x), list_map(rest, f)) end
 end
 
 pfn list_append(xs, ys) do
-  match xs do
-  | Nil -> ys
-  | Cons(x, rest) -> Cons(x, list_append(rest, ys))
-  end
+  match xs do | Nil -> ys | Cons(x, rest) -> Cons(x, list_append(rest, ys)) end
 end
 
 pfn list_length(xs) do
-  match xs do
-  | Nil -> 0
-  | Cons(_, rest) -> 1 + list_length(rest)
-  end
+  match xs do | Nil -> 0 | Cons(_, rest) -> 1 + list_length(rest) end
 end
 
-pfn reverse_list(xs) do
-  reverse_acc(xs, Nil)
-end
+pfn reverse_list(xs) do reverse_acc(xs, Nil) end
 
 pfn reverse_acc(xs, acc) do
-  match xs do
-  | Nil -> acc
-  | Cons(x, rest) -> reverse_acc(rest, Cons(x, acc))
-  end
+  match xs do | Nil -> acc | Cons(x, rest) -> reverse_acc(rest, Cons(x, acc)) end
 end
 
 pfn join_strs(parts, sep) do
   match parts do
-  | Nil -> ""
-  | Cons(first, Nil) -> first
+  | Nil -> "" | Cons(first, Nil) -> first
   | Cons(first, rest) -> first ++ sep ++ join_strs(rest, sep)
   end
 end

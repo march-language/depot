@@ -1,0 +1,136 @@
+-- depot/lib/repo.march
+-- High-level database interface (Ecto-style Repo API).
+
+mod Repo do
+
+  fn start(pool_config) do Pool.start(pool_config) end
+
+  fn query(pool, sql) do
+    Pool.with_conn(pool, fn (conn) -> Query.simple_query(conn, sql))
+    |> flatten_result()
+  end
+
+  fn query_params(pool, sql, params) do
+    Pool.with_conn(pool, fn (conn) -> Query.exec_prepared(conn, sql, params))
+    |> flatten_result()
+  end
+
+  fn all(pool, q) do
+    let compiled = Compile.compile_parameterized(q)
+    let param_strs = list_map(compiled.params, param_to_string)
+    query_params(pool, compiled.sql, param_strs)
+  end
+
+  fn one(pool, q) do
+    match all(pool, q) do
+    | Ok(result) ->
+      match result.rows do
+      | Cons(row, Nil) -> Ok(row)
+      | Nil -> Err("Expected exactly one row, got 0")
+      | _ -> Err("Expected exactly one row, got multiple")
+      end
+    | Err(e) -> Err(e)
+    end
+  end
+
+  fn insert(pool, table, fields) do
+    let col_names = list_map(fields, fn (pair) -> match pair do | (name, _) -> name end)
+    let values = list_map(fields, fn (pair) -> match pair do | (_, val) -> val end)
+    let col_str = join_strs(list_map(col_names, quote_ident), ", ")
+    let n = list_length(values)
+    let placeholders = make_placeholders(1, n, Nil)
+    let sql = "INSERT INTO " ++ quote_ident(table)
+              ++ " (" ++ col_str ++ ") VALUES (" ++ join_strs(placeholders, ", ")
+              ++ ") RETURNING *"
+    query_params(pool, sql, list_map(values, param_to_string))
+  end
+
+  fn update(pool, table, fields, where_clause, where_params) do
+    let set_parts = make_set_parts(fields, 1, Nil)
+    let sql = "UPDATE " ++ quote_ident(table) ++ " SET " ++ join_strs(set_parts, ", ")
+              ++ " WHERE " ++ where_clause
+    let field_values = list_map(fields, fn (pair) -> match pair do | (_, val) -> val end)
+    let all_params = list_append(field_values, where_params)
+    query_params(pool, sql, list_map(all_params, param_to_string))
+  end
+
+  fn delete(pool, table, where_clause, where_params) do
+    let sql = "DELETE FROM " ++ quote_ident(table) ++ " WHERE " ++ where_clause
+    query_params(pool, sql, list_map(where_params, param_to_string))
+  end
+
+  fn transaction(pool, callback) do
+    Pool.with_conn(pool, fn (conn) ->
+      match Query.simple_query(conn, "BEGIN") do
+      | Ok(_) ->
+        let result = callback(conn)
+        match result do
+        | Ok(val) ->
+          match Query.simple_query(conn, "COMMIT") do
+          | Ok(_) -> Ok(val)
+          | Err(e) -> Err("COMMIT failed: " ++ e)
+          end
+        | Err(reason) ->
+          let _ = Query.simple_query(conn, "ROLLBACK")
+          Err(reason)
+        end
+      | Err(e) -> Err("BEGIN failed: " ++ e)
+      end
+    )
+    |> flatten_result()
+  end
+
+  -- ---- Helpers ----
+
+  pfn flatten_result(r) do
+    match r do | Ok(Ok(val)) -> Ok(val) | Ok(Err(e)) -> Err(e) | Err(e) -> Err(e) end
+  end
+
+  pfn param_to_string(p) do
+    match p do
+    | PInt(n) -> int_to_string(n) | PFloat(f) -> float_to_string(f)
+    | PString(s) -> s | PBool(b) -> if b then "t" else "f" | PNull -> ""
+    end
+  end
+
+  pfn quote_ident(name) do "\"" ++ name ++ "\"" end
+
+  pfn make_placeholders(i, n, acc) do
+    if i > n then reverse_list(acc)
+    else make_placeholders(i + 1, n, Cons("$" ++ int_to_string(i), acc))
+  end
+
+  pfn make_set_parts(fields, idx, acc) do
+    match fields do
+    | Nil -> reverse_list(acc)
+    | Cons(pair, rest) ->
+      let name = match pair do | (n, _) -> n end
+      make_set_parts(rest, idx + 1, Cons(quote_ident(name) ++ " = $" ++ int_to_string(idx), acc))
+    end
+  end
+
+  pfn list_map(lst, f) do
+    match lst do | Nil -> Nil | Cons(x, rest) -> Cons(f(x), list_map(rest, f)) end
+  end
+
+  pfn list_length(lst) do
+    match lst do | Nil -> 0 | Cons(_, rest) -> 1 + list_length(rest) end
+  end
+
+  pfn list_append(a, b) do
+    match a do | Nil -> b | Cons(x, rest) -> Cons(x, list_append(rest, b)) end
+  end
+
+  pfn join_strs(parts, sep) do
+    match parts do
+    | Nil -> "" | Cons(x, Nil) -> x | Cons(x, rest) -> x ++ sep ++ join_strs(rest, sep)
+    end
+  end
+
+  pfn reverse_list(lst) do reverse_acc(lst, Nil) end
+
+  pfn reverse_acc(lst, acc) do
+    match lst do | Nil -> acc | Cons(x, rest) -> reverse_acc(rest, Cons(x, acc)) end
+  end
+
+end

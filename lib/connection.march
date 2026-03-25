@@ -1,17 +1,7 @@
--- depot/lib/conn/handshake.march
+-- depot/lib/connection.march
 -- PostgreSQL connection startup and authentication handshake.
---
--- Flow:
---   1. tcp_connect to host:port
---   2. Send StartupMessage (protocol 3.0, user, database, application_name)
---   3. Handle the auth response (AuthOk or AuthMD5)
---   4. Drain ParameterStatus / BackendKeyData / NoticeResponse
---   5. Return ConnState when ReadyForQuery arrives
---
--- Requires: WireEncode (encode.march), WireDecode (decode.march).
--- Builtins: tcp_connect, tcp_send_all, tcp_close, tcp_recv_exact, md5.
 
-mod ConnHandshake do
+mod Connection do
 
 -- ---- Configuration ----
 
@@ -49,44 +39,37 @@ type ConnState = {
 
 -- ---- Helpers ----
 
--- Curried string comparator for Map (fn a -> (fn b -> a < b)).
-fn str_lt(a) do
+pfn str_lt(a) do
   fn b -> a < b
 end
 
-fn startup_params(cfg) do
+pfn startup_params(cfg) do
   Map.from_list(
     [("user", cfg.user), ("database", cfg.database), ("application_name", "depot")],
     str_lt)
 end
 
--- Compute the PostgreSQL MD5 password.
---   inner = md5(password ++ user)            (hex string)
---   outer = md5("md5" ++ inner ++ salt_str)  (hex string)
--- Returns "md5" ++ outer.
-fn md5_password(password, user, salt) do
+pfn md5_password(password, user, salt) do
   let inner = md5(password ++ user)
   let outer = md5("md5" ++ inner ++ Bytes.to_string(salt))
   "md5" ++ outer
 end
 
--- Encode msg and send over fd.
-fn send_msg(fd, msg) do
-  tcp_send_all(fd, Bytes.to_string(WireEncode.encode(msg)))
+pfn send_msg(fd, msg) do
+  tcp_send_all(fd, Bytes.to_string(Encode.encode(msg)))
 end
 
 -- ---- Auth exchange ----
 
-fn authenticate(fd, cfg, auth_msg) do
+pfn authenticate(fd, cfg, auth_msg) do
   match auth_msg do
-  | AuthOk ->
-    Ok(())
+  | AuthOk -> Ok(())
   | AuthMD5(salt) ->
     let pw = unwrap_or(cfg.password, "")
     match send_msg(fd, PasswordMessage(md5_password(pw, cfg.user, salt))) do
     | Err(e) -> Err("send password: " ++ e)
     | Ok(_)  ->
-      match WireDecode.recv_msg(fd) do
+      match Decode.recv_msg(fd) do
       | Err(e)                    -> Err(e)
       | Ok(AuthOk)                -> Ok(())
       | Ok(ErrorResponse(fields)) -> Err("auth failed: " ++ fields.message)
@@ -102,8 +85,8 @@ end
 
 -- ---- Startup drain ----
 
-fn drain_startup(fd, params, pid, secret) do
-  match WireDecode.recv_msg(fd) do
+pfn drain_startup(fd, params, pid, secret) do
+  match Decode.recv_msg(fd) do
   | Err(e) -> Err(e)
   | Ok(ParameterStatus(name, value)) ->
     drain_startup(fd, Map.insert(params, name, value, str_lt), pid, secret)
@@ -122,8 +105,7 @@ end
 
 -- ---- Public API ----
 
--- After auth succeeds, drain startup messages and wrap in ConnState.
-fn connect_finish(fd, cfg, auth_msg) do
+pfn connect_finish(fd, cfg, auth_msg) do
   match authenticate(fd, cfg, auth_msg) do
   | Err(e) ->
     tcp_close(fd)
@@ -138,14 +120,13 @@ fn connect_finish(fd, cfg, auth_msg) do
   end
 end
 
--- After the TCP connection is open, send startup and handle the auth challenge.
-fn connect_after_tcp(fd, cfg) do
+pfn connect_after_tcp(fd, cfg) do
   match send_msg(fd, Startup(startup_params(cfg))) do
   | Err(e) ->
     tcp_close(fd)
     Err("send startup: " ++ e)
   | Ok(_) ->
-    match WireDecode.recv_msg(fd) do
+    match Decode.recv_msg(fd) do
     | Err(e) ->
       tcp_close(fd)
       Err(e)
@@ -162,7 +143,6 @@ fn connect(cfg) do
   end
 end
 
--- Send Terminate and close the socket.
 fn close(conn) do
   match send_msg(conn.fd, Terminate) do
   | _ -> tcp_close(conn.fd)

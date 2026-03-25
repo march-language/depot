@@ -1,18 +1,7 @@
--- depot/lib/wire/decode.march
+-- depot/lib/decode.march
 -- Binary decoding of PostgreSQL backend messages.
--- Compiled together with message.march; uses BackendMessage, ErrorFields,
--- FieldDesc, TransactionStatus constructors defined there.
---
--- Key syntax rule followed throughout:
---   let-bindings are only valid in fn...do bodies and match arm bodies.
---   if/then/else branches must be single expressions — use a helper fn or
---   match-on-tuple when destructuring is needed.
---
--- Public API:
---   decode(type_byte, payload)  : Result(BackendMessage, String)
---   recv_msg(fd)                : Result(BackendMessage, String)
 
-mod WireDecode do
+mod Decode do
 
 -- ---- Cursor helpers ----
 
@@ -29,7 +18,6 @@ fn read_i32(b, pos) do
   if raw >= 2147483648 then raw - 4294967296 else raw
 end
 
--- Returns (string, next_pos).
 fn read_cstring(b, pos) do
   fn go(i, acc) do
     let byte = Bytes.get(b, i)
@@ -39,14 +27,13 @@ fn read_cstring(b, pos) do
   go(pos, Nil)
 end
 
--- Returns (Option(Bytes), next_pos).
 fn read_bytes_field(b, pos) do
   let len = read_i32(b, pos)
   if len == -1 then (None, pos + 4)
   else (Some(Bytes.slice(b, pos + 4, len)), pos + 4 + len)
 end
 
--- ---- ErrorResponse / NoticeResponse field parsing ----
+-- ---- Error/Notice field parsing ----
 
 fn parse_error_fields(b, pos) do
   fn go(i, severity, code, message, detail, hint, position) do
@@ -59,7 +46,6 @@ fn parse_error_fields(b, pos) do
           detail = detail, hint = hint, position = position }
       | field_type ->
         let (value, next) = read_cstring(b, i + 1)
-        -- ASCII: S=83 C=67 M=77 D=68 H=72
         if      field_type == 83 then go(next, value,    code,    message, detail,        hint,        position)
         else if field_type == 67 then go(next, severity, value,   message, detail,        hint,        position)
         else if field_type == 77 then go(next, severity, code,    value,   detail,        hint,        position)
@@ -71,7 +57,7 @@ fn parse_error_fields(b, pos) do
   go(pos, "", "", "", None, None, None)
 end
 
--- ---- RowDescription parsing ----
+-- ---- RowDescription / DataRow parsing ----
 
 fn parse_one_field_desc(b, pos) do
   let (name, pos1) = read_cstring(b, pos)
@@ -91,16 +77,12 @@ fn parse_field_descs(b, pos, n, acc) do
   end
 end
 
--- ---- DataRow column parsing ----
-
 fn parse_data_columns(b, pos, n, acc) do
   if n == 0 then reverse(acc)
   else match read_bytes_field(b, pos) do
     | (col, next) -> parse_data_columns(b, next, n - 1, Cons(col, acc))
   end
 end
-
--- ---- AuthSASL mechanism list parsing ----
 
 fn parse_sasl_mechanisms(b, pos, acc) do
   if pos >= Bytes.length(b) then reverse(acc)
@@ -111,7 +93,7 @@ fn parse_sasl_mechanisms(b, pos, acc) do
     end
 end
 
--- ---- Per-type sub-decoders (all return Result(BackendMessage, String)) ----
+-- ---- Sub-decoders ----
 
 fn decode_auth(payload) do
   let auth_type = read_i32(payload, 0)
@@ -169,8 +151,6 @@ end
 
 -- ---- Socket receive ----
 
--- Read one complete backend message from a TCP socket fd.
--- Wire format: type_byte(1) + length_i32(4, includes itself) + payload(length-4).
 fn recv_msg(fd) do
   match tcp_recv_exact(fd, 5) do
   | Err(e)     -> Err("recv header: " ++ e)

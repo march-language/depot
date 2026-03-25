@@ -1,13 +1,7 @@
--- depot/lib/conn/query.march
+-- depot/lib/query.march
 -- Query execution over an established PostgreSQL connection.
---
--- Provides both the Simple Query Protocol (text-only, no params) and
--- the Extended Query Protocol (prepared statements with typed params).
---
--- Requires: WireEncode, WireDecode, WireMessage types.
--- Builtins: tcp_send_all, tcp_recv_exact.
 
-mod ConnQuery do
+mod Query do
 
 -- ---- Result types ----
 
@@ -23,18 +17,17 @@ end
 
 -- ---- Helpers ----
 
-fn send(fd, msg) do
-  tcp_send_all(fd, Bytes.to_string(WireEncode.encode(msg)))
+pfn send(fd, msg) do
+  tcp_send_all(fd, Bytes.to_string(Encode.encode(msg)))
 end
 
-fn field_desc_name(fd_) do
+pfn field_desc_name(fd_) do
   match fd_ do
   | FieldDesc(name, _, _, _, _, _, _) -> name
   end
 end
 
--- Convert a DataRow's Option(Bytes) cells to Option(String).
-fn row_to_strings(cells) do
+pfn row_to_strings(cells) do
   match cells do
   | Nil -> Nil
   | Cons(None, rest)    -> Cons(None, row_to_strings(rest))
@@ -43,8 +36,6 @@ fn row_to_strings(cells) do
 end
 
 -- ---- Simple Query Protocol ----
--- Sends a single SQL string, receives results.
--- Supports multiple statements; returns only the last result set.
 
 fn simple_query(conn, sql) do
   match send(conn.fd, Query(sql)) do
@@ -53,8 +44,8 @@ fn simple_query(conn, sql) do
   end
 end
 
-fn simple_query_recv(fd, columns, rows, tag) do
-  match WireDecode.recv_msg(fd) do
+pfn simple_query_recv(fd, columns, rows, tag) do
+  match Decode.recv_msg(fd) do
   | Err(e) -> Err(e)
   | Ok(msg) ->
     match msg do
@@ -68,7 +59,6 @@ fn simple_query_recv(fd, columns, rows, tag) do
     | EmptyQueryResponse ->
       simple_query_recv(fd, columns, rows, "")
     | ErrorResponse(fields) ->
-      -- Drain until ReadyForQuery then return error
       simple_query_drain_error(fd, fields.message)
     | NoticeResponse(_) ->
       simple_query_recv(fd, columns, rows, tag)
@@ -80,15 +70,14 @@ fn simple_query_recv(fd, columns, rows, tag) do
   end
 end
 
-fn simple_query_drain_error(fd, error_msg) do
-  match WireDecode.recv_msg(fd) do
+pfn simple_query_drain_error(fd, error_msg) do
+  match Decode.recv_msg(fd) do
   | Err(e)              -> Err(e)
   | Ok(ReadyForQuery(_)) -> Err(error_msg)
   | Ok(_)               -> simple_query_drain_error(fd, error_msg)
   end
 end
 
--- list_map helper (avoids depending on stdlib List module in depot)
 pfn list_map(xs, f) do
   match xs do
   | Nil -> Nil
@@ -97,16 +86,13 @@ pfn list_map(xs, f) do
 end
 
 -- ---- Extended Query Protocol ----
--- Parse → Bind → Describe → Execute → Sync
--- Supports parameterized queries with $1, $2, ... placeholders.
 
 fn exec_prepared(conn, sql, params) do
   exec_prepared_named(conn, "", "", sql, params)
 end
 
-fn exec_prepared_named(conn, stmt_name, portal_name, sql, params) do
+pfn exec_prepared_named(conn, stmt_name, portal_name, sql, params) do
   let fd = conn.fd
-  -- Send Parse + Bind + Describe(Portal) + Execute + Sync
   match send(fd, Parse(stmt_name, sql, Nil)) do
   | Err(e) -> Err("exec_prepared parse: " ++ e)
   | Ok(_) ->
@@ -129,44 +115,34 @@ fn exec_prepared_named(conn, stmt_name, portal_name, sql, params) do
   end
 end
 
-fn extended_recv(fd) do
+pfn extended_recv(fd) do
   extended_recv_loop(fd, Nil, Nil, "")
 end
 
-fn extended_recv_loop(fd, columns, rows, tag) do
-  match WireDecode.recv_msg(fd) do
+pfn extended_recv_loop(fd, columns, rows, tag) do
+  match Decode.recv_msg(fd) do
   | Err(e) -> Err(e)
   | Ok(msg) ->
     match msg do
-    | ParseComplete ->
-      extended_recv_loop(fd, columns, rows, tag)
-    | BindComplete ->
-      extended_recv_loop(fd, columns, rows, tag)
+    | ParseComplete    -> extended_recv_loop(fd, columns, rows, tag)
+    | BindComplete     -> extended_recv_loop(fd, columns, rows, tag)
     | RowDescription(fields) ->
       let col_names = list_map(fields, field_desc_name)
       extended_recv_loop(fd, col_names, Nil, tag)
-    | NoData ->
-      extended_recv_loop(fd, columns, rows, tag)
-    | DataRow(cells) ->
-      extended_recv_loop(fd, columns, Cons(row_to_strings(cells), rows), tag)
-    | CommandComplete(t) ->
-      extended_recv_loop(fd, columns, rows, t)
-    | EmptyQueryResponse ->
-      extended_recv_loop(fd, columns, rows, "")
-    | ErrorResponse(fields) ->
-      extended_drain_error(fd, fields.message)
-    | NoticeResponse(_) ->
-      extended_recv_loop(fd, columns, rows, tag)
-    | ReadyForQuery(_) ->
-      Ok({ columns = columns, rows = reverse(rows), tag = tag })
-    | _ ->
-      extended_recv_loop(fd, columns, rows, tag)
+    | NoData           -> extended_recv_loop(fd, columns, rows, tag)
+    | DataRow(cells)   -> extended_recv_loop(fd, columns, Cons(row_to_strings(cells), rows), tag)
+    | CommandComplete(t) -> extended_recv_loop(fd, columns, rows, t)
+    | EmptyQueryResponse -> extended_recv_loop(fd, columns, rows, "")
+    | ErrorResponse(fields) -> extended_drain_error(fd, fields.message)
+    | NoticeResponse(_) -> extended_recv_loop(fd, columns, rows, tag)
+    | ReadyForQuery(_) -> Ok({ columns = columns, rows = reverse(rows), tag = tag })
+    | _                -> extended_recv_loop(fd, columns, rows, tag)
     end
   end
 end
 
-fn extended_drain_error(fd, error_msg) do
-  match WireDecode.recv_msg(fd) do
+pfn extended_drain_error(fd, error_msg) do
+  match Decode.recv_msg(fd) do
   | Err(e)               -> Err(e)
   | Ok(ReadyForQuery(_)) -> Err(error_msg)
   | Ok(_)                -> extended_drain_error(fd, error_msg)
@@ -175,7 +151,6 @@ end
 
 -- ---- Convenience wrappers ----
 
--- Execute SQL and return all rows as List(List(Option(String))).
 fn query(conn, sql) do
   match simple_query(conn, sql) do
   | Err(e) -> Err(e)
@@ -183,7 +158,6 @@ fn query(conn, sql) do
   end
 end
 
--- Execute SQL that returns no rows (INSERT, UPDATE, DELETE, CREATE, etc.)
 fn exec(conn, sql) do
   match simple_query(conn, sql) do
   | Err(e) -> Err(e)
@@ -191,7 +165,6 @@ fn exec(conn, sql) do
   end
 end
 
--- Execute a parameterized query.
 fn query_params(conn, sql, params) do
   match exec_prepared(conn, sql, params) do
   | Err(e) -> Err(e)

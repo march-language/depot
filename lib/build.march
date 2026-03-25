@@ -1,0 +1,140 @@
+-- depot/lib/build.march
+-- Pipe-friendly query builder functions.
+--
+-- Usage:
+--   from("users")
+--   |> select([Col("name"), Col("email")])
+--   |> where_(Eq(Col("age"), Lit(PInt(18))))
+--   |> order_by(Col("name"), Asc)
+--   |> limit(10)
+
+mod Build do
+
+fn from(table) do
+  Query({
+    from_ = FromTable(table), selects = Nil, wheres = Nil,
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false
+  })
+end
+
+fn from_subquery(subq, alias_name) do
+  Query({
+    from_ = FromSubquery(subq, alias_name), selects = Nil, wheres = Nil,
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false
+  })
+end
+
+fn select(q, exprs) do
+  match q do
+  | Query(f) ->
+    let items = list_map(exprs, fn e -> SelectExpr(e))
+    Query({ f with selects = list_append(f.selects, items) })
+  end
+end
+
+fn select_as(q, expr, alias_name) do
+  match q do
+  | Query(f) -> Query({ f with selects = list_append(f.selects, [SelectAs(expr, alias_name)]) })
+  end
+end
+
+fn select_all(q) do
+  match q do
+  | Query(f) -> Query({ f with selects = [SelectAll] })
+  end
+end
+
+fn where_(q, expr) do
+  match q do
+  | Query(f) -> Query({ f with wheres = list_append(f.wheres, [Where(expr)]) })
+  end
+end
+
+fn or_where(q, expr) do
+  match q do
+  | Query(f) -> Query({ f with wheres = list_append(f.wheres, [OrWhere(expr)]) })
+  end
+end
+
+fn join(q, table, on_expr) do
+  match q do
+  | Query(f) -> Query({ f with joins = list_append(f.joins, [JoinClause(Inner, table, on_expr)]) })
+  end
+end
+
+fn left_join(q, table, on_expr) do
+  match q do
+  | Query(f) -> Query({ f with joins = list_append(f.joins, [JoinClause(Left, table, on_expr)]) })
+  end
+end
+
+fn right_join(q, table, on_expr) do
+  match q do
+  | Query(f) -> Query({ f with joins = list_append(f.joins, [JoinClause(Right, table, on_expr)]) })
+  end
+end
+
+fn full_join(q, table, on_expr) do
+  match q do
+  | Query(f) -> Query({ f with joins = list_append(f.joins, [JoinClause(FullOuter, table, on_expr)]) })
+  end
+end
+
+fn cross_join(q, table) do
+  match q do
+  | Query(f) -> Query({ f with joins = list_append(f.joins, [JoinClause(Cross, table, Lit(PBool(true)))]) })
+  end
+end
+
+fn order_by(q, expr, dir) do
+  match q do
+  | Query(f) -> Query({ f with orders = list_append(f.orders, [OrderExpr(expr, dir)]) })
+  end
+end
+
+fn order_asc(q, expr) do order_by(q, expr, Asc) end
+fn order_desc(q, expr) do order_by(q, expr, Desc) end
+
+fn group_by(q, exprs) do
+  match q do
+  | Query(f) -> Query({ f with group_bys = list_append(f.group_bys, exprs) })
+  end
+end
+
+fn having(q, expr) do
+  match q do
+  | Query(f) -> Query({ f with havings = list_append(f.havings, [Where(expr)]) })
+  end
+end
+
+fn limit(q, n) do
+  match q do | Query(f) -> Query({ f with limit_ = Some(n) }) end
+end
+
+fn offset(q, n) do
+  match q do | Query(f) -> Query({ f with offset_ = Some(n) }) end
+end
+
+fn distinct(q) do
+  match q do | Query(f) -> Query({ f with distinct_ = true }) end
+end
+
+-- ---- Helpers ----
+
+pfn list_map(xs, f) do
+  match xs do
+  | Nil -> Nil
+  | Cons(x, rest) -> Cons(f(x), list_map(rest, f))
+  end
+end
+
+pfn list_append(xs, ys) do
+  match xs do
+  | Nil -> ys
+  | Cons(x, rest) -> Cons(x, list_append(rest, ys))
+  end
+end
+
+end
