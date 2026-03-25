@@ -1,0 +1,103 @@
+-- test/test_query.march
+-- Tests for Query module helpers (row_to_strings, etc.) and result types.
+
+mod TestQuery do
+
+type QueryResult = {
+  columns : List(String),
+  rows    : List(List(Option(String))),
+  tag     : String
+}
+
+-- ---- Inlined helpers ----
+
+pfn row_to_strings(cells) do
+  match cells do
+  | Nil -> Nil
+  | Cons(None, rest)    -> Cons(None, row_to_strings(rest))
+  | Cons(Some(b), rest) -> Cons(Some(Bytes.to_string(b)), row_to_strings(rest))
+  end
+end
+
+pfn list_len(lst) do
+  match lst do | Nil -> 0 | Cons(_, rest) -> 1 + list_len(rest) end
+end
+
+-- ---- Tests ----
+
+fn test_empty_result() do
+  let r = { columns = Nil, rows = Nil, tag = "" }
+  assert(list_len(r.columns) == 0)
+  assert(list_len(r.rows) == 0)
+  assert(r.tag == "")
+end
+
+fn test_result_with_tag() do
+  let r = { columns = Nil, rows = Nil, tag = "UPDATE 1" }
+  assert(r.tag == "UPDATE 1")
+end
+
+fn test_result_with_columns() do
+  let r = { columns = Cons("id", Cons("name", Nil)), rows = Nil, tag = "" }
+  assert(list_len(r.columns) == 2)
+end
+
+fn test_row_to_strings_empty() do
+  let result = row_to_strings(Nil)
+  assert(result == Nil)
+end
+
+fn test_row_to_strings_null_cell() do
+  let cells = [None, None]
+  match row_to_strings(cells) do
+  | Cons(None, Cons(None, Nil)) -> ()
+  | _ -> assert(false)
+  end
+end
+
+fn test_row_to_strings_some_cell() do
+  let b = Bytes.from_string("hello")
+  let cells = [Some(b)]
+  match row_to_strings(cells) do
+  | Cons(Some(s), Nil) -> assert(s == "hello")
+  | _ -> assert(false)
+  end
+end
+
+fn test_row_to_strings_mixed() do
+  let b = Bytes.from_string("42")
+  let cells = [None, Some(b), None]
+  let result = row_to_strings(cells)
+  assert(list_len(result) == 3)
+  match result do
+  | Cons(None, Cons(Some(s), Cons(None, Nil))) -> assert(s == "42")
+  | _ -> assert(false)
+  end
+end
+
+fn test_result_with_rows() do
+  let row1 = [Some("1"), Some("Alice"), None]
+  let row2 = [Some("2"), Some("Bob"), Some("admin")]
+  let r = {
+    columns = ["id", "name", "role"],
+    rows = [row1, row2],
+    tag = "SELECT 2"
+  }
+  assert(list_len(r.columns) == 3)
+  assert(list_len(r.rows) == 2)
+  assert(r.tag == "SELECT 2")
+end
+
+fn main() : Unit do
+  test_empty_result()
+  test_result_with_tag()
+  test_result_with_columns()
+  test_row_to_strings_empty()
+  test_row_to_strings_null_cell()
+  test_row_to_strings_some_cell()
+  test_row_to_strings_mixed()
+  test_result_with_rows()
+  println("test_query: all tests passed")
+end
+
+end

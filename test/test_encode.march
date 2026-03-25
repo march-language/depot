@@ -1,0 +1,114 @@
+-- test/test_encode.march
+-- Tests for wire encoding helpers.
+
+mod TestEncode do
+
+-- ---- Inlined encode helpers ----
+
+pfn i32_be(n : Int) : Bytes do
+  Bytes.from_list([
+    (n / 16777216) % 256, (n / 65536) % 256,
+    (n / 256)      % 256,  n          % 256
+  ])
+end
+
+pfn i16_be(n : Int) : Bytes do
+  Bytes.from_list([(n / 256) % 256, n % 256])
+end
+
+pfn cstring(s : String) : Bytes do
+  Bytes.concat(Bytes.from_string(s), Bytes.from_list([0]))
+end
+
+pfn length_prefix(payload : Bytes) : Bytes do
+  let prefix = i32_be(Bytes.length(payload) + 4)
+  Bytes.concat(prefix, payload)
+end
+
+pfn frame(type_byte : Int, payload : Bytes) : Bytes do
+  Bytes.concat(Bytes.from_list([type_byte]), length_prefix(payload))
+end
+
+-- ---- Tests ----
+
+fn test_i32_be_zero() do
+  let b = i32_be(0)
+  assert(Bytes.length(b) == 4)
+  assert(Bytes.get(b, 0) == 0)
+  assert(Bytes.get(b, 1) == 0)
+  assert(Bytes.get(b, 2) == 0)
+  assert(Bytes.get(b, 3) == 0)
+end
+
+fn test_i32_be_256() do
+  let b = i32_be(256)
+  assert(Bytes.length(b) == 4)
+  assert(Bytes.get(b, 0) == 0)
+  assert(Bytes.get(b, 1) == 0)
+  assert(Bytes.get(b, 2) == 1)
+  assert(Bytes.get(b, 3) == 0)
+end
+
+fn test_i32_be_one() do
+  let b = i32_be(1)
+  assert(Bytes.get(b, 3) == 1)
+  assert(Bytes.get(b, 0) == 0)
+end
+
+fn test_i16_be_zero() do
+  let b = i16_be(0)
+  assert(Bytes.length(b) == 2)
+  assert(Bytes.get(b, 0) == 0)
+  assert(Bytes.get(b, 1) == 0)
+end
+
+fn test_i16_be_256() do
+  let b = i16_be(256)
+  assert(Bytes.get(b, 0) == 1)
+  assert(Bytes.get(b, 1) == 0)
+end
+
+fn test_cstring_empty() do
+  let b = cstring("")
+  assert(Bytes.length(b) == 1)
+  assert(Bytes.get(b, 0) == 0)
+end
+
+fn test_cstring_hello() do
+  let b = cstring("hi")
+  assert(Bytes.length(b) == 3)
+  assert(Bytes.get(b, 2) == 0)
+end
+
+fn test_length_prefix() do
+  let payload = Bytes.from_list([65, 66])
+  let framed = length_prefix(payload)
+  -- length field = payload_length + 4 = 2 + 4 = 6
+  assert(Bytes.get(framed, 3) == 6)
+  assert(Bytes.get(framed, 4) == 65)
+  assert(Bytes.get(framed, 5) == 66)
+end
+
+fn test_frame() do
+  let payload = Bytes.from_list([1, 2])
+  let f = frame(81, payload)
+  -- type byte, then 4-byte length (6), then payload
+  assert(Bytes.get(f, 0) == 81)
+  assert(Bytes.get(f, 4) == 6)
+  assert(Bytes.get(f, 5) == 1)
+end
+
+fn main() : Unit do
+  test_i32_be_zero()
+  test_i32_be_256()
+  test_i32_be_one()
+  test_i16_be_zero()
+  test_i16_be_256()
+  test_cstring_empty()
+  test_cstring_hello()
+  test_length_prefix()
+  test_frame()
+  println("test_encode: all tests passed")
+end
+
+end

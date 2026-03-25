@@ -1,0 +1,515 @@
+-- test/test_compile.march
+-- Tests for SQL query compiler (compile_parameterized).
+
+mod TestCompile do
+
+-- ---- Inlined types ----
+
+type Query = Query(QueryFields)
+
+type QueryFields = {
+  from_     : FromClause,
+  selects   : List(SelectExpr),
+  wheres    : List(WhereExpr),
+  joins     : List(JoinClause),
+  orders    : List(OrderExpr),
+  group_bys : List(Expr),
+  havings   : List(WhereExpr),
+  limit_    : Option(Int),
+  offset_   : Option(Int),
+  distinct_ : Bool
+}
+
+type FromClause =
+    FromTable(String)
+  | FromSubquery(Query, String)
+
+type SelectExpr =
+    SelectAll
+  | SelectField(Expr)
+  | SelectAs(Expr, String)
+
+type WhereExpr =
+    Where(Expr)
+  | OrWhere(Expr)
+
+type JoinKind = Inner | Left | Right | FullOuter | Cross
+
+type JoinClause = JoinClause(JoinKind, String, Expr)
+
+type SortDir = Asc | Desc | AscNullsFirst | DescNullsLast
+
+type OrderExpr = OrderExpr(Expr, SortDir)
+
+type Expr =
+    Lit(SqlValue)
+  | Col(String)
+  | QCol(String, String)
+  | Eq(Expr, Expr)
+  | Neq(Expr, Expr)
+  | Lt(Expr, Expr)
+  | Gt(Expr, Expr)
+  | Lte(Expr, Expr)
+  | Gte(Expr, Expr)
+  | And(Expr, Expr)
+  | Or(Expr, Expr)
+  | Not(Expr)
+  | Add(Expr, Expr)
+  | Sub(Expr, Expr)
+  | Mul(Expr, Expr)
+  | Div(Expr, Expr)
+  | IsNull(Expr)
+  | IsNotNull(Expr)
+  | In(Expr, List(Expr))
+  | NotIn(Expr, List(Expr))
+  | Between(Expr, Expr, Expr)
+  | Like(Expr, String)
+  | ILike(Expr, String)
+  | Count(Expr)
+  | Sum(Expr)
+  | Avg(Expr)
+  | Min(Expr)
+  | Max(Expr)
+  | CountAll
+  | Exists(Query)
+  | SubqueryExpr(Query)
+  | FnCall(String, List(Expr))
+  | ExprParam(Int)
+  | Raw(String)
+
+type SqlValue =
+    PInt(Int)
+  | PFloat(Float)
+  | PString(String)
+  | PBool(Bool)
+  | PNull
+
+type Param =
+    ParamNull
+  | ParamText(String)
+  | ParamBinary(Bytes)
+
+type CompiledQuery = { sql : String, params : List(Param) }
+
+type CState = { param_count : Int, params : List(Param) }
+
+-- ---- Inlined compiler ----
+
+pfn ci_quote_ident(name) do "\"" ++ name ++ "\"" end
+
+pfn ci_join_strs(parts, sep) do
+  match parts do
+  | Nil -> ""
+  | Cons(first, Nil) -> first
+  | Cons(first, rest) -> first ++ sep ++ ci_join_strs(rest, sep)
+  end
+end
+
+pfn ci_rev_strs(xs) do ci_rev_strs_acc(xs, Nil) end
+pfn ci_rev_strs_acc(xs, acc) do
+  match xs do | Nil -> acc | Cons(x, rest) -> ci_rev_strs_acc(rest, Cons(x, acc)) end
+end
+
+pfn ci_rev_params(xs) do ci_rev_params_acc(xs, Nil) end
+pfn ci_rev_params_acc(xs, acc) do
+  match xs do | Nil -> acc | Cons(x, rest) -> ci_rev_params_acc(rest, Cons(x, acc)) end
+end
+
+pfn ci_rev_where_parts(xs) do ci_rev_wp_acc(xs, Nil) end
+pfn ci_rev_wp_acc(xs, acc) do
+  match xs do | Nil -> acc | Cons(x, rest) -> ci_rev_wp_acc(rest, Cons(x, acc)) end
+end
+
+pfn compile_limit(lim) do
+  match lim do | None -> "" | Some(n) -> " LIMIT " ++ int_to_string(n) end
+end
+
+pfn compile_offset(off) do
+  match off do | None -> "" | Some(n) -> " OFFSET " ++ int_to_string(n) end
+end
+
+pfn compile_expr(e, cst) do
+  match e do
+  | Lit(v) ->
+    let nc = cst.param_count + 1
+    let param = match v do
+      | PInt(n)    -> ParamText(int_to_string(n))
+      | PFloat(f_) -> ParamText(float_to_string(f_))
+      | PString(s) -> ParamText(s)
+      | PBool(b)   -> ParamText(if b then "t" else "f")
+      | PNull      -> ParamNull
+    end
+    ("$" ++ int_to_string(nc), { param_count = nc, params = Cons(param, cst.params) })
+  | Col(name)     -> (ci_quote_ident(name), cst)
+  | QCol(t, name) -> (ci_quote_ident(t) ++ "." ++ ci_quote_ident(name), cst)
+  | Eq(l, r) ->
+    match compile_expr(l, cst) do
+    | (ls, s1) ->
+      match compile_expr(r, s1) do
+      | (rs, s2) -> (ls ++ " = " ++ rs, s2)
+      end
+    end
+  | And(l, r) ->
+    match compile_expr(l, cst) do
+    | (ls, s1) ->
+      match compile_expr(r, s1) do
+      | (rs, s2) -> ("(" ++ ls ++ " AND " ++ rs ++ ")", s2)
+      end
+    end
+  | IsNull(inner) ->
+    match compile_expr(inner, cst) do
+    | (s, s2) -> (s ++ " IS NULL", s2)
+    end
+  | CountAll -> ("COUNT(*)", cst)
+  | Raw(sql) -> (sql, cst)
+  | _        -> ("/* unsupported */", cst)
+  end
+end
+
+pfn compile_expr_list(exprs, cst, acc) do
+  match exprs do
+  | Nil -> (acc, cst)
+  | Cons(ex, rest) ->
+    match compile_expr(ex, cst) do
+    | (s, s2) -> compile_expr_list(rest, s2, Cons(s, acc))
+    end
+  end
+end
+
+pfn compile_select(f, cst) do
+  match f.selects do
+  | Nil -> ("*", cst)
+  | items -> compile_select_exprs(items, cst, Nil)
+  end
+end
+
+pfn compile_select_exprs(items, cst, acc) do
+  match items do
+  | Nil -> (ci_join_strs(ci_rev_strs(acc), ", "), cst)
+  | Cons(item, rest) ->
+    match item do
+    | SelectAll -> compile_select_exprs(rest, cst, Cons("*", acc))
+    | SelectField(ex) ->
+      match compile_expr(ex, cst) do
+      | (s, s2) -> compile_select_exprs(rest, s2, Cons(s, acc))
+      end
+    | SelectAs(ex, a) ->
+      match compile_expr(ex, cst) do
+      | (s, s2) -> compile_select_exprs(rest, s2, Cons(s ++ " AS " ++ ci_quote_ident(a), acc))
+      end
+    end
+  end
+end
+
+pfn compile_joins(joins, cst) do
+  match joins do
+  | Nil -> ("", cst)
+  | _ -> compile_joins_acc(joins, cst, "")
+  end
+end
+
+pfn compile_joins_acc(joins, cst, acc) do
+  match joins do
+  | Nil -> (acc, cst)
+  | Cons(JoinClause(kind, table, on_expr), rest) ->
+    let k = match kind do
+      | Inner -> " INNER JOIN " | Left -> " LEFT JOIN "
+      | Right -> " RIGHT JOIN " | FullOuter -> " FULL OUTER JOIN "
+      | Cross -> " CROSS JOIN "
+    end
+    match compile_expr(on_expr, cst) do
+    | (on_sql, s2) ->
+      compile_joins_acc(rest, s2, acc ++ k ++ ci_quote_ident(table) ++ " ON " ++ on_sql)
+    end
+  end
+end
+
+pfn compile_wheres(wheres, cst) do
+  match wheres do
+  | Nil -> ("", cst)
+  | _ ->
+    match compile_where_parts(wheres, cst, Nil) do
+    | (parts, s2) -> (" WHERE " ++ join_where_parts(ci_rev_where_parts(parts)), s2)
+    end
+  end
+end
+
+pfn compile_where_parts(wheres, cst, acc) do
+  match wheres do
+  | Nil -> (acc, cst)
+  | Cons(w, rest) ->
+    match w do
+    | Where(ex) ->
+      match compile_expr(ex, cst) do
+      | (s, s2) -> compile_where_parts(rest, s2, Cons(("AND", s), acc))
+      end
+    | OrWhere(ex) ->
+      match compile_expr(ex, cst) do
+      | (s, s2) -> compile_where_parts(rest, s2, Cons(("OR", s), acc))
+      end
+    end
+  end
+end
+
+pfn join_where_parts(parts) do
+  match parts do
+  | Nil -> "TRUE"
+  | Cons((_, first), rest) -> join_where_rest(first, rest)
+  end
+end
+
+pfn join_where_rest(acc, parts) do
+  match parts do
+  | Nil -> acc
+  | Cons((op, ex), rest) -> join_where_rest(acc ++ " " ++ op ++ " " ++ ex, rest)
+  end
+end
+
+pfn compile_group_bys(exprs, cst) do
+  match exprs do
+  | Nil -> ("", cst)
+  | _ ->
+    match compile_expr_list(exprs, cst, Nil) do
+    | (parts, s2) -> (" GROUP BY " ++ ci_join_strs(ci_rev_strs(parts), ", "), s2)
+    end
+  end
+end
+
+pfn compile_havings(havings, cst) do
+  match havings do
+  | Nil -> ("", cst)
+  | _ ->
+    match compile_where_parts(havings, cst, Nil) do
+    | (parts, s2) -> (" HAVING " ++ join_where_parts(ci_rev_where_parts(parts)), s2)
+    end
+  end
+end
+
+pfn compile_orders(orders, cst) do
+  match orders do
+  | Nil -> ("", cst)
+  | _ ->
+    match compile_order_parts(orders, cst, Nil) do
+    | (parts, s2) -> (" ORDER BY " ++ ci_join_strs(ci_rev_strs(parts), ", "), s2)
+    end
+  end
+end
+
+pfn compile_order_parts(orders, cst, acc) do
+  match orders do
+  | Nil -> (acc, cst)
+  | Cons(OrderExpr(ex, dir), rest) ->
+    match compile_expr(ex, cst) do
+    | (s, s2) ->
+      let d = match dir do
+        | Asc -> " ASC" | Desc -> " DESC"
+        | AscNullsFirst -> " ASC NULLS FIRST" | DescNullsLast -> " DESC NULLS LAST"
+      end
+      compile_order_parts(rest, s2, Cons(s ++ d, acc))
+    end
+  end
+end
+
+pfn cp_a(f, cst) do
+  match compile_select(f, cst) do | (sel, s1) -> cp_b(f, sel, s1) end
+end
+
+pfn cp_b(f, sel, s1) do
+  let from_sql = match f.from_ do
+    | FromTable(name) -> ci_quote_ident(name)
+    | FromSubquery(_, _) -> panic("subquery not supported")
+  end
+  cp_c(f, sel, from_sql, s1)
+end
+
+pfn cp_c(f, sel, frm, s1) do
+  match compile_joins(f.joins, s1) do | (jns, s2) -> cp_d(f, sel, frm, jns, s2) end
+end
+
+pfn cp_d(f, sel, frm, jns, s2) do
+  match compile_wheres(f.wheres, s2) do | (whr, s3) -> cp_e(f, sel, frm, jns, whr, s3) end
+end
+
+pfn cp_e(f, sel, frm, jns, whr, s3) do
+  match compile_group_bys(f.group_bys, s3) do | (grp, s4) -> cp_f(f, sel, frm, jns, whr, grp, s4) end
+end
+
+pfn cp_f(f, sel, frm, jns, whr, grp, s4) do
+  match compile_havings(f.havings, s4) do | (hav, s5) -> cp_g(f, sel, frm, jns, whr, grp, hav, s5) end
+end
+
+pfn cp_g(f, sel, frm, jns, whr, grp, hav, s5) do
+  match compile_orders(f.orders, s5) do | (ord, s6) -> cp_finish(f, sel, frm, jns, whr, grp, hav, ord, s6) end
+end
+
+pfn cp_finish(f, sel, frm, jns, whr, grp, hav, ord, s6) do
+  let dp = if f.distinct_ then "DISTINCT " else ""
+  let sql = "SELECT " ++ dp ++ sel ++ " FROM " ++ frm
+            ++ jns ++ whr ++ grp ++ hav ++ ord
+            ++ compile_limit(f.limit_) ++ compile_offset(f.offset_)
+  { sql = sql, params = ci_rev_params(s6.params) }
+end
+
+pfn compile_parameterized(q) do
+  match q do | Query(f) -> cp_a(f, { param_count = 0, params = Nil }) end
+end
+
+-- ---- Helper ----
+
+pfn list_len(lst) do
+  match lst do | Nil -> 0 | Cons(_, rest) -> 1 + list_len(rest) end
+end
+
+pfn make_query(table) do
+  Query({
+    from_ = FromTable(table), selects = Nil, wheres = Nil,
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false
+  })
+end
+
+-- ---- Tests ----
+
+fn test_simple_select_star() do
+  let q = make_query("users")
+  let r = compile_parameterized(q)
+  assert(r.sql == "SELECT * FROM \"users\"")
+  assert(list_len(r.params) == 0)
+end
+
+fn test_select_with_columns() do
+  let q = Query({
+    from_ = FromTable("posts"), selects = [SelectField(Col("id")), SelectField(Col("title"))],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false
+  })
+  let r = compile_parameterized(q)
+  assert(r.sql == "SELECT \"id\", \"title\" FROM \"posts\"")
+  assert(list_len(r.params) == 0)
+end
+
+fn test_where_with_param() do
+  let q = Query({
+    from_ = FromTable("users"),
+    selects = Nil,
+    wheres = [Where(Eq(Col("id"), Lit(PInt(42))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false
+  })
+  let r = compile_parameterized(q)
+  assert(r.sql == "SELECT * FROM \"users\" WHERE \"id\" = $1")
+  assert(list_len(r.params) == 1)
+  match r.params do
+  | Cons(ParamText(s), Nil) -> assert(s == "42")
+  | _ -> assert(false)
+  end
+end
+
+fn test_two_where_params() do
+  let q = Query({
+    from_ = FromTable("products"),
+    selects = Nil,
+    wheres = [Where(Eq(Col("active"), Lit(PBool(true)))),
+              Where(Eq(Col("price"), Lit(PInt(100))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false
+  })
+  let r = compile_parameterized(q)
+  assert(list_len(r.params) == 2)
+  assert(r.sql == "SELECT * FROM \"products\" WHERE \"active\" = $1 AND \"price\" = $2")
+end
+
+fn test_null_param() do
+  let q = Query({
+    from_ = FromTable("t"),
+    selects = Nil,
+    wheres = [Where(Eq(Col("x"), Lit(PNull)))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false
+  })
+  let r = compile_parameterized(q)
+  match r.params do
+  | Cons(ParamNull, Nil) -> ()
+  | _ -> assert(false)
+  end
+end
+
+fn test_limit_and_offset() do
+  let q = Query({
+    from_ = FromTable("events"), selects = Nil, wheres = Nil,
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = Some(10), offset_ = Some(20), distinct_ = false
+  })
+  let r = compile_parameterized(q)
+  assert(r.sql == "SELECT * FROM \"events\" LIMIT 10 OFFSET 20")
+end
+
+fn test_distinct() do
+  let q = Query({
+    from_ = FromTable("tags"), selects = Nil, wheres = Nil,
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = true
+  })
+  let r = compile_parameterized(q)
+  assert(r.sql == "SELECT DISTINCT * FROM \"tags\"")
+end
+
+fn test_order_by() do
+  let q = Query({
+    from_ = FromTable("logs"), selects = Nil, wheres = Nil,
+    joins = Nil, orders = [OrderExpr(Col("created_at"), Desc)],
+    group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false
+  })
+  let r = compile_parameterized(q)
+  assert(r.sql == "SELECT * FROM \"logs\" ORDER BY \"created_at\" DESC")
+end
+
+fn test_select_as() do
+  let q = Query({
+    from_ = FromTable("t"),
+    selects = [SelectAs(CountAll, "total")],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false
+  })
+  let r = compile_parameterized(q)
+  assert(r.sql == "SELECT COUNT(*) AS \"total\" FROM \"t\"")
+end
+
+fn test_is_null() do
+  let q = Query({
+    from_ = FromTable("users"), selects = Nil,
+    wheres = [Where(IsNull(Col("deleted_at")))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false
+  })
+  let r = compile_parameterized(q)
+  assert(r.sql == "SELECT * FROM \"users\" WHERE \"deleted_at\" IS NULL")
+end
+
+fn test_raw_expr() do
+  let q = Query({
+    from_ = FromTable("t"), selects = [SelectField(Raw("1+1"))],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false
+  })
+  let r = compile_parameterized(q)
+  assert(r.sql == "SELECT 1+1 FROM \"t\"")
+end
+
+fn main() : Unit do
+  test_simple_select_star()
+  test_select_with_columns()
+  test_where_with_param()
+  test_two_where_params()
+  test_null_param()
+  test_limit_and_offset()
+  test_distinct()
+  test_order_by()
+  test_select_as()
+  test_is_null()
+  test_raw_expr()
+  println("test_compile: all tests passed")
+end
+
+end

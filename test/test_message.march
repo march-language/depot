@@ -1,0 +1,116 @@
+-- test/test_message.march
+-- Tests for wire message types and constructors.
+
+mod TestMessage do
+
+type Param =
+    ParamNull
+  | ParamText(String)
+  | ParamBinary(Bytes)
+
+type DescribeTarget = DescribeStatement(String) | DescribePortal(String)
+type CloseTarget    = CloseStatement(String)    | ClosePortal(String)
+
+type TransactionStatus = Idle | InTransaction | InFailedTransaction
+
+type ErrorFields = {
+  severity : String,
+  code     : String,
+  message  : String,
+  detail   : Option(String),
+  hint     : Option(String),
+  position : Option(Int)
+}
+
+-- ---- Tests ----
+
+fn test_param_null() do
+  match ParamNull do | ParamNull -> () | _ -> assert(false) end
+end
+
+fn test_param_text() do
+  match ParamText("hello") do
+  | ParamText(s) -> assert(s == "hello")
+  | _ -> assert(false)
+  end
+end
+
+fn test_param_binary() do
+  let b = Bytes.from_list([1, 2, 3])
+  match ParamBinary(b) do
+  | ParamBinary(data) -> assert(Bytes.length(data) == 3)
+  | _ -> assert(false)
+  end
+end
+
+fn test_describe_target_stmt() do
+  match DescribeStatement("my_stmt") do
+  | DescribeStatement(n) -> assert(n == "my_stmt")
+  | _ -> assert(false)
+  end
+end
+
+fn test_describe_target_portal() do
+  match DescribePortal("my_portal") do
+  | DescribePortal(n) -> assert(n == "my_portal")
+  | _ -> assert(false)
+  end
+end
+
+fn test_close_target_stmt() do
+  match CloseStatement("s") do
+  | CloseStatement(n) -> assert(n == "s")
+  | _ -> assert(false)
+  end
+end
+
+fn test_transaction_status() do
+  match Idle do | Idle -> () | _ -> assert(false) end
+  match InTransaction do | InTransaction -> () | _ -> assert(false) end
+  match InFailedTransaction do | InFailedTransaction -> () | _ -> assert(false) end
+end
+
+fn test_error_fields() do
+  let ef = {
+    severity = "ERROR",
+    code = "42P01",
+    message = "relation does not exist",
+    detail = None,
+    hint = None,
+    position = None
+  }
+  assert(ef.severity == "ERROR")
+  assert(ef.code == "42P01")
+  assert(ef.message == "relation does not exist")
+  match ef.detail do | None -> () | Some(_) -> assert(false) end
+end
+
+fn test_error_fields_with_detail() do
+  let ef = {
+    severity = "ERROR",
+    code = "23505",
+    message = "duplicate key",
+    detail = Some("Key (id)=(1) already exists."),
+    hint = None,
+    position = None
+  }
+  match ef.detail do
+  | Some(d) -> assert(d == "Key (id)=(1) already exists.")
+  | None -> assert(false)
+  end
+end
+
+fn main() : Unit do
+  test_param_null()
+  test_param_text()
+  test_param_binary()
+  test_describe_target_stmt()
+  test_describe_target_portal()
+  test_close_target_stmt()
+  test_transaction_status()
+  test_error_fields()
+  test_error_fields_with_detail()
+  println("test_message: all tests passed")
+end
+
+end

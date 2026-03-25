@@ -1,0 +1,127 @@
+-- test/test_decode.march
+-- Tests for wire decoding helpers.
+
+mod TestDecode do
+
+-- ---- Inlined decode helpers ----
+
+pfn read_u16(b, pos) do
+  Bytes.get(b, pos) * 256 + Bytes.get(b, pos + 1)
+end
+
+pfn read_i32(b, pos) do
+  let raw =
+    Bytes.get(b, pos)     * 16777216 +
+    Bytes.get(b, pos + 1) * 65536    +
+    Bytes.get(b, pos + 2) * 256      +
+    Bytes.get(b, pos + 3)
+  if raw >= 2147483648 then raw - 4294967296 else raw
+end
+
+pfn read_cstring(b, pos) do
+  fn go(i, acc) do
+    let byte = Bytes.get(b, i)
+    if byte == 0 then (Bytes.to_string(Bytes.from_list(reverse(acc))), i + 1)
+    else go(i + 1, Cons(byte, acc))
+  end
+  go(pos, Nil)
+end
+
+pfn read_bytes_field(b, pos) do
+  let len = read_i32(b, pos)
+  if len == -1 then (None, pos + 4)
+  else (Some(Bytes.slice(b, pos + 4, len)), pos + 4 + len)
+end
+
+-- ---- Tests ----
+
+fn test_read_u16_zero() do
+  let b = Bytes.from_list([0, 0, 0, 0])
+  assert(read_u16(b, 0) == 0)
+end
+
+fn test_read_u16_256() do
+  let b = Bytes.from_list([1, 0])
+  assert(read_u16(b, 0) == 256)
+end
+
+fn test_read_u16_offset() do
+  let b = Bytes.from_list([0, 0, 1, 5])
+  assert(read_u16(b, 2) == 261)
+end
+
+fn test_read_i32_zero() do
+  let b = Bytes.from_list([0, 0, 0, 0])
+  assert(read_i32(b, 0) == 0)
+end
+
+fn test_read_i32_positive() do
+  let b = Bytes.from_list([0, 0, 0, 42])
+  assert(read_i32(b, 0) == 42)
+end
+
+fn test_read_i32_big() do
+  -- 0x00010000 = 65536
+  let b = Bytes.from_list([0, 1, 0, 0])
+  assert(read_i32(b, 0) == 65536)
+end
+
+fn test_read_cstring_empty() do
+  let b = Bytes.from_list([0])
+  match read_cstring(b, 0) do
+  | (s, next) ->
+    assert(s == "")
+    assert(next == 1)
+  end
+end
+
+fn test_read_cstring_hello() do
+  -- "hi" + null terminator
+  let b = Bytes.from_list([104, 105, 0])
+  match read_cstring(b, 0) do
+  | (s, next) ->
+    assert(s == "hi")
+    assert(next == 3)
+  end
+end
+
+fn test_read_bytes_field_null() do
+  -- -1 in big-endian = null field
+  let b = Bytes.from_list([255, 255, 255, 255])
+  match read_bytes_field(b, 0) do
+  | (opt, next) ->
+    assert(next == 4)
+    match opt do | None -> () | Some(_) -> assert(false) end
+  end
+end
+
+fn test_read_bytes_field_data() do
+  -- length=2, then bytes [65, 66]
+  let b = Bytes.from_list([0, 0, 0, 2, 65, 66])
+  match read_bytes_field(b, 0) do
+  | (opt, next) ->
+    assert(next == 6)
+    match opt do
+    | Some(data) ->
+      assert(Bytes.length(data) == 2)
+      assert(Bytes.get(data, 0) == 65)
+    | None -> assert(false)
+    end
+  end
+end
+
+fn main() : Unit do
+  test_read_u16_zero()
+  test_read_u16_256()
+  test_read_u16_offset()
+  test_read_i32_zero()
+  test_read_i32_positive()
+  test_read_i32_big()
+  test_read_cstring_empty()
+  test_read_cstring_hello()
+  test_read_bytes_field_null()
+  test_read_bytes_field_data()
+  println("test_decode: all tests passed")
+end
+
+end
