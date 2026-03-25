@@ -3,12 +3,64 @@
 
 mod Decode do
 
+-- ---- Inlined types from Message ----
+
+type BackendMessage =
+    AuthOk
+  | AuthMD5(Bytes)
+  | AuthSASL(List(String))
+  | AuthSASLContinue(Bytes)
+  | AuthSASLFinal(Bytes)
+  | BackendKeyData(Int, Int)
+  | ParameterStatus(String, String)
+  | ReadyForQuery(TransactionStatus)
+  | RowDescription(List(FieldDesc))
+  | DataRow(List(Option(Bytes)))
+  | CommandComplete(String)
+  | EmptyQueryResponse
+  | ErrorResponse(ErrorFields)
+  | NoticeResponse(ErrorFields)
+  | ParseComplete
+  | BindComplete
+  | CloseComplete
+  | NoData
+  | PortalSuspended
+
+type TransactionStatus = Idle | InTransaction | InFailedTransaction
+
+type FieldDesc = FieldDesc(
+  String, Int, Int, Int, Int, Int, Int
+)
+
+type ErrorFields = {
+  severity : String,
+  code     : String,
+  message  : String,
+  detail   : Option(String),
+  hint     : Option(String),
+  position : Option(Int)
+}
+
 -- ---- Cursor helpers ----
 
+--- Reads a big-endian unsigned 16-bit integer from bytes at position `pos`.
+---
+--- march> read_u16(Bytes.from_list([0, 5]), 0)
+--- 5
+---
+--- march> read_u16(Bytes.from_list([1, 0]), 0)
+--- 256
 fn read_u16(b, pos) do
   Bytes.get(b, pos) * 256 + Bytes.get(b, pos + 1)
 end
 
+--- Reads a big-endian signed 32-bit integer from bytes at position `pos`.
+---
+--- march> read_i32(Bytes.from_list([0, 0, 0, 42]), 0)
+--- 42
+---
+--- march> read_i32(Bytes.from_list([255, 255, 255, 255]), 0)
+--- -1
 fn read_i32(b, pos) do
   let raw =
     Bytes.get(b, pos)     * 16777216 +
@@ -18,6 +70,14 @@ fn read_i32(b, pos) do
   if raw >= 2147483648 then raw - 4294967296 else raw
 end
 
+--- Reads a null-terminated C string from bytes starting at `pos`.
+--- Returns `(string, next_pos)`.
+---
+--- march> read_cstring(Bytes.from_list([104, 105, 0]), 0)
+--- ("hi", 3)
+---
+--- march> read_cstring(Bytes.from_list([0]), 0)
+--- ("", 1)
 fn read_cstring(b, pos) do
   fn go(i, acc) do
     let byte = Bytes.get(b, i)
@@ -27,6 +87,14 @@ fn read_cstring(b, pos) do
   go(pos, Nil)
 end
 
+--- Reads a length-prefixed byte field (NULL if length == -1).
+--- Returns `(Option(Bytes), next_pos)`.
+---
+--- march> read_bytes_field(Bytes.from_list([255, 255, 255, 255]), 0)
+--- (None, 4)
+---
+--- march> match read_bytes_field(Bytes.from_list([0, 0, 0, 2, 65, 66]), 0) do | (Some(b), _) -> Bytes.length(b) | (None, _) -> 0 end
+--- 2
 fn read_bytes_field(b, pos) do
   let len = read_i32(b, pos)
   if len == -1 then (None, pos + 4)
@@ -35,7 +103,7 @@ end
 
 -- ---- Error/Notice field parsing ----
 
-fn parse_error_fields(b, pos) do
+pfn parse_error_fields(b, pos) do
   fn go(i, severity, code, message, detail, hint, position) do
     if i >= Bytes.length(b) then
       { severity = severity, code = code, message = message,
@@ -59,7 +127,7 @@ end
 
 -- ---- RowDescription / DataRow parsing ----
 
-fn parse_one_field_desc(b, pos) do
+pfn parse_one_field_desc(b, pos) do
   let (name, pos1) = read_cstring(b, pos)
   let table_oid = read_i32(b, pos1)
   let attr_num  = read_u16(b, pos1 + 4)
@@ -70,21 +138,21 @@ fn parse_one_field_desc(b, pos) do
   (FieldDesc(name, table_oid, attr_num, type_oid, type_size, type_mod, format), pos1 + 18)
 end
 
-fn parse_field_descs(b, pos, n, acc) do
+pfn parse_field_descs(b, pos, n, acc) do
   if n == 0 then reverse(acc)
   else match parse_one_field_desc(b, pos) do
     | (fd, next) -> parse_field_descs(b, next, n - 1, Cons(fd, acc))
   end
 end
 
-fn parse_data_columns(b, pos, n, acc) do
+pfn parse_data_columns(b, pos, n, acc) do
   if n == 0 then reverse(acc)
   else match read_bytes_field(b, pos) do
     | (col, next) -> parse_data_columns(b, next, n - 1, Cons(col, acc))
   end
 end
 
-fn parse_sasl_mechanisms(b, pos, acc) do
+pfn parse_sasl_mechanisms(b, pos, acc) do
   if pos >= Bytes.length(b) then reverse(acc)
   else
     if Bytes.get(b, pos) == 0 then reverse(acc)
@@ -95,7 +163,7 @@ end
 
 -- ---- Sub-decoders ----
 
-fn decode_auth(payload) do
+pfn decode_auth(payload) do
   let auth_type = read_i32(payload, 0)
   if      auth_type == 0  then Ok(AuthOk)
   else if auth_type == 5  then Ok(AuthMD5(Bytes.slice(payload, 4, 4)))
@@ -105,7 +173,7 @@ fn decode_auth(payload) do
   else Err("unsupported auth type: " ++ int_to_string(auth_type))
 end
 
-fn decode_param_status(payload) do
+pfn decode_param_status(payload) do
   match read_cstring(payload, 0) do
   | (name, pos) ->
     match read_cstring(payload, pos) do
@@ -114,7 +182,7 @@ fn decode_param_status(payload) do
   end
 end
 
-fn decode_ready(payload) do
+pfn decode_ready(payload) do
   let b = Bytes.get(payload, 0)
   Ok(ReadyForQuery(
     if b == 84 then InTransaction
@@ -122,7 +190,7 @@ fn decode_ready(payload) do
     else Idle))
 end
 
-fn decode_command_complete(payload) do
+pfn decode_command_complete(payload) do
   match read_cstring(payload, 0) do
   | (tag, _) -> Ok(CommandComplete(tag))
   end
@@ -130,6 +198,18 @@ end
 
 -- ---- Main decode ----
 
+--- Decodes a backend message from its type byte and payload bytes.
+---
+--- Returns `Ok(BackendMessage)` or `Err(String)` for unknown message types.
+---
+--- march> decode(49, Bytes.empty())
+--- Ok(ParseComplete)
+---
+--- march> decode(50, Bytes.empty())
+--- Ok(BindComplete)
+---
+--- march> decode(51, Bytes.empty())
+--- Ok(CloseComplete)
 fn decode(type_byte, payload) do
   if      type_byte == 82  then decode_auth(payload)
   else if type_byte == 75  then Ok(BackendKeyData(read_i32(payload, 0), read_i32(payload, 4)))
@@ -151,6 +231,10 @@ end
 
 -- ---- Socket receive ----
 
+--- Reads one complete backend message from a TCP file descriptor.
+---
+--- Reads the 5-byte header (type + length), then the payload,
+--- and decodes the result.
 fn recv_msg(fd) do
   match tcp_recv_exact(fd, 5) do
   | Err(e)     -> Err("recv header: " ++ e)

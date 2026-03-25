@@ -3,12 +3,20 @@
 
 mod Schema do
 
+--- March type that corresponds to a PostgreSQL OID.
 type MarchType =
     TBool | TInt16 | TInt32 | TInt64 | TFloat32 | TFloat64
   | TNumeric | TText | TVarchar | TChar | TBytea
   | TDate | TTime | TTimestamp | TTimestampTz | TInterval
   | TJson | TJsonb | TUuid | TArray(MarchType) | TUnknown(Int)
 
+--- Maps a PostgreSQL OID to its corresponding MarchType.
+---
+--- march> from_oid(23)
+--- TInt32
+---
+--- march> from_oid(25)
+--- TText
 fn from_oid(oid) do
   if oid == 16 then TBool
   else if oid == 17 then TBytea
@@ -49,6 +57,10 @@ fn from_oid(oid) do
   else TUnknown(oid)
 end
 
+--- Maps a MarchType back to its primary PostgreSQL OID.
+---
+--- march> to_oid(TText)
+--- 25
 fn to_oid(t) do
   match t do
   | TBool -> 16 | TBytea -> 17 | TChar -> 18 | TInt64 -> 20
@@ -60,6 +72,13 @@ fn to_oid(t) do
   end
 end
 
+--- Returns the PostgreSQL type name string for a MarchType.
+---
+--- march> type_name(TInt32)
+--- "int4"
+---
+--- march> type_name(TArray(TText))
+--- "text[]"
 fn type_name(t) do
   match t do
   | TBool -> "bool" | TBytea -> "bytea" | TChar -> "char"
@@ -74,6 +93,13 @@ fn type_name(t) do
   end
 end
 
+--- Returns true if the type is a numeric type.
+---
+--- march> is_numeric(TInt32)
+--- true
+---
+--- march> is_numeric(TText)
+--- false
 fn is_numeric(t) do
   match t do
   | TInt16 -> true | TInt32 -> true | TInt64 -> true
@@ -81,10 +107,24 @@ fn is_numeric(t) do
   end
 end
 
+--- Returns true if the type is a text type.
+---
+--- march> is_text(TText)
+--- true
+---
+--- march> is_text(TInt32)
+--- false
 fn is_text(t) do
   match t do | TText -> true | TVarchar -> true | TChar -> true | _ -> false end
 end
 
+--- Returns true if the type is a temporal type.
+---
+--- march> is_temporal(TDate)
+--- true
+---
+--- march> is_temporal(TText)
+--- false
 fn is_temporal(t) do
   match t do
   | TDate -> true | TTime -> true | TTimestamp -> true
@@ -92,19 +132,27 @@ fn is_temporal(t) do
   end
 end
 
+--- A typed value decoded from a PostgreSQL text-format result.
 type TypedValue =
     VBool(Bool) | VInt(Int) | VFloat(Float) | VString(String)
   | VNull | VBytes(Bytes) | VUnparsed(String)
 
+--- Parses a PostgreSQL text-format value into a TypedValue.
+---
+--- march> parse_text_value(TBool, "t")
+--- VBool(true)
+---
+--- march> parse_text_value(TText, "hello")
+--- VString("hello")
 fn parse_text_value(t, text) do
   match t do
   | TBool -> if text == "t" then VBool(true) else if text == "true" then VBool(true) else VBool(false)
-  | TInt16 -> VInt(string_to_int(text))
-  | TInt32 -> VInt(string_to_int(text))
-  | TInt64 -> VInt(string_to_int(text))
-  | TFloat32 -> VFloat(string_to_float(text))
-  | TFloat64 -> VFloat(string_to_float(text))
-  | TNumeric -> VFloat(string_to_float(text))
+  | TInt16 -> VInt(unwrap_or(string_to_int(text), 0))
+  | TInt32 -> VInt(unwrap_or(string_to_int(text), 0))
+  | TInt64 -> VInt(unwrap_or(string_to_int(text), 0))
+  | TFloat32 -> VFloat(unwrap_or(string_to_float(text), 0.0))
+  | TFloat64 -> VFloat(unwrap_or(string_to_float(text), 0.0))
+  | TNumeric -> VFloat(unwrap_or(string_to_float(text), 0.0))
   | TText -> VString(text) | TVarchar -> VString(text) | TChar -> VString(text)
   | TDate -> VString(text) | TTime -> VString(text)
   | TTimestamp -> VString(text) | TTimestampTz -> VString(text) | TInterval -> VString(text)

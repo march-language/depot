@@ -3,6 +3,37 @@
 
 mod Encode do
 
+-- ---- Inlined types from Message ----
+
+type FrontendMessage =
+    Startup(Map(String, String))
+  | Query(String)
+  | Parse(String, String, List(Int))
+  | Bind(String, String, List(Param))
+  | Execute(String, Int)
+  | Describe(DescribeTarget)
+  | Close(CloseTarget)
+  | Sync
+  | Flush
+  | Terminate
+  | PasswordMessage(String)
+  | SASLInitialResponse(String, Bytes)
+  | SASLResponse(Bytes)
+
+type DescribeTarget = DescribeStatement(String) | DescribePortal(String)
+type CloseTarget    = CloseStatement(String)    | ClosePortal(String)
+
+type Param =
+    ParamNull
+  | ParamText(String)
+  | ParamBinary(Bytes)
+
+-- ---- Byte helpers ----
+
+--- Encodes an Int as 4 big-endian bytes.
+---
+--- march> Bytes.length(i32_be(0))
+--- 4
 fn i32_be(n : Int) : Bytes do
   Bytes.from_list([
     (n / 16777216) % 256,
@@ -12,22 +43,44 @@ fn i32_be(n : Int) : Bytes do
   ])
 end
 
+--- Encodes an Int as 2 big-endian bytes.
+---
+--- march> Bytes.length(i16_be(0))
+--- 2
 fn i16_be(n : Int) : Bytes do
   Bytes.from_list([(n / 256) % 256, n % 256])
 end
 
+--- Encodes a String as a null-terminated C string.
+---
+--- march> Bytes.length(cstring("hi"))
+--- 3
 fn cstring(s : String) : Bytes do
   Bytes.concat(Bytes.from_string(s), Bytes.from_list([0]))
 end
 
+--- Prepends a 4-byte length field (length + 4) to a payload.
+---
+--- march> Bytes.length(length_prefix(Bytes.empty()))
+--- 4
 fn length_prefix(payload : Bytes) : Bytes do
   Bytes.concat(i32_be(Bytes.length(payload) + 4), payload)
 end
 
+--- Builds a typed message frame: 1-byte type tag + length-prefixed payload.
+---
+--- march> Bytes.get(frame(83, Bytes.empty()), 0)
+--- 83
 fn frame(type_byte : Int, payload : Bytes) : Bytes do
   Bytes.concat(Bytes.from_list([type_byte]), length_prefix(payload))
 end
 
+-- ---- Main encoder ----
+
+--- Encodes a FrontendMessage to its wire-protocol byte representation.
+---
+--- march> Bytes.length(encode(Sync))
+--- 5
 fn encode(msg : FrontendMessage) : Bytes do
   match msg do
   | Startup(params) ->
@@ -62,6 +115,10 @@ fn encode(msg : FrontendMessage) : Bytes do
   end
 end
 
+--- Encodes a Bind message with its parameter list.
+---
+--- march> Bytes.get(encode_bind("", "", Nil), 0)
+--- 66
 fn encode_bind(portal, stmt, params) do
   let n = List.length(params)
   let param_bytes = List.fold_left(Bytes.empty(), params, fn (acc, p) ->

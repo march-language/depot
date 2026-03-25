@@ -1,0 +1,169 @@
+-- test/test_ast.march
+-- Tests for SQL AST types and their construction.
+
+mod TestAst do
+
+type SqlValue =
+    PInt(Int)
+  | PFloat(Float)
+  | PString(String)
+  | PBool(Bool)
+  | PNull
+
+type Expr =
+    Lit(SqlValue)
+  | Col(String)
+  | QCol(String, String)
+  | Eq(Expr, Expr)
+  | And(Expr, Expr)
+  | Or(Expr, Expr)
+  | Not(Expr)
+  | IsNull(Expr)
+  | IsNotNull(Expr)
+  | Like(Expr, String)
+  | Count(Expr)
+  | CountAll
+  | Raw(String)
+
+type SortDir = Asc | Desc | AscNullsFirst | DescNullsLast
+
+type JoinKind = Inner | Left | Right | FullOuter | Cross
+
+-- ---- Tests ----
+
+fn test_sql_value_int() do
+  match PInt(42) do
+  | PInt(n) -> assert(n == 42)
+  | _ -> assert(false)
+  end
+end
+
+fn test_sql_value_string() do
+  match PString("hello") do
+  | PString(s) -> assert(s == "hello")
+  | _ -> assert(false)
+  end
+end
+
+fn test_sql_value_bool() do
+  match PBool(true) do
+  | PBool(b) -> assert(b == true)
+  | _ -> assert(false)
+  end
+end
+
+fn test_sql_value_null() do
+  match PNull do | PNull -> () | _ -> assert(false) end
+end
+
+fn test_expr_col() do
+  match Col("name") do
+  | Col(c) -> assert(c == "name")
+  | _ -> assert(false)
+  end
+end
+
+fn test_expr_qcol() do
+  match QCol("users", "id") do
+  | QCol(t, c) ->
+    assert(t == "users")
+    assert(c == "id")
+  | _ -> assert(false)
+  end
+end
+
+fn test_expr_lit() do
+  match Lit(PInt(5)) do
+  | Lit(PInt(n)) -> assert(n == 5)
+  | _ -> assert(false)
+  end
+end
+
+fn test_expr_eq() do
+  let e = Eq(Col("id"), Lit(PInt(1)))
+  match e do
+  | Eq(Col(c), Lit(PInt(n))) ->
+    assert(c == "id")
+    assert(n == 1)
+  | _ -> assert(false)
+  end
+end
+
+fn test_expr_and() do
+  let e = And(Eq(Col("a"), Lit(PInt(1))), Eq(Col("b"), Lit(PInt(2))))
+  match e do
+  | And(_, _) -> ()
+  | _ -> assert(false)
+  end
+end
+
+fn test_expr_is_null() do
+  match IsNull(Col("deleted_at")) do
+  | IsNull(Col(c)) -> assert(c == "deleted_at")
+  | _ -> assert(false)
+  end
+end
+
+fn test_expr_count_all() do
+  match CountAll do | CountAll -> () | _ -> assert(false) end
+end
+
+fn test_expr_count() do
+  match Count(Col("id")) do
+  | Count(Col(c)) -> assert(c == "id")
+  | _ -> assert(false)
+  end
+end
+
+fn test_expr_like() do
+  match Like(Col("email"), "%@example.com") do
+  | Like(Col(c), pat) ->
+    assert(c == "email")
+    assert(pat == "%@example.com")
+  | _ -> assert(false)
+  end
+end
+
+fn test_sort_dirs() do
+  match Asc do | Asc -> () | _ -> assert(false) end
+  match Desc do | Desc -> () | _ -> assert(false) end
+  match AscNullsFirst do | AscNullsFirst -> () | _ -> assert(false) end
+  match DescNullsLast do | DescNullsLast -> () | _ -> assert(false) end
+end
+
+fn test_join_kinds() do
+  match Inner do | Inner -> () | _ -> assert(false) end
+  match Left do | Left -> () | _ -> assert(false) end
+  match Right do | Right -> () | _ -> assert(false) end
+  match FullOuter do | FullOuter -> () | _ -> assert(false) end
+  match Cross do | Cross -> () | _ -> assert(false) end
+end
+
+fn test_not_expr() do
+  match Not(Eq(Col("x"), Lit(PNull))) do
+  | Not(_) -> ()
+  | _ -> assert(false)
+  end
+end
+
+fn main() : Unit do
+  test_sql_value_int()
+  test_sql_value_string()
+  test_sql_value_bool()
+  test_sql_value_null()
+  test_expr_col()
+  test_expr_qcol()
+  test_expr_lit()
+  test_expr_eq()
+  test_expr_and()
+  test_expr_is_null()
+  test_expr_count_all()
+  test_expr_count()
+  test_expr_like()
+  test_sort_dirs()
+  test_join_kinds()
+  test_not_expr()
+  println("test_ast: all tests passed")
+end
+
+end

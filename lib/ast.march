@@ -3,8 +3,10 @@
 
 mod Ast do
 
+--- A complete SELECT query.
 type Query = Query(QueryFields)
 
+--- All fields of a SELECT query.
 type QueryFields = {
   from_     : FromClause,
   selects   : List(SelectExpr),
@@ -18,27 +20,35 @@ type QueryFields = {
   distinct_ : Bool
 }
 
+--- The FROM clause — either a table name or a subquery with an alias.
 type FromClause =
     FromTable(String)
   | FromSubquery(Query, String)
 
+--- A SELECT expression.
 type SelectExpr =
     SelectAll
   | SelectExpr(Expr)
   | SelectAs(Expr, String)
 
+--- A WHERE predicate — AND (Where) or OR (OrWhere) combined.
 type WhereExpr =
     Where(Expr)
   | OrWhere(Expr)
 
+--- JOIN kind.
 type JoinKind = Inner | Left | Right | FullOuter | Cross
 
+--- A JOIN clause: kind, table name, ON expression.
 type JoinClause = JoinClause(JoinKind, String, Expr)
 
+--- Sort direction for ORDER BY.
 type SortDir = Asc | Desc | AscNullsFirst | DescNullsLast
 
+--- An ORDER BY expression with direction.
 type OrderExpr = OrderExpr(Expr, SortDir)
 
+--- A SQL expression node.
 type Expr =
     Lit(SqlValue)
   | Col(String)
@@ -75,6 +85,7 @@ type Expr =
   | Param(Int)
   | Raw(String)
 
+--- A literal SQL value.
 type SqlValue =
     PInt(Int)
   | PFloat(Float)

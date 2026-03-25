@@ -3,6 +3,7 @@
 
 mod Message do
 
+--- Frontend messages sent from client to PostgreSQL server.
 type FrontendMessage =
     Startup(Map(String, String))
   | Query(String)
@@ -18,14 +19,18 @@ type FrontendMessage =
   | SASLInitialResponse(String, Bytes)
   | SASLResponse(Bytes)
 
+--- Target of a Describe or Close message.
 type DescribeTarget = DescribeStatement(String) | DescribePortal(String)
+--- Target of a Close message.
 type CloseTarget    = CloseStatement(String)    | ClosePortal(String)
 
+--- A bind parameter value.
 type Param =
     ParamNull
   | ParamText(String)
   | ParamBinary(Bytes)
 
+--- Backend messages received from the PostgreSQL server.
 type BackendMessage =
     AuthOk
   | AuthMD5(Bytes)
@@ -47,12 +52,16 @@ type BackendMessage =
   | NoData
   | PortalSuspended
 
+--- Transaction status reported in ReadyForQuery messages.
 type TransactionStatus = Idle | InTransaction | InFailedTransaction
 
+--- Metadata for a single column in a RowDescription message.
+--- Fields: name, table_oid, attr_num, type_oid, type_size, type_mod, format
 type FieldDesc = FieldDesc(
   String, Int, Int, Int, Int, Int, Int
 )
 
+--- Error and notice fields parsed from an ErrorResponse or NoticeResponse.
 type ErrorFields = {
   severity : String,
   code     : String,

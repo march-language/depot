@@ -1,0 +1,291 @@
+-- test/test_repo.march
+-- Tests for Repo module pure helpers: sqlvalue_to_param, make_placeholders,
+-- make_set_parts, repo_join_strs, flatten_result.
+
+mod TestRepo do
+
+-- ---- Inlined types ----
+
+type Param =
+    ParamNull
+  | ParamText(String)
+  | ParamBinary(Bytes)
+
+type SqlValue =
+    PInt(Int)
+  | PFloat(Float)
+  | PString(String)
+  | PBool(Bool)
+  | PNull
+
+type QueryResult = {
+  columns : List(String),
+  rows    : List(List(Option(String))),
+  tag     : String
+}
+
+-- ---- Inlined helpers ----
+
+pfn sqlvalue_to_param(v) do
+  match v do
+  | PInt(n)    -> ParamText(int_to_string(n))
+  | PFloat(f_) -> ParamText(float_to_string(f_))
+  | PString(s) -> ParamText(s)
+  | PBool(b)   -> ParamText(if b then "t" else "f")
+  | PNull      -> ParamNull
+  end
+end
+
+pfn list_rev_acc(lst, acc) do
+  match lst do | Nil -> acc | Cons(x, rest) -> list_rev_acc(rest, Cons(x, acc)) end
+end
+
+pfn list_rev(lst) do list_rev_acc(lst, Nil) end
+
+pfn make_placeholders(i, n, acc) do
+  if i > n then list_rev(acc)
+  else make_placeholders(i + 1, n, Cons("$" ++ int_to_string(i), acc))
+end
+
+pfn repo_quote_ident(name) do "\"" ++ name ++ "\"" end
+
+pfn make_set_parts(fields, idx, acc) do
+  match fields do
+  | Nil -> list_rev(acc)
+  | Cons(pair, rest) ->
+    let name = match pair do | (n, _) -> n end
+    make_set_parts(rest, idx + 1,
+      Cons(repo_quote_ident(name) ++ " = $" ++ int_to_string(idx), acc))
+  end
+end
+
+pfn repo_join_strs(parts, sep) do
+  match parts do
+  | Nil -> ""
+  | Cons(x, Nil) -> x
+  | Cons(x, rest) -> x ++ sep ++ repo_join_strs(rest, sep)
+  end
+end
+
+pfn flatten_result(r) do
+  match r do
+  | Ok(Ok(val)) -> Ok(val)
+  | Ok(Err(e))  -> Err(e)
+  | Err(e)      -> Err(e)
+  end
+end
+
+pfn list_len(lst) do
+  match lst do | Nil -> 0 | Cons(_, rest) -> 1 + list_len(rest) end
+end
+
+-- ---- Tests: sqlvalue_to_param ----
+
+fn test_param_int() do
+  match sqlvalue_to_param(PInt(42)) do
+  | ParamText(s) -> assert(s == "42")
+  | _            -> assert(false)
+  end
+end
+
+fn test_param_int_zero() do
+  match sqlvalue_to_param(PInt(0)) do
+  | ParamText(s) -> assert(s == "0")
+  | _            -> assert(false)
+  end
+end
+
+fn test_param_int_negative() do
+  match sqlvalue_to_param(PInt(-7)) do
+  | ParamText(s) -> assert(s == "-7")
+  | _            -> assert(false)
+  end
+end
+
+fn test_param_string() do
+  match sqlvalue_to_param(PString("hello")) do
+  | ParamText(s) -> assert(s == "hello")
+  | _            -> assert(false)
+  end
+end
+
+fn test_param_string_empty() do
+  match sqlvalue_to_param(PString("")) do
+  | ParamText(s) -> assert(s == "")
+  | _            -> assert(false)
+  end
+end
+
+fn test_param_bool_true() do
+  match sqlvalue_to_param(PBool(true)) do
+  | ParamText(s) -> assert(s == "t")
+  | _            -> assert(false)
+  end
+end
+
+fn test_param_bool_false() do
+  match sqlvalue_to_param(PBool(false)) do
+  | ParamText(s) -> assert(s == "f")
+  | _            -> assert(false)
+  end
+end
+
+fn test_param_null() do
+  match sqlvalue_to_param(PNull) do
+  | ParamNull -> ()
+  | _         -> assert(false)
+  end
+end
+
+-- ---- Tests: make_placeholders ----
+
+fn test_placeholders_empty() do
+  let result = make_placeholders(1, 0, Nil)
+  assert(list_len(result) == 0)
+end
+
+fn test_placeholders_one() do
+  let result = make_placeholders(1, 1, Nil)
+  assert(list_len(result) == 1)
+  match result do
+  | Cons(s, Nil) -> assert(s == "$1")
+  | _            -> assert(false)
+  end
+end
+
+fn test_placeholders_three() do
+  let result = make_placeholders(1, 3, Nil)
+  assert(list_len(result) == 3)
+  match result do
+  | Cons(a, Cons(b, Cons(c, Nil))) ->
+    assert(a == "$1")
+    assert(b == "$2")
+    assert(c == "$3")
+  | _ -> assert(false)
+  end
+end
+
+fn test_placeholders_starts_at_two() do
+  let result = make_placeholders(2, 3, Nil)
+  assert(list_len(result) == 2)
+  match result do
+  | Cons(a, Cons(b, Nil)) ->
+    assert(a == "$2")
+    assert(b == "$3")
+  | _ -> assert(false)
+  end
+end
+
+-- ---- Tests: make_set_parts ----
+
+fn test_set_parts_empty() do
+  let result = make_set_parts(Nil, 1, Nil)
+  assert(list_len(result) == 0)
+end
+
+fn test_set_parts_one() do
+  let fields = [("name", PString("Alice"))]
+  let result = make_set_parts(fields, 1, Nil)
+  assert(list_len(result) == 1)
+  match result do
+  | Cons(s, Nil) -> assert(s == "\"name\" = $1")
+  | _            -> assert(false)
+  end
+end
+
+fn test_set_parts_two() do
+  let fields = [("name", PString("Alice")), ("age", PInt(30))]
+  let result = make_set_parts(fields, 1, Nil)
+  assert(list_len(result) == 2)
+  match result do
+  | Cons(a, Cons(b, Nil)) ->
+    assert(a == "\"name\" = $1")
+    assert(b == "\"age\" = $2")
+  | _ -> assert(false)
+  end
+end
+
+fn test_set_parts_starts_at_two() do
+  let fields = [("status", PString("active"))]
+  let result = make_set_parts(fields, 2, Nil)
+  match result do
+  | Cons(s, Nil) -> assert(s == "\"status\" = $2")
+  | _            -> assert(false)
+  end
+end
+
+-- ---- Tests: repo_join_strs ----
+
+fn test_join_strs_empty() do
+  assert(repo_join_strs(Nil, ", ") == "")
+end
+
+fn test_join_strs_one() do
+  assert(repo_join_strs(["hello"], ", ") == "hello")
+end
+
+fn test_join_strs_two() do
+  assert(repo_join_strs(["a", "b"], ", ") == "a, b")
+end
+
+fn test_join_strs_three() do
+  assert(repo_join_strs(["x", "y", "z"], " AND ") == "x AND y AND z")
+end
+
+fn test_join_strs_no_trailing_sep() do
+  let result = repo_join_strs(["$1", "$2", "$3"], ", ")
+  assert(result == "$1, $2, $3")
+end
+
+-- ---- Tests: flatten_result ----
+
+fn test_flatten_ok_ok() do
+  match flatten_result(Ok(Ok(42))) do
+  | Ok(n)  -> assert(n == 42)
+  | Err(_) -> assert(false)
+  end
+end
+
+fn test_flatten_ok_err() do
+  match flatten_result(Ok(Err("inner error"))) do
+  | Err(e) -> assert(e == "inner error")
+  | Ok(_)  -> assert(false)
+  end
+end
+
+fn test_flatten_err() do
+  match flatten_result(Err("outer error")) do
+  | Err(e) -> assert(e == "outer error")
+  | Ok(_)  -> assert(false)
+  end
+end
+
+fn main() : Unit do
+  test_param_int()
+  test_param_int_zero()
+  test_param_int_negative()
+  test_param_string()
+  test_param_string_empty()
+  test_param_bool_true()
+  test_param_bool_false()
+  test_param_null()
+  test_placeholders_empty()
+  test_placeholders_one()
+  test_placeholders_three()
+  test_placeholders_starts_at_two()
+  test_set_parts_empty()
+  test_set_parts_one()
+  test_set_parts_two()
+  test_set_parts_starts_at_two()
+  test_join_strs_empty()
+  test_join_strs_one()
+  test_join_strs_two()
+  test_join_strs_three()
+  test_join_strs_no_trailing_sep()
+  test_flatten_ok_ok()
+  test_flatten_ok_err()
+  test_flatten_err()
+  println("test_repo: all tests passed")
+end
+
+end

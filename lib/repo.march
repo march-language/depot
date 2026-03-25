@@ -3,134 +3,1392 @@
 
 mod Repo do
 
-  fn start(pool_config) do Pool.start(pool_config) end
+-- ---- Inlined types from Message ----
 
-  fn query(pool, sql) do
-    Pool.with_conn(pool, fn (conn) -> Query.simple_query(conn, sql))
-    |> flatten_result()
-  end
+type FrontendMessage =
+    Startup(Map(String, String))
+  | PgQuery(String)
+  | Parse(String, String, List(Int))
+  | Bind(String, String, List(Param))
+  | Execute(String, Int)
+  | Describe(DescribeTarget)
+  | PgClose(CloseTarget)
+  | Sync
+  | Flush
+  | Terminate
+  | PasswordMessage(String)
+  | SASLInitialResponse(String, Bytes)
+  | SASLResponse(Bytes)
 
-  fn query_params(pool, sql, params) do
-    Pool.with_conn(pool, fn (conn) -> Query.exec_prepared(conn, sql, params))
-    |> flatten_result()
-  end
+type DescribeTarget = DescribeStatement(String) | DescribePortal(String)
+type CloseTarget    = CloseStatement(String)    | ClosePortal(String)
 
-  fn all(pool, q) do
-    let compiled = Compile.compile_parameterized(q)
-    let param_strs = list_map(compiled.params, param_to_string)
-    query_params(pool, compiled.sql, param_strs)
-  end
+type Param =
+    ParamNull
+  | ParamText(String)
+  | ParamBinary(Bytes)
 
-  fn one(pool, q) do
-    match all(pool, q) do
-    | Ok(result) ->
-      match result.rows do
-      | Cons(row, Nil) -> Ok(row)
-      | Nil -> Err("Expected exactly one row, got 0")
-      | _ -> Err("Expected exactly one row, got multiple")
-      end
-    | Err(e) -> Err(e)
-    end
-  end
+type BackendMessage =
+    AuthOk
+  | AuthMD5(Bytes)
+  | AuthSASL(List(String))
+  | AuthSASLContinue(Bytes)
+  | AuthSASLFinal(Bytes)
+  | BackendKeyData(Int, Int)
+  | ParameterStatus(String, String)
+  | ReadyForQuery(TransactionStatus)
+  | RowDescription(List(FieldDesc))
+  | DataRow(List(Option(Bytes)))
+  | CommandComplete(String)
+  | EmptyQueryResponse
+  | ErrorResponse(ErrorFields)
+  | NoticeResponse(ErrorFields)
+  | ParseComplete
+  | BindComplete
+  | CloseComplete
+  | NoData
+  | PortalSuspended
 
-  fn insert(pool, table, fields) do
-    let col_names = list_map(fields, fn (pair) -> match pair do | (name, _) -> name end)
-    let values = list_map(fields, fn (pair) -> match pair do | (_, val) -> val end)
-    let col_str = join_strs(list_map(col_names, quote_ident), ", ")
-    let n = list_length(values)
-    let placeholders = make_placeholders(1, n, Nil)
-    let sql = "INSERT INTO " ++ quote_ident(table)
-              ++ " (" ++ col_str ++ ") VALUES (" ++ join_strs(placeholders, ", ")
-              ++ ") RETURNING *"
-    query_params(pool, sql, list_map(values, param_to_string))
-  end
+type TransactionStatus = Idle | InTransaction | InFailedTransaction
 
-  fn update(pool, table, fields, where_clause, where_params) do
-    let set_parts = make_set_parts(fields, 1, Nil)
-    let sql = "UPDATE " ++ quote_ident(table) ++ " SET " ++ join_strs(set_parts, ", ")
-              ++ " WHERE " ++ where_clause
-    let field_values = list_map(fields, fn (pair) -> match pair do | (_, val) -> val end)
-    let all_params = list_append(field_values, where_params)
-    query_params(pool, sql, list_map(all_params, param_to_string))
-  end
+type FieldDesc = FieldDesc(String, Int, Int, Int, Int, Int, Int)
 
-  fn delete(pool, table, where_clause, where_params) do
-    let sql = "DELETE FROM " ++ quote_ident(table) ++ " WHERE " ++ where_clause
-    query_params(pool, sql, list_map(where_params, param_to_string))
-  end
+type ErrorFields = {
+  severity : String,
+  code     : String,
+  message  : String,
+  detail   : Option(String),
+  hint     : Option(String),
+  position : Option(Int)
+}
 
-  fn transaction(pool, callback) do
-    Pool.with_conn(pool, fn (conn) ->
-      match Query.simple_query(conn, "BEGIN") do
-      | Ok(_) ->
-        let result = callback(conn)
-        match result do
-        | Ok(val) ->
-          match Query.simple_query(conn, "COMMIT") do
-          | Ok(_) -> Ok(val)
-          | Err(e) -> Err("COMMIT failed: " ++ e)
-          end
-        | Err(reason) ->
-          let _ = Query.simple_query(conn, "ROLLBACK")
-          Err(reason)
-        end
-      | Err(e) -> Err("BEGIN failed: " ++ e)
-      end
+-- ---- Inlined encode helpers ----
+
+pfn i32_be(n : Int) : Bytes do
+  Bytes.from_list([
+    (n / 16777216) % 256, (n / 65536) % 256,
+    (n / 256)      % 256,  n          % 256
+  ])
+end
+
+pfn i16_be(n : Int) : Bytes do
+  Bytes.from_list([(n / 256) % 256, n % 256])
+end
+
+pfn cstring(s : String) : Bytes do
+  Bytes.concat(Bytes.from_string(s), Bytes.from_list([0]))
+end
+
+pfn length_prefix(payload : Bytes) : Bytes do
+  Bytes.concat(i32_be(Bytes.length(payload) + 4), payload)
+end
+
+pfn frame(type_byte : Int, payload : Bytes) : Bytes do
+  Bytes.concat(Bytes.from_list([type_byte]), length_prefix(payload))
+end
+
+pfn encode(msg : FrontendMessage) : Bytes do
+  match msg do
+  | Startup(params) ->
+    let pairs = Map.fold(Bytes.empty(), params, fn acc -> fn k -> fn v ->
+      Bytes.concat(acc, Bytes.concat(cstring(k), cstring(v)))
     )
-    |> flatten_result()
+    let payload = Bytes.concat(i32_be(196608), Bytes.concat(pairs, Bytes.from_list([0])))
+    length_prefix(payload)
+  | PgQuery(sql) -> frame(81, cstring(sql))
+  | Parse(name, sql, oids) ->
+    let oid_bytes = List.fold_left(Bytes.empty(), oids, fn (acc, oid) ->
+      Bytes.concat(acc, i32_be(oid)))
+    let payload = Bytes.concat(
+      Bytes.concat(cstring(name), cstring(sql)),
+      Bytes.concat(i16_be(List.length(oids)), oid_bytes))
+    frame(80, payload)
+  | Bind(portal, stmt, params) -> encode_bind(portal, stmt, params)
+  | Execute(portal, max_rows) ->
+    frame(69, Bytes.concat(cstring(portal), i32_be(max_rows)))
+  | Sync      -> frame(83, Bytes.empty())
+  | Flush     -> frame(72, Bytes.empty())
+  | Terminate -> frame(88, Bytes.empty())
+  | PasswordMessage(pw) -> frame(112, cstring(pw))
+  | Describe(DescribeStatement(name)) ->
+    frame(68, Bytes.concat(Bytes.from_list([83]), cstring(name)))
+  | Describe(DescribePortal(name)) ->
+    frame(68, Bytes.concat(Bytes.from_list([80]), cstring(name)))
+  | _ -> panic("encode: unimplemented message type")
   end
+end
 
-  -- ---- Helpers ----
-
-  pfn flatten_result(r) do
-    match r do | Ok(Ok(val)) -> Ok(val) | Ok(Err(e)) -> Err(e) | Err(e) -> Err(e) end
-  end
-
-  pfn param_to_string(p) do
+pfn encode_bind(portal, stmt, params) do
+  let n = List.length(params)
+  let param_bytes = List.fold_left(Bytes.empty(), params, fn (acc, p) ->
     match p do
-    | PInt(n) -> int_to_string(n) | PFloat(f) -> float_to_string(f)
-    | PString(s) -> s | PBool(b) -> if b then "t" else "f" | PNull -> ""
+    | ParamNull    -> Bytes.concat(acc, i32_be(-1))
+    | ParamText(s) ->
+      let b = Bytes.from_string(s)
+      Bytes.concat(acc, Bytes.concat(i32_be(Bytes.length(b)), b))
+    | ParamBinary(b) ->
+      Bytes.concat(acc, Bytes.concat(i32_be(Bytes.length(b)), b))
+    end
+  )
+  let payload = Bytes.concat(
+    Bytes.concat(cstring(portal), cstring(stmt)),
+    Bytes.concat(i16_be(1), Bytes.concat(i16_be(0),
+      Bytes.concat(i16_be(n), Bytes.concat(param_bytes,
+        Bytes.concat(i16_be(1), i16_be(0)))))))
+  frame(66, payload)
+end
+
+-- ---- Inlined decode helpers ----
+
+pfn read_u16(b, pos) do
+  Bytes.get(b, pos) * 256 + Bytes.get(b, pos + 1)
+end
+
+pfn read_i32(b, pos) do
+  let raw =
+    Bytes.get(b, pos)     * 16777216 +
+    Bytes.get(b, pos + 1) * 65536    +
+    Bytes.get(b, pos + 2) * 256      +
+    Bytes.get(b, pos + 3)
+  if raw >= 2147483648 then raw - 4294967296 else raw
+end
+
+pfn read_cstring(b, pos) do
+  fn go(i, acc) do
+    let byte = Bytes.get(b, i)
+    if byte == 0 then (Bytes.to_string(Bytes.from_list(reverse(acc))), i + 1)
+    else go(i + 1, Cons(byte, acc))
+  end
+  go(pos, Nil)
+end
+
+pfn read_bytes_field(b, pos) do
+  let len = read_i32(b, pos)
+  if len == -1 then (None, pos + 4)
+  else (Some(Bytes.slice(b, pos + 4, len)), pos + 4 + len)
+end
+
+pfn parse_error_fields(b, pos) do
+  fn go(i, severity, code, message, detail, hint, position) do
+    if i >= Bytes.length(b) then
+      { severity = severity, code = code, message = message,
+        detail = detail, hint = hint, position = position }
+    else match Bytes.get(b, i) do
+      | 0 ->
+        { severity = severity, code = code, message = message,
+          detail = detail, hint = hint, position = position }
+      | field_type ->
+        let (value, next) = read_cstring(b, i + 1)
+        if      field_type == 83 then go(next, value,    code,    message, detail,        hint,        position)
+        else if field_type == 67 then go(next, severity, value,   message, detail,        hint,        position)
+        else if field_type == 77 then go(next, severity, code,    value,   detail,        hint,        position)
+        else if field_type == 68 then go(next, severity, code,    message, Some(value),   hint,        position)
+        else if field_type == 72 then go(next, severity, code,    message, detail,        Some(value), position)
+        else                          go(next, severity, code,    message, detail,        hint,        position)
+    end
+  end
+  go(pos, "", "", "", None, None, None)
+end
+
+pfn parse_one_field_desc(b, pos) do
+  let (name, pos1) = read_cstring(b, pos)
+  let table_oid = read_i32(b, pos1)
+  let attr_num  = read_u16(b, pos1 + 4)
+  let type_oid  = read_i32(b, pos1 + 6)
+  let type_size = read_u16(b, pos1 + 10)
+  let type_mod  = read_i32(b, pos1 + 12)
+  let format    = read_u16(b, pos1 + 16)
+  (FieldDesc(name, table_oid, attr_num, type_oid, type_size, type_mod, format), pos1 + 18)
+end
+
+pfn parse_field_descs(b, pos, n, acc) do
+  if n == 0 then reverse(acc)
+  else match parse_one_field_desc(b, pos) do
+    | (fd, next) -> parse_field_descs(b, next, n - 1, Cons(fd, acc))
+  end
+end
+
+pfn parse_data_columns(b, pos, n, acc) do
+  if n == 0 then reverse(acc)
+  else match read_bytes_field(b, pos) do
+    | (col, next) -> parse_data_columns(b, next, n - 1, Cons(col, acc))
+  end
+end
+
+pfn parse_sasl_mechanisms(b, pos, acc) do
+  if pos >= Bytes.length(b) then reverse(acc)
+  else
+    if Bytes.get(b, pos) == 0 then reverse(acc)
+    else match read_cstring(b, pos) do
+      | (mech, next) -> parse_sasl_mechanisms(b, next, Cons(mech, acc))
+    end
+end
+
+pfn decode_auth(payload) do
+  let auth_type = read_i32(payload, 0)
+  if      auth_type == 0  then Ok(AuthOk)
+  else if auth_type == 5  then Ok(AuthMD5(Bytes.slice(payload, 4, 4)))
+  else if auth_type == 10 then Ok(AuthSASL(parse_sasl_mechanisms(payload, 4, Nil)))
+  else if auth_type == 11 then Ok(AuthSASLContinue(Bytes.slice(payload, 4, Bytes.length(payload) - 4)))
+  else if auth_type == 12 then Ok(AuthSASLFinal(Bytes.slice(payload, 4, Bytes.length(payload) - 4)))
+  else Err("unsupported auth type: " ++ int_to_string(auth_type))
+end
+
+pfn decode_param_status(payload) do
+  match read_cstring(payload, 0) do
+  | (name, pos) ->
+    match read_cstring(payload, pos) do
+    | (value, _) -> Ok(ParameterStatus(name, value))
+    end
+  end
+end
+
+pfn decode_ready(payload) do
+  let b = Bytes.get(payload, 0)
+  Ok(ReadyForQuery(
+    if b == 84 then InTransaction
+    else if b == 69 then InFailedTransaction
+    else Idle))
+end
+
+pfn decode_command_complete(payload) do
+  match read_cstring(payload, 0) do
+  | (tag, _) -> Ok(CommandComplete(tag))
+  end
+end
+
+pfn decode_msg(type_byte, payload) do
+  if      type_byte == 82  then decode_auth(payload)
+  else if type_byte == 75  then Ok(BackendKeyData(read_i32(payload, 0), read_i32(payload, 4)))
+  else if type_byte == 83  then decode_param_status(payload)
+  else if type_byte == 90  then decode_ready(payload)
+  else if type_byte == 84  then Ok(RowDescription(parse_field_descs(payload, 2, read_u16(payload, 0), Nil)))
+  else if type_byte == 68  then Ok(DataRow(parse_data_columns(payload, 2, read_u16(payload, 0), Nil)))
+  else if type_byte == 67  then decode_command_complete(payload)
+  else if type_byte == 73  then Ok(EmptyQueryResponse)
+  else if type_byte == 69  then Ok(ErrorResponse(parse_error_fields(payload, 0)))
+  else if type_byte == 78  then Ok(NoticeResponse(parse_error_fields(payload, 0)))
+  else if type_byte == 49  then Ok(ParseComplete)
+  else if type_byte == 50  then Ok(BindComplete)
+  else if type_byte == 51  then Ok(CloseComplete)
+  else if type_byte == 110 then Ok(NoData)
+  else if type_byte == 115 then Ok(PortalSuspended)
+  else Err("unknown backend message type: " ++ int_to_string(type_byte))
+end
+
+pfn recv_msg(fd) do
+  match tcp_recv_exact(fd, 5) do
+  | Err(e) -> Err("recv header: " ++ e)
+  | Ok(header) ->
+    let type_byte   = Bytes.get(header, 0)
+    let msg_len     = read_i32(header, 1)
+    let payload_len = msg_len - 4
+    if payload_len < 0 then
+      Err("invalid message: negative payload length")
+    else if payload_len == 0 then
+      decode_msg(type_byte, Bytes.empty())
+    else
+      match tcp_recv_exact(fd, payload_len) do
+      | Err(e)      -> Err("recv payload: " ++ e)
+      | Ok(payload) -> decode_msg(type_byte, payload)
+      end
+  end
+end
+
+-- ---- Inlined Connection types and functions ----
+
+type ConnConfig = {
+  host     : String,
+  port     : Int,
+  user     : String,
+  database : String,
+  password : Option(String)
+}
+
+type ConnState = {
+  fd         : Int,
+  pid        : Int,
+  secret_key : Int,
+  parameters : Map(String, String)
+}
+
+pfn str_lt(a) do fn b -> a < b end
+
+pfn startup_params(cfg) do
+  Map.from_list(
+    [("user", cfg.user), ("database", cfg.database), ("application_name", "depot")],
+    str_lt)
+end
+
+pfn md5_password(password, user, salt) do
+  let inner = md5(password ++ user)
+  let outer = md5("md5" ++ inner ++ Bytes.to_string(salt))
+  "md5" ++ outer
+end
+
+pfn send_msg(fd, msg) do
+  tcp_send_all(fd, Bytes.to_string(encode(msg)))
+end
+
+pfn authenticate(fd, cfg, auth_msg) do
+  match auth_msg do
+  | AuthOk -> Ok(())
+  | AuthMD5(salt) ->
+    let pw = unwrap_or(cfg.password, "")
+    match send_msg(fd, PasswordMessage(md5_password(pw, cfg.user, salt))) do
+    | Err(e) -> Err("send password: " ++ e)
+    | Ok(_)  ->
+      match recv_msg(fd) do
+      | Err(e)                    -> Err(e)
+      | Ok(AuthOk)                -> Ok(())
+      | Ok(ErrorResponse(fields)) -> Err("auth failed: " ++ fields.message)
+      | Ok(_)                     -> Err("unexpected reply after password")
+      end
+    end
+  | ErrorResponse(fields) ->
+    Err("server rejected connection: " ++ fields.message)
+  | _ ->
+    Err("unsupported authentication method")
+  end
+end
+
+pfn drain_startup(fd, params, p, s) do
+  match recv_msg(fd) do
+  | Err(e) -> Err(e)
+  | Ok(ParameterStatus(name, value)) ->
+    drain_startup(fd, Map.insert(params, name, value, str_lt), p, s)
+  | Ok(BackendKeyData(new_p, new_s)) ->
+    drain_startup(fd, params, new_p, new_s)
+  | Ok(NoticeResponse(_)) ->
+    drain_startup(fd, params, p, s)
+  | Ok(ReadyForQuery(_)) ->
+    Ok({ fd = fd, pid = p, secret_key = s, parameters = params })
+  | Ok(ErrorResponse(fields)) ->
+    Err("startup error: " ++ fields.message)
+  | Ok(_) ->
+    Err("unexpected message during startup")
+  end
+end
+
+pfn connect_finish(fd, cfg, auth_msg) do
+  match authenticate(fd, cfg, auth_msg) do
+  | Err(e) ->
+    tcp_close(fd)
+    Err(e)
+  | Ok(_) ->
+    match drain_startup(fd, Map.empty(), 0, 0) do
+    | Err(e) ->
+      tcp_close(fd)
+      Err(e)
+    | Ok(conn) -> Ok(conn)
+    end
+  end
+end
+
+pfn connect_after_tcp(fd, cfg) do
+  match send_msg(fd, Startup(startup_params(cfg))) do
+  | Err(e) ->
+    tcp_close(fd)
+    Err("send startup: " ++ e)
+  | Ok(_) ->
+    match recv_msg(fd) do
+    | Err(e) ->
+      tcp_close(fd)
+      Err(e)
+    | Ok(auth_msg) ->
+      connect_finish(fd, cfg, auth_msg)
+    end
+  end
+end
+
+pfn connect(cfg) do
+  match tcp_connect(cfg.host, cfg.port) do
+  | Err(e) -> Err("tcp_connect " ++ cfg.host ++ ": " ++ e)
+  | Ok(fd) -> connect_after_tcp(fd, cfg)
+  end
+end
+
+pfn close_conn(conn) do
+  match send_msg(conn.fd, Terminate) do
+  | _ -> tcp_close(conn.fd)
+  end
+end
+
+-- ---- Query result types ----
+
+type QueryResult = {
+  columns : List(String),
+  rows    : List(List(Option(String))),
+  tag     : String
+}
+
+-- ---- Inlined query helpers ----
+
+pfn field_desc_name(fd_) do
+  match fd_ do
+  | FieldDesc(name, _, _, _, _, _, _) -> name
+  end
+end
+
+pfn row_to_strings(cells) do
+  match cells do
+  | Nil -> Nil
+  | Cons(None, rest)    -> Cons(None, row_to_strings(rest))
+  | Cons(Some(b), rest) -> Cons(Some(Bytes.to_string(b)), row_to_strings(rest))
+  end
+end
+
+pfn map_field_names(xs) do
+  match xs do
+  | Nil -> Nil
+  | Cons(x, rest) -> Cons(field_desc_name(x), map_field_names(rest))
+  end
+end
+
+pfn simple_query_recv(fd, columns, rows, tag) do
+  match recv_msg(fd) do
+  | Err(e) -> Err(e)
+  | Ok(msg) ->
+    match msg do
+    | RowDescription(fields) ->
+      simple_query_recv(fd, map_field_names(fields), Nil, tag)
+    | DataRow(cells) ->
+      simple_query_recv(fd, columns, Cons(row_to_strings(cells), rows), tag)
+    | CommandComplete(t) ->
+      simple_query_recv(fd, columns, rows, t)
+    | EmptyQueryResponse ->
+      simple_query_recv(fd, columns, rows, "")
+    | ErrorResponse(fields) ->
+      simple_query_drain_error(fd, fields.message)
+    | NoticeResponse(_) ->
+      simple_query_recv(fd, columns, rows, tag)
+    | ReadyForQuery(_) ->
+      Ok({ columns = columns, rows = reverse(rows), tag = tag })
+    | _ ->
+      simple_query_recv(fd, columns, rows, tag)
+    end
+  end
+end
+
+pfn simple_query_drain_error(fd, error_msg) do
+  match recv_msg(fd) do
+  | Err(e)               -> Err(e)
+  | Ok(ReadyForQuery(_)) -> Err(error_msg)
+  | Ok(_)                -> simple_query_drain_error(fd, error_msg)
+  end
+end
+
+pfn simple_query(conn, sql) do
+  match send_msg(conn.fd, PgQuery(sql)) do
+  | Err(e) -> Err("simple_query send: " ++ e)
+  | Ok(_)  -> simple_query_recv(conn.fd, Nil, Nil, "")
+  end
+end
+
+-- ---- Extended query protocol (exec_prepared) ----
+
+pfn exec_prepared(conn, sql, params) do
+  let fd = conn.fd
+  match send_msg(fd, Parse("", sql, Nil)) do
+  | Err(e) -> Err("exec_prepared parse: " ++ e)
+  | Ok(_) ->
+    match send_msg(fd, Bind("", "", params)) do
+    | Err(e) -> Err("exec_prepared bind: " ++ e)
+    | Ok(_) ->
+      match send_msg(fd, Describe(DescribePortal(""))) do
+      | Err(e) -> Err("exec_prepared describe: " ++ e)
+      | Ok(_) ->
+        match send_msg(fd, Execute("", 0)) do
+        | Err(e) -> Err("exec_prepared execute: " ++ e)
+        | Ok(_) ->
+          match send_msg(fd, Sync) do
+          | Err(e) -> Err("exec_prepared sync: " ++ e)
+          | Ok(_) -> extended_recv(fd)
+          end
+        end
+      end
+    end
+  end
+end
+
+pfn extended_recv(fd) do
+  extended_recv_loop(fd, Nil, Nil, "")
+end
+
+pfn extended_recv_loop(fd, columns, rows, tag) do
+  match recv_msg(fd) do
+  | Err(e) -> Err(e)
+  | Ok(msg) ->
+    match msg do
+    | ParseComplete    -> extended_recv_loop(fd, columns, rows, tag)
+    | BindComplete     -> extended_recv_loop(fd, columns, rows, tag)
+    | RowDescription(fields) ->
+      extended_recv_loop(fd, map_field_names(fields), Nil, tag)
+    | NoData           -> extended_recv_loop(fd, columns, rows, tag)
+    | DataRow(cells)   -> extended_recv_loop(fd, columns, Cons(row_to_strings(cells), rows), tag)
+    | CommandComplete(t) -> extended_recv_loop(fd, columns, rows, t)
+    | EmptyQueryResponse -> extended_recv_loop(fd, columns, rows, "")
+    | ErrorResponse(fields) -> extended_drain_error(fd, fields.message)
+    | NoticeResponse(_) -> extended_recv_loop(fd, columns, rows, tag)
+    | ReadyForQuery(_) -> Ok({ columns = columns, rows = reverse(rows), tag = tag })
+    | _                -> extended_recv_loop(fd, columns, rows, tag)
+    end
+  end
+end
+
+pfn extended_drain_error(fd, error_msg) do
+  match recv_msg(fd) do
+  | Err(e)               -> Err(e)
+  | Ok(ReadyForQuery(_)) -> Err(error_msg)
+  | Ok(_)                -> extended_drain_error(fd, error_msg)
+  end
+end
+
+-- ---- Pool types and helpers ----
+
+type PoolConfig = {
+  min_size           : Int,
+  max_size           : Int,
+  idle_timeout_ms    : Int,
+  connect_timeout_ms : Int,
+  conn_config        : ConnConfig
+}
+
+type PoolStats = {
+  idle_count    : Int,
+  active_count  : Int,
+  waiting_count : Int,
+  total_size    : Int
+}
+
+pfn pool_list_len(lst) do
+  match lst do
+  | Nil -> 0
+  | Cons(_, rest) -> 1 + pool_list_len(rest)
+  end
+end
+
+pfn pool_rev_acc(lst, acc) do
+  match lst do
+  | Nil -> acc
+  | Cons(x, rest) -> pool_rev_acc(rest, Cons(x, acc))
+  end
+end
+
+pfn pool_warm_up(conn_cfg, target, acc, count) do
+  if count >= target then acc
+  else
+    match connect(conn_cfg) do
+    | Ok(conn) -> pool_warm_up(conn_cfg, target, Cons(conn, acc), count + 1)
+    | Err(_)   -> pool_warm_up(conn_cfg, target, acc, count + 1)
+    end
+end
+
+pfn pool_ping_conns(conns, acc) do
+  match conns do
+  | Nil -> pool_rev_acc(acc, Nil)
+  | Cons(conn, rest) ->
+    match simple_query(conn, "SELECT 1") do
+    | Ok(_)  -> pool_ping_conns(rest, Cons(conn, acc))
+    | Err(_) ->
+      let _ = close_conn(conn)
+      pool_ping_conns(rest, acc)
+    end
+  end
+end
+
+pfn pool_close_all(conns) do
+  match conns do
+  | Nil -> ()
+  | Cons(conn, rest) ->
+    let _ = close_conn(conn)
+    pool_close_all(rest)
+  end
+end
+
+pfn pool_replenish(cfg_opt, healthy) do
+  match cfg_opt do
+  | None -> healthy
+  | Some(cfg) ->
+    let n = pool_list_len(healthy)
+    let deficit = cfg.min_size - n
+    if deficit > 0 then pool_warm_up(cfg.conn_config, deficit, healthy, 0)
+    else healthy
+  end
+end
+
+-- ---- Pool actor ----
+-- State fields (alphabetical order for actor_get_int indexing):
+--   0: checked_out : Int
+--   1: config      : Option(PoolConfig)
+--   2: idle        : List(ConnState)
+--   3: idle_count  : Int
+--   4: last_conn   : Option(ConnState)
+
+actor Pool do
+  state {
+    checked_out : Int,
+    config      : Option(PoolConfig),
+    idle        : List(ConnState),
+    idle_count  : Int,
+    last_conn   : Option(ConnState)
+  }
+  init {
+    checked_out = 0,
+    config      = None,
+    idle        = Nil,
+    idle_count  = 0,
+    last_conn   = None
+  }
+
+  on PoolInit(cfg : PoolConfig) do
+    match state.config do
+    | Some(_) -> state
+    | None ->
+      let conns = pool_warm_up(cfg.conn_config, cfg.min_size, Nil, 0)
+      let n = pool_list_len(conns)
+      { state with config = Some(cfg), idle = conns, idle_count = n, last_conn = None }
     end
   end
 
-  pfn quote_ident(name) do "\"" ++ name ++ "\"" end
-
-  pfn make_placeholders(i, n, acc) do
-    if i > n then reverse_list(acc)
-    else make_placeholders(i + 1, n, Cons("$" ++ int_to_string(i), acc))
-  end
-
-  pfn make_set_parts(fields, idx, acc) do
-    match fields do
-    | Nil -> reverse_list(acc)
-    | Cons(pair, rest) ->
-      let name = match pair do | (n, _) -> n end
-      make_set_parts(rest, idx + 1, Cons(quote_ident(name) ++ " = $" ++ int_to_string(idx), acc))
+  on Checkout() do
+    match state.config do
+    | None -> { state with last_conn = None }
+    | Some(cfg) ->
+      match state.idle do
+      | Cons(conn, rest) ->
+        { state with idle = rest, idle_count = state.idle_count - 1,
+                     checked_out = state.checked_out + 1, last_conn = Some(conn) }
+      | Nil ->
+        if state.checked_out < cfg.max_size then
+          match connect(cfg.conn_config) do
+          | Ok(new_conn) ->
+            { state with checked_out = state.checked_out + 1, last_conn = Some(new_conn) }
+          | Err(_) ->
+            { state with last_conn = None }
+          end
+        else
+          { state with last_conn = None }
+      end
     end
   end
 
-  pfn list_map(lst, f) do
-    match lst do | Nil -> Nil | Cons(x, rest) -> Cons(f(x), list_map(rest, f)) end
+  on Checkin(conn : ConnState) do
+    { state with
+      idle        = Cons(conn, state.idle),
+      idle_count  = state.idle_count + 1,
+      checked_out = state.checked_out - 1,
+      last_conn   = None }
   end
 
-  pfn list_length(lst) do
-    match lst do | Nil -> 0 | Cons(_, rest) -> 1 + list_length(rest) end
+  on PoolPing() do
+    let healthy  = pool_ping_conns(state.idle, Nil)
+    let new_idle = pool_replenish(state.config, healthy)
+    let new_n    = pool_list_len(new_idle)
+    { state with idle = new_idle, idle_count = new_n, last_conn = None }
   end
 
-  pfn list_append(a, b) do
-    match a do | Nil -> b | Cons(x, rest) -> Cons(x, list_append(rest, b)) end
+  on Shutdown() do
+    let _ = pool_close_all(state.idle)
+    { state with idle = Nil, idle_count = 0, last_conn = None }
   end
+end
 
-  pfn join_strs(parts, sep) do
-    match parts do
-    | Nil -> "" | Cons(x, Nil) -> x | Cons(x, rest) -> x ++ sep ++ join_strs(rest, sep)
+-- Pool public helpers (used by repo API)
+
+pfn pool_start(config) do
+  let pool = spawn(Pool)
+  let _ = send(pool, PoolInit(config))
+  pool
+end
+
+pfn pool_checkout(pool) do
+  match send(pool, Checkout()) do
+  | None -> Err("pool actor is dead")
+  | Some(_) ->
+    match get_actor_field(pool, "last_conn") do
+    | None -> Err("no connection available")
+    | Some(maybe_conn) ->
+      match maybe_conn do
+      | None       -> Err("no connection available")
+      | Some(conn) -> Ok(conn)
+      end
     end
   end
+end
 
-  pfn reverse_list(lst) do reverse_acc(lst, Nil) end
+pfn pool_checkin(pool, conn) do
+  send(pool, Checkin(conn))
+end
 
-  pfn reverse_acc(lst, acc) do
-    match lst do | Nil -> acc | Cons(x, rest) -> reverse_acc(rest, Cons(x, acc)) end
+pfn pool_with_conn(pool, callback) do
+  match pool_checkout(pool) do
+  | Ok(conn) ->
+    let result = callback(conn)
+    let _ = pool_checkin(pool, conn)
+    Ok(result)
+  | Err(reason) -> Err(reason)
   end
+end
+
+-- ---- SQL AST types (inlined from Compile) ----
+
+type Query = Query(QueryFields)
+
+type QueryFields = {
+  from_     : FromClause,
+  selects   : List(SelectExpr),
+  wheres    : List(WhereExpr),
+  joins     : List(JoinClause),
+  orders    : List(OrderExpr),
+  group_bys : List(Expr),
+  havings   : List(WhereExpr),
+  limit_    : Option(Int),
+  offset_   : Option(Int),
+  distinct_ : Bool
+}
+
+type FromClause =
+    FromTable(String)
+  | FromSubquery(Query, String)
+
+type SelectExpr =
+    SelectAll
+  | SelectField(Expr)
+  | SelectAs(Expr, String)
+
+type WhereExpr =
+    Where(Expr)
+  | OrWhere(Expr)
+
+type JoinKind = Inner | Left | Right | FullOuter | Cross
+
+type JoinClause = JoinClause(JoinKind, String, Expr)
+
+type SortDir = Asc | Desc | AscNullsFirst | DescNullsLast
+
+type OrderExpr = OrderExpr(Expr, SortDir)
+
+type Expr =
+    Lit(SqlValue)
+  | Col(String)
+  | QCol(String, String)
+  | Eq(Expr, Expr)
+  | Neq(Expr, Expr)
+  | Lt(Expr, Expr)
+  | Gt(Expr, Expr)
+  | Lte(Expr, Expr)
+  | Gte(Expr, Expr)
+  | And(Expr, Expr)
+  | Or(Expr, Expr)
+  | Not(Expr)
+  | Add(Expr, Expr)
+  | Sub(Expr, Expr)
+  | Mul(Expr, Expr)
+  | Div(Expr, Expr)
+  | IsNull(Expr)
+  | IsNotNull(Expr)
+  | In(Expr, List(Expr))
+  | NotIn(Expr, List(Expr))
+  | Between(Expr, Expr, Expr)
+  | Like(Expr, String)
+  | ILike(Expr, String)
+  | Count(Expr)
+  | Sum(Expr)
+  | Avg(Expr)
+  | Min(Expr)
+  | Max(Expr)
+  | CountAll
+  | Exists(Query)
+  | SubqueryExpr(Query)
+  | FnCall(String, List(Expr))
+  | ExprParam(Int)
+  | Raw(String)
+
+type SqlValue =
+    PInt(Int)
+  | PFloat(Float)
+  | PString(String)
+  | PBool(Bool)
+  | PNull
+
+-- ---- Compiled query output ----
+
+type CompiledQuery = {
+  sql    : String,
+  params : List(Param)
+}
+
+-- ---- Compile state ----
+
+type CState = { param_count : Int, params : List(Param) }
+
+-- ---- SQL compiler (inlined from Compile) ----
+
+pfn ci_quote_ident(name) do "\"" ++ name ++ "\"" end
+pfn ci_quote_string(s) do "'" ++ s ++ "'" end
+
+pfn ci_join_strs(parts, sep) do
+  match parts do
+  | Nil -> ""
+  | Cons(first, Nil) -> first
+  | Cons(first, rest) -> first ++ sep ++ ci_join_strs(rest, sep)
+  end
+end
+
+pfn ci_rev_strs(xs) do ci_rev_strs_acc(xs, Nil) end
+pfn ci_rev_strs_acc(xs, acc) do
+  match xs do | Nil -> acc | Cons(x, rest) -> ci_rev_strs_acc(rest, Cons(x, acc)) end
+end
+
+pfn ci_rev_params(xs) do ci_rev_params_acc(xs, Nil) end
+pfn ci_rev_params_acc(xs, acc) do
+  match xs do | Nil -> acc | Cons(x, rest) -> ci_rev_params_acc(rest, Cons(x, acc)) end
+end
+
+pfn ci_rev_where_parts(xs) do ci_rev_wp_acc(xs, Nil) end
+pfn ci_rev_wp_acc(xs, acc) do
+  match xs do | Nil -> acc | Cons(x, rest) -> ci_rev_wp_acc(rest, Cons(x, acc)) end
+end
+
+pfn compile_limit(lim) do
+  match lim do | None -> "" | Some(n) -> " LIMIT " ++ int_to_string(n) end
+end
+
+pfn compile_offset(off) do
+  match off do | None -> "" | Some(n) -> " OFFSET " ++ int_to_string(n) end
+end
+
+pfn compile_expr(e, cst) do
+  match e do
+  | Lit(v) ->
+    let nc = cst.param_count + 1
+    let param = match v do
+      | PInt(n)    -> ParamText(int_to_string(n))
+      | PFloat(f_) -> ParamText(float_to_string(f_))
+      | PString(s) -> ParamText(s)
+      | PBool(b)   -> ParamText(if b then "t" else "f")
+      | PNull      -> ParamNull
+    end
+    ("$" ++ int_to_string(nc), { param_count = nc, params = Cons(param, cst.params) })
+  | Col(name)     -> (ci_quote_ident(name), cst)
+  | QCol(t, name) -> (ci_quote_ident(t) ++ "." ++ ci_quote_ident(name), cst)
+  | Eq(l, r) ->
+    match compile_expr(l, cst) do
+    | (ls, s1) ->
+      match compile_expr(r, s1) do
+      | (rs, s2) -> (ls ++ " = " ++ rs, s2)
+      end
+    end
+  | Neq(l, r) ->
+    match compile_expr(l, cst) do
+    | (ls, s1) ->
+      match compile_expr(r, s1) do
+      | (rs, s2) -> (ls ++ " <> " ++ rs, s2)
+      end
+    end
+  | Lt(l, r) ->
+    match compile_expr(l, cst) do
+    | (ls, s1) ->
+      match compile_expr(r, s1) do
+      | (rs, s2) -> (ls ++ " < " ++ rs, s2)
+      end
+    end
+  | Gt(l, r) ->
+    match compile_expr(l, cst) do
+    | (ls, s1) ->
+      match compile_expr(r, s1) do
+      | (rs, s2) -> (ls ++ " > " ++ rs, s2)
+      end
+    end
+  | Lte(l, r) ->
+    match compile_expr(l, cst) do
+    | (ls, s1) ->
+      match compile_expr(r, s1) do
+      | (rs, s2) -> (ls ++ " <= " ++ rs, s2)
+      end
+    end
+  | Gte(l, r) ->
+    match compile_expr(l, cst) do
+    | (ls, s1) ->
+      match compile_expr(r, s1) do
+      | (rs, s2) -> (ls ++ " >= " ++ rs, s2)
+      end
+    end
+  | And(l, r) ->
+    match compile_expr(l, cst) do
+    | (ls, s1) ->
+      match compile_expr(r, s1) do
+      | (rs, s2) -> ("(" ++ ls ++ " AND " ++ rs ++ ")", s2)
+      end
+    end
+  | Or(l, r) ->
+    match compile_expr(l, cst) do
+    | (ls, s1) ->
+      match compile_expr(r, s1) do
+      | (rs, s2) -> ("(" ++ ls ++ " OR " ++ rs ++ ")", s2)
+      end
+    end
+  | Not(inner) ->
+    match compile_expr(inner, cst) do
+    | (s, s2) -> ("NOT (" ++ s ++ ")", s2)
+    end
+  | Add(l, r) ->
+    match compile_expr(l, cst) do
+    | (ls, s1) ->
+      match compile_expr(r, s1) do
+      | (rs, s2) -> (ls ++ " + " ++ rs, s2)
+      end
+    end
+  | Sub(l, r) ->
+    match compile_expr(l, cst) do
+    | (ls, s1) ->
+      match compile_expr(r, s1) do
+      | (rs, s2) -> (ls ++ " - " ++ rs, s2)
+      end
+    end
+  | Mul(l, r) ->
+    match compile_expr(l, cst) do
+    | (ls, s1) ->
+      match compile_expr(r, s1) do
+      | (rs, s2) -> (ls ++ " * " ++ rs, s2)
+      end
+    end
+  | Div(l, r) ->
+    match compile_expr(l, cst) do
+    | (ls, s1) ->
+      match compile_expr(r, s1) do
+      | (rs, s2) -> (ls ++ " / " ++ rs, s2)
+      end
+    end
+  | IsNull(inner) ->
+    match compile_expr(inner, cst) do
+    | (s, s2) -> (s ++ " IS NULL", s2)
+    end
+  | IsNotNull(inner) ->
+    match compile_expr(inner, cst) do
+    | (s, s2) -> (s ++ " IS NOT NULL", s2)
+    end
+  | Like(inner, pat) ->
+    match compile_expr(inner, cst) do
+    | (s, s2) ->
+      (s ++ " LIKE $" ++ int_to_string(s2.param_count + 1),
+       { param_count = s2.param_count + 1, params = Cons(ParamText(pat), s2.params) })
+    end
+  | ILike(inner, pat) ->
+    match compile_expr(inner, cst) do
+    | (s, s2) ->
+      (s ++ " ILIKE $" ++ int_to_string(s2.param_count + 1),
+       { param_count = s2.param_count + 1, params = Cons(ParamText(pat), s2.params) })
+    end
+  | Count(inner) ->
+    match compile_expr(inner, cst) do
+    | (s, s2) -> ("COUNT(" ++ s ++ ")", s2)
+    end
+  | Sum(inner) ->
+    match compile_expr(inner, cst) do
+    | (s, s2) -> ("SUM(" ++ s ++ ")", s2)
+    end
+  | Avg(inner) ->
+    match compile_expr(inner, cst) do
+    | (s, s2) -> ("AVG(" ++ s ++ ")", s2)
+    end
+  | Min(inner) ->
+    match compile_expr(inner, cst) do
+    | (s, s2) -> ("MIN(" ++ s ++ ")", s2)
+    end
+  | Max(inner) ->
+    match compile_expr(inner, cst) do
+    | (s, s2) -> ("MAX(" ++ s ++ ")", s2)
+    end
+  | CountAll      -> ("COUNT(*)", cst)
+  | ExprParam(n)  -> ("$" ++ int_to_string(n), cst)
+  | Raw(sql)      -> (sql, cst)
+  | _             -> ("/* unsupported expr */", cst)
+  end
+end
+
+pfn compile_expr_list(exprs, cst, acc) do
+  match exprs do
+  | Nil -> (acc, cst)
+  | Cons(ex, rest) ->
+    match compile_expr(ex, cst) do
+    | (s, s2) -> compile_expr_list(rest, s2, Cons(s, acc))
+    end
+  end
+end
+
+-- ---- SELECT ----
+
+pfn compile_select(f, cst) do
+  match f.selects do
+  | Nil -> ("*", cst)
+  | items -> compile_select_exprs(items, cst, Nil)
+  end
+end
+
+pfn compile_select_exprs(items, cst, acc) do
+  match items do
+  | Nil -> (ci_join_strs(ci_rev_strs(acc), ", "), cst)
+  | Cons(item, rest) ->
+    match item do
+    | SelectAll ->
+      compile_select_exprs(rest, cst, Cons("*", acc))
+    | SelectField(ex) ->
+      match compile_expr(ex, cst) do
+      | (s, s2) -> compile_select_exprs(rest, s2, Cons(s, acc))
+      end
+    | SelectAs(ex, a) ->
+      match compile_expr(ex, cst) do
+      | (s, s2) -> compile_select_exprs(rest, s2, Cons(s ++ " AS " ++ ci_quote_ident(a), acc))
+      end
+    end
+  end
+end
+
+-- ---- JOIN ----
+
+pfn compile_joins(joins, cst) do
+  match joins do
+  | Nil -> ("", cst)
+  | _ -> compile_joins_acc(joins, cst, "")
+  end
+end
+
+pfn compile_joins_acc(joins, cst, acc) do
+  match joins do
+  | Nil -> (acc, cst)
+  | Cons(JoinClause(kind, table, on_expr), rest) ->
+    let k = match kind do
+      | Inner -> " INNER JOIN " | Left -> " LEFT JOIN "
+      | Right -> " RIGHT JOIN " | FullOuter -> " FULL OUTER JOIN "
+      | Cross -> " CROSS JOIN "
+    end
+    match compile_expr(on_expr, cst) do
+    | (on_sql, s2) ->
+      compile_joins_acc(rest, s2, acc ++ k ++ ci_quote_ident(table) ++ " ON " ++ on_sql)
+    end
+  end
+end
+
+-- ---- WHERE ----
+
+pfn compile_wheres(wheres, cst) do
+  match wheres do
+  | Nil -> ("", cst)
+  | _ ->
+    match compile_where_parts(wheres, cst, Nil) do
+    | (parts, s2) -> (" WHERE " ++ join_where_parts(ci_rev_where_parts(parts)), s2)
+    end
+  end
+end
+
+pfn compile_where_parts(wheres, cst, acc) do
+  match wheres do
+  | Nil -> (acc, cst)
+  | Cons(w, rest) ->
+    match w do
+    | Where(ex) ->
+      match compile_expr(ex, cst) do
+      | (s, s2) -> compile_where_parts(rest, s2, Cons(("AND", s), acc))
+      end
+    | OrWhere(ex) ->
+      match compile_expr(ex, cst) do
+      | (s, s2) -> compile_where_parts(rest, s2, Cons(("OR", s), acc))
+      end
+    end
+  end
+end
+
+pfn join_where_parts(parts) do
+  match parts do
+  | Nil -> "TRUE"
+  | Cons((_, first), rest) -> join_where_rest(first, rest)
+  end
+end
+
+pfn join_where_rest(acc, parts) do
+  match parts do
+  | Nil -> acc
+  | Cons((op, ex), rest) -> join_where_rest(acc ++ " " ++ op ++ " " ++ ex, rest)
+  end
+end
+
+-- ---- GROUP BY / HAVING / ORDER BY ----
+
+pfn compile_group_bys(exprs, cst) do
+  match exprs do
+  | Nil -> ("", cst)
+  | _ ->
+    match compile_expr_list(exprs, cst, Nil) do
+    | (parts, s2) -> (" GROUP BY " ++ ci_join_strs(ci_rev_strs(parts), ", "), s2)
+    end
+  end
+end
+
+pfn compile_havings(havings, cst) do
+  match havings do
+  | Nil -> ("", cst)
+  | _ ->
+    match compile_where_parts(havings, cst, Nil) do
+    | (parts, s2) -> (" HAVING " ++ join_where_parts(ci_rev_where_parts(parts)), s2)
+    end
+  end
+end
+
+pfn compile_orders(orders, cst) do
+  match orders do
+  | Nil -> ("", cst)
+  | _ ->
+    match compile_order_parts(orders, cst, Nil) do
+    | (parts, s2) -> (" ORDER BY " ++ ci_join_strs(ci_rev_strs(parts), ", "), s2)
+    end
+  end
+end
+
+pfn compile_order_parts(orders, cst, acc) do
+  match orders do
+  | Nil -> (acc, cst)
+  | Cons(OrderExpr(ex, dir), rest) ->
+    match compile_expr(ex, cst) do
+    | (s, s2) ->
+      let d = match dir do
+        | Asc -> " ASC" | Desc -> " DESC"
+        | AscNullsFirst -> " ASC NULLS FIRST" | DescNullsLast -> " DESC NULLS LAST"
+      end
+      compile_order_parts(rest, s2, Cons(s ++ d, acc))
+    end
+  end
+end
+
+-- ---- compile_parameterized chain ----
+
+pfn cp_a(f, cst) do
+  match compile_select(f, cst) do
+  | (sel, s1) -> cp_b(f, sel, s1)
+  end
+end
+
+pfn cp_b(f, sel, s1) do
+  let from_sql = match f.from_ do
+    | FromTable(name) -> ci_quote_ident(name)
+    | FromSubquery(_, _) -> panic("compile_parameterized: subquery in FROM not yet supported")
+  end
+  cp_c(f, sel, from_sql, s1)
+end
+
+pfn cp_c(f, sel, frm, s1) do
+  match compile_joins(f.joins, s1) do
+  | (jns, s2) -> cp_d(f, sel, frm, jns, s2)
+  end
+end
+
+pfn cp_d(f, sel, frm, jns, s2) do
+  match compile_wheres(f.wheres, s2) do
+  | (whr, s3) -> cp_e(f, sel, frm, jns, whr, s3)
+  end
+end
+
+pfn cp_e(f, sel, frm, jns, whr, s3) do
+  match compile_group_bys(f.group_bys, s3) do
+  | (grp, s4) -> cp_f(f, sel, frm, jns, whr, grp, s4)
+  end
+end
+
+pfn cp_f(f, sel, frm, jns, whr, grp, s4) do
+  match compile_havings(f.havings, s4) do
+  | (hav, s5) -> cp_g(f, sel, frm, jns, whr, grp, hav, s5)
+  end
+end
+
+pfn cp_g(f, sel, frm, jns, whr, grp, hav, s5) do
+  match compile_orders(f.orders, s5) do
+  | (ord, s6) -> cp_finish(f, sel, frm, jns, whr, grp, hav, ord, s6)
+  end
+end
+
+pfn cp_finish(f, sel, frm, jns, whr, grp, hav, ord, s6) do
+  let dp = if f.distinct_ then "DISTINCT " else ""
+  let sql = "SELECT " ++ dp ++ sel ++ " FROM " ++ frm
+            ++ jns ++ whr ++ grp ++ hav ++ ord
+            ++ compile_limit(f.limit_) ++ compile_offset(f.offset_)
+  { sql = sql, params = ci_rev_params(s6.params) }
+end
+
+pfn compile_parameterized(q) do
+  match q do
+  | Query(f) -> cp_a(f, { param_count = 0, params = Nil })
+  end
+end
+
+-- ---- Repo helpers ----
+
+pfn flatten_result(r) do
+  match r do | Ok(Ok(val)) -> Ok(val) | Ok(Err(e)) -> Err(e) | Err(e) -> Err(e) end
+end
+
+pfn sqlvalue_to_param(v) do
+  match v do
+  | PInt(n)    -> ParamText(int_to_string(n))
+  | PFloat(f_) -> ParamText(float_to_string(f_))
+  | PString(s) -> ParamText(s)
+  | PBool(b)   -> ParamText(if b then "t" else "f")
+  | PNull      -> ParamNull
+  end
+end
+
+pfn repo_quote_ident(name) do "\"" ++ name ++ "\"" end
+
+pfn make_placeholders(i, n, acc) do
+  if i > n then list_rev(acc)
+  else make_placeholders(i + 1, n, Cons("$" ++ int_to_string(i), acc))
+end
+
+pfn make_set_parts(fields, idx, acc) do
+  match fields do
+  | Nil -> list_rev(acc)
+  | Cons(pair, rest) ->
+    let name = match pair do | (n, _) -> n end
+    make_set_parts(rest, idx + 1, Cons(repo_quote_ident(name) ++ " = $" ++ int_to_string(idx), acc))
+  end
+end
+
+pfn repo_list_map(lst, f) do
+  match lst do | Nil -> Nil | Cons(x, rest) -> Cons(f(x), repo_list_map(rest, f)) end
+end
+
+pfn repo_list_length(lst) do
+  match lst do | Nil -> 0 | Cons(_, rest) -> 1 + repo_list_length(rest) end
+end
+
+pfn repo_list_append(a, b) do
+  match a do | Nil -> b | Cons(x, rest) -> Cons(x, repo_list_append(rest, b)) end
+end
+
+pfn list_rev(lst) do list_rev_acc(lst, Nil) end
+pfn list_rev_acc(lst, acc) do
+  match lst do | Nil -> acc | Cons(x, rest) -> list_rev_acc(rest, Cons(x, acc)) end
+end
+
+pfn repo_join_strs(parts, sep) do
+  match parts do
+  | Nil -> ""
+  | Cons(x, Nil) -> x
+  | Cons(x, rest) -> x ++ sep ++ repo_join_strs(rest, sep)
+  end
+end
+
+-- ---- Public API ----
+
+--- Starts a new pool and returns its Pid.
+---
+--- Requires a live PostgreSQL server. Pass the result to `query`, `all`, `insert`, etc.
+fn start(pool_config) do pool_start(pool_config) end
+
+--- Returns a default PoolConfig with 5 min / 20 max connections.
+---
+--- march> (default_pool_config({ host="127.0.0.1", port=5432, user="u", database="d", password=None })).min_size
+--- 5
+---
+--- march> (default_pool_config({ host="127.0.0.1", port=5432, user="u", database="d", password=None })).max_size
+--- 20
+fn default_pool_config(conn_cfg) do
+  { min_size = 5, max_size = 20, idle_timeout_ms = 300000,
+    connect_timeout_ms = 5000, conn_config = conn_cfg }
+end
+
+--- Executes a raw SQL query and returns a QueryResult.
+fn query(pool, sql) do
+  pool_with_conn(pool, fn (conn) -> simple_query(conn, sql))
+  |> flatten_result()
+end
+
+--- Executes a parameterized SQL query.
+---
+--- `params` is a `List(Param)` where each element is `ParamText(s)` or `ParamNull`.
+fn query_params(pool, sql, params) do
+  pool_with_conn(pool, fn (conn) -> exec_prepared(conn, sql, params))
+  |> flatten_result()
+end
+
+--- Executes a compiled Query ADT against the database.
+---
+--- Compiles the query to parameterized SQL and executes it.
+fn all(pool, q) do
+  let compiled = compile_parameterized(q)
+  query_params(pool, compiled.sql, compiled.params)
+end
+
+--- Executes a Query and expects exactly one row.
+---
+--- Returns `Err` if zero or multiple rows are returned.
+fn one(pool, q) do
+  match all(pool, q) do
+  | Ok(result) ->
+    match result.rows do
+    | Cons(row, Nil) -> Ok(row)
+    | Nil -> Err("Expected exactly one row, got 0")
+    | _ -> Err("Expected exactly one row, got multiple")
+    end
+  | Err(e) -> Err(e)
+  end
+end
+
+--- Inserts a row into a table and returns the inserted row(s).
+---
+--- `fields` is a `List((String, SqlValue))` of column-name / value pairs.
+fn insert(pool, table, fields) do
+  let col_names = repo_list_map(fields, fn (pair) -> match pair do | (name, _) -> name end)
+  let values    = repo_list_map(fields, fn (pair) -> match pair do | (_, val) -> val end)
+  let col_str   = repo_join_strs(repo_list_map(col_names, repo_quote_ident), ", ")
+  let n         = repo_list_length(values)
+  let ph        = make_placeholders(1, n, Nil)
+  let sql = "INSERT INTO " ++ repo_quote_ident(table)
+            ++ " (" ++ col_str ++ ") VALUES (" ++ repo_join_strs(ph, ", ")
+            ++ ") RETURNING *"
+  query_params(pool, sql, repo_list_map(values, sqlvalue_to_param))
+end
+
+--- Updates rows in a table.
+---
+--- `fields` is a `List((String, SqlValue))` of column-name / new-value pairs.
+fn update(pool, table, fields, where_clause, where_params) do
+  let set_parts = make_set_parts(fields, 1, Nil)
+  let sql = "UPDATE " ++ repo_quote_ident(table) ++ " SET "
+            ++ repo_join_strs(set_parts, ", ") ++ " WHERE " ++ where_clause
+  let fv = repo_list_map(fields, fn (pair) -> match pair do | (_, val) -> val end)
+  let all_params = repo_list_append(repo_list_map(fv, sqlvalue_to_param), where_params)
+  query_params(pool, sql, all_params)
+end
+
+--- Deletes rows from a table matching the given WHERE clause.
+fn delete(pool, table, where_clause, where_params) do
+  let sql = "DELETE FROM " ++ repo_quote_ident(table) ++ " WHERE " ++ where_clause
+  query_params(pool, sql, where_params)
+end
+
+--- Executes a callback inside a transaction.
+---
+--- Commits on success, rolls back on error. Returns `Ok(result)` or `Err(reason)`.
+fn transaction(pool, callback) do
+  pool_with_conn(pool, fn (conn) ->
+    match simple_query(conn, "BEGIN") do
+    | Ok(_) ->
+      let result = callback(conn)
+      match result do
+      | Ok(val) ->
+        match simple_query(conn, "COMMIT") do
+        | Ok(_) -> Ok(val)
+        | Err(e) -> Err("COMMIT failed: " ++ e)
+        end
+      | Err(reason) ->
+        let _ = simple_query(conn, "ROLLBACK")
+        Err(reason)
+      end
+    | Err(e) -> Err("BEGIN failed: " ++ e)
+    end
+  )
+  |> flatten_result()
+end
 
 end
