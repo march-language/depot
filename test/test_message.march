@@ -3,24 +3,7 @@
 
 mod TestMessage do
 
-type Param =
-    ParamNull
-  | ParamText(String)
-  | ParamBinary(Bytes)
-
-type DescribeTarget = DescribeStatement(String) | DescribePortal(String)
-type CloseTarget    = CloseStatement(String)    | ClosePortal(String)
-
-type TransactionStatus = Idle | InTransaction | InFailedTransaction
-
-type ErrorFields = {
-  severity : String,
-  code     : String,
-  message  : String,
-  detail   : Option(String),
-  hint     : Option(String),
-  position : Option(Int)
-}
+import Message
 
 -- ---- Tests ----
 

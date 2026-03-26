@@ -3,101 +3,15 @@
 
 mod Compile do
 
--- ---- Inlined types from Ast ----
-
-type Query = Query(QueryFields)
-
-type QueryFields = {
-  from_     : FromClause,
-  selects   : List(SelectExpr),
-  wheres    : List(WhereExpr),
-  joins     : List(JoinClause),
-  orders    : List(OrderExpr),
-  group_bys : List(Expr),
-  havings   : List(WhereExpr),
-  limit_    : Option(Int),
-  offset_   : Option(Int),
-  distinct_ : Bool
-}
-
-type FromClause =
-    FromTable(String)
-  | FromSubquery(Query, String)
-
--- SelectField wraps a bare Expr; renamed from SelectExpr(Expr) to avoid
--- ambiguity with the SelectExpr type name.
-type SelectExpr =
-    SelectAll
-  | SelectField(Expr)
-  | SelectAs(Expr, String)
-
-type WhereExpr =
-    Where(Expr)
-  | OrWhere(Expr)
-
-type JoinKind = Inner | Left | Right | FullOuter | Cross
-
-type JoinClause = JoinClause(JoinKind, String, Expr)
-
-type SortDir = Asc | Desc | AscNullsFirst | DescNullsLast
-
-type OrderExpr = OrderExpr(Expr, SortDir)
-
-type Expr =
-    Lit(SqlValue)
-  | Col(String)
-  | QCol(String, String)
-  | Eq(Expr, Expr)
-  | Neq(Expr, Expr)
-  | Lt(Expr, Expr)
-  | Gt(Expr, Expr)
-  | Lte(Expr, Expr)
-  | Gte(Expr, Expr)
-  | And(Expr, Expr)
-  | Or(Expr, Expr)
-  | Not(Expr)
-  | Add(Expr, Expr)
-  | Sub(Expr, Expr)
-  | Mul(Expr, Expr)
-  | Div(Expr, Expr)
-  | IsNull(Expr)
-  | IsNotNull(Expr)
-  | In(Expr, List(Expr))
-  | NotIn(Expr, List(Expr))
-  | Between(Expr, Expr, Expr)
-  | Like(Expr, String)
-  | ILike(Expr, String)
-  | Count(Expr)
-  | Sum(Expr)
-  | Avg(Expr)
-  | Min(Expr)
-  | Max(Expr)
-  | CountAll
-  | Exists(Query)
-  | SubqueryExpr(Query)
-  | FnCall(String, List(Expr))
-  | Param(Int)
-  | Raw(String)
-
-type SqlValue =
-    PInt(Int)
-  | PFloat(Float)
-  | PString(String)
-  | PBool(Bool)
-  | PNull
-
--- WireParam: renamed from Param to avoid conflict with Param(Int) in Expr.
-type WireParam =
-    ParamNull
-  | ParamText(String)
-  | ParamBinary(Bytes)
+import Ast
+import Message
 
 -- ---- Output type ----
 
 --- The result of compiling a Query: SQL string + ordered bind parameters.
 type CompiledQuery = {
   sql    : String,
-  params : List(WireParam)
+  params : List(Param)
 }
 
 -- ---- Public API ----
@@ -184,7 +98,7 @@ pfn cp_finish(f, sel, frm, jns, whr, grp, hav, ord, s6) do
   let sql = "SELECT " ++ dp ++ sel ++ " FROM " ++ frm
             ++ jns ++ whr ++ grp ++ hav ++ ord
             ++ compile_limit(f.limit_) ++ compile_offset(f.offset_)
-  { sql = sql, params = rev_wire_params(s6.params) }
+  { sql = sql, params = rev_params(s6.params) }
 end
 
 -- ---- compile_inline chain ----
@@ -607,9 +521,9 @@ pfn compile_expr(e, st) do
     match compile_expr(inner, st) do
     | (s, st2) -> ("MAX(" ++ s ++ ")", st2)
     end
-  | CountAll  -> ("COUNT(*)", st)
-  | Param(n)  -> ("$" ++ int_to_string(n), st)
-  | Raw(sql)  -> (sql, st)
+  | CountAll     -> ("COUNT(*)", st)
+  | ExprParam(n) -> ("$" ++ int_to_string(n), st)
+  | Raw(sql)     -> (sql, st)
   | _         -> ("/* unsupported expr */", st)
   end
 end
@@ -654,7 +568,7 @@ pfn compile_expr_inline(e) do
   | Min(inner)     -> "MIN("   ++ compile_expr_inline(inner) ++ ")"
   | Max(inner)     -> "MAX("   ++ compile_expr_inline(inner) ++ ")"
   | CountAll       -> "COUNT(*)"
-  | Param(n)       -> "$" ++ int_to_string(n)
+  | ExprParam(n)   -> "$" ++ int_to_string(n)
   | Raw(sql)       -> sql
   | _              -> "/* unsupported */"
   end
@@ -697,22 +611,14 @@ pfn rev_strs_acc(xs, acc) do
   match xs do | Nil -> acc | Cons(x, rest) -> rev_strs_acc(rest, Cons(x, acc)) end
 end
 
-pfn rev_wire_params(xs) do rev_wp_acc(xs, Nil) end
-pfn rev_wp_acc(xs, acc) do
-  match xs do | Nil -> acc | Cons(x, rest) -> rev_wp_acc(rest, Cons(x, acc)) end
+pfn rev_params(xs) do rev_params_acc(xs, Nil) end
+pfn rev_params_acc(xs, acc) do
+  match xs do | Nil -> acc | Cons(x, rest) -> rev_params_acc(rest, Cons(x, acc)) end
 end
 
 pfn rev_where_parts(xs) do rev_wp2_acc(xs, Nil) end
 pfn rev_wp2_acc(xs, acc) do
   match xs do | Nil -> acc | Cons(x, rest) -> rev_wp2_acc(rest, Cons(x, acc)) end
-end
-
-pfn len_wire_params(xs) do
-  match xs do | Nil -> 0 | Cons(_, rest) -> 1 + len_wire_params(rest) end
-end
-
-pfn append_wire_params(xs, ys) do
-  match xs do | Nil -> ys | Cons(x, rest) -> Cons(x, append_wire_params(rest, ys)) end
 end
 
 end

@@ -3,35 +3,7 @@
 
 mod TestDecode do
 
--- ---- Inlined decode helpers ----
-
-pfn read_u16(b, pos) do
-  Bytes.get(b, pos) * 256 + Bytes.get(b, pos + 1)
-end
-
-pfn read_i32(b, pos) do
-  let raw =
-    Bytes.get(b, pos)     * 16777216 +
-    Bytes.get(b, pos + 1) * 65536    +
-    Bytes.get(b, pos + 2) * 256      +
-    Bytes.get(b, pos + 3)
-  if raw >= 2147483648 then raw - 4294967296 else raw
-end
-
-pfn read_cstring(b, pos) do
-  fn go(i, acc) do
-    let byte = Bytes.get(b, i)
-    if byte == 0 then (Bytes.to_string(Bytes.from_list(reverse(acc))), i + 1)
-    else go(i + 1, Cons(byte, acc))
-  end
-  go(pos, Nil)
-end
-
-pfn read_bytes_field(b, pos) do
-  let len = read_i32(b, pos)
-  if len == -1 then (None, pos + 4)
-  else (Some(Bytes.slice(b, pos + 4, len)), pos + 4 + len)
-end
+import Decode
 
 -- ---- Tests ----
 

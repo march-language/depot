@@ -4,27 +4,11 @@
 
 mod TestRepo do
 
--- ---- Inlined types ----
+import Message
+import Ast
+import Query
 
-type Param =
-    ParamNull
-  | ParamText(String)
-  | ParamBinary(Bytes)
-
-type SqlValue =
-    PInt(Int)
-  | PFloat(Float)
-  | PString(String)
-  | PBool(Bool)
-  | PNull
-
-type QueryResult = {
-  columns : List(String),
-  rows    : List(List(Option(String))),
-  tag     : String
-}
-
--- ---- Inlined helpers ----
+-- ---- Inlined helpers (testing Repo private logic) ----
 
 pfn sqlvalue_to_param(v) do
   match v do

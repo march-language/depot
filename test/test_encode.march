@@ -3,31 +3,7 @@
 
 mod TestEncode do
 
--- ---- Inlined encode helpers ----
-
-pfn i32_be(n : Int) : Bytes do
-  Bytes.from_list([
-    (n / 16777216) % 256, (n / 65536) % 256,
-    (n / 256)      % 256,  n          % 256
-  ])
-end
-
-pfn i16_be(n : Int) : Bytes do
-  Bytes.from_list([(n / 256) % 256, n % 256])
-end
-
-pfn cstring(s : String) : Bytes do
-  Bytes.concat(Bytes.from_string(s), Bytes.from_list([0]))
-end
-
-pfn length_prefix(payload : Bytes) : Bytes do
-  let prefix = i32_be(Bytes.length(payload) + 4)
-  Bytes.concat(prefix, payload)
-end
-
-pfn frame(type_byte : Int, payload : Bytes) : Bytes do
-  Bytes.concat(Bytes.from_list([type_byte]), length_prefix(payload))
-end
+import Encode
 
 -- ---- Tests ----
 

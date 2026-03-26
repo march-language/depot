@@ -3,297 +3,9 @@
 
 mod Connection do
 
--- ---- Inlined types from Message ----
-
-type FrontendMessage =
-    Startup(Map(String, String))
-  | Query(String)
-  | Parse(String, String, List(Int))
-  | Bind(String, String, List(Param))
-  | Execute(String, Int)
-  | Describe(DescribeTarget)
-  | Close(CloseTarget)
-  | Sync
-  | Flush
-  | Terminate
-  | PasswordMessage(String)
-  | SASLInitialResponse(String, Bytes)
-  | SASLResponse(Bytes)
-
-type DescribeTarget = DescribeStatement(String) | DescribePortal(String)
-type CloseTarget    = CloseStatement(String)    | ClosePortal(String)
-
-type Param =
-    ParamNull
-  | ParamText(String)
-  | ParamBinary(Bytes)
-
-type BackendMessage =
-    AuthOk
-  | AuthMD5(Bytes)
-  | AuthSASL(List(String))
-  | AuthSASLContinue(Bytes)
-  | AuthSASLFinal(Bytes)
-  | BackendKeyData(Int, Int)
-  | ParameterStatus(String, String)
-  | ReadyForQuery(TransactionStatus)
-  | RowDescription(List(FieldDesc))
-  | DataRow(List(Option(Bytes)))
-  | CommandComplete(String)
-  | EmptyQueryResponse
-  | ErrorResponse(ErrorFields)
-  | NoticeResponse(ErrorFields)
-  | ParseComplete
-  | BindComplete
-  | CloseComplete
-  | NoData
-  | PortalSuspended
-
-type TransactionStatus = Idle | InTransaction | InFailedTransaction
-
-type FieldDesc = FieldDesc(String, Int, Int, Int, Int, Int, Int)
-
-type ErrorFields = {
-  severity : String,
-  code     : String,
-  message  : String,
-  detail   : Option(String),
-  hint     : Option(String),
-  position : Option(Int)
-}
-
--- ---- Inlined encode helpers ----
-
-pfn i32_be(n : Int) : Bytes do
-  Bytes.from_list([
-    (n / 16777216) % 256, (n / 65536) % 256,
-    (n / 256)      % 256,  n          % 256
-  ])
-end
-
-pfn i16_be(n : Int) : Bytes do
-  Bytes.from_list([(n / 256) % 256, n % 256])
-end
-
-pfn cstring(s : String) : Bytes do
-  Bytes.concat(Bytes.from_string(s), Bytes.from_list([0]))
-end
-
-pfn length_prefix(payload : Bytes) : Bytes do
-  Bytes.concat(i32_be(Bytes.length(payload) + 4), payload)
-end
-
-pfn frame(type_byte : Int, payload : Bytes) : Bytes do
-  Bytes.concat(Bytes.from_list([type_byte]), length_prefix(payload))
-end
-
-pfn encode(msg : FrontendMessage) : Bytes do
-  match msg do
-  | Startup(params) ->
-    let pairs = Map.fold(Bytes.empty(), params, fn acc -> fn k -> fn v ->
-      Bytes.concat(acc, Bytes.concat(cstring(k), cstring(v)))
-    )
-    let payload = Bytes.concat(i32_be(196608), Bytes.concat(pairs, Bytes.from_list([0])))
-    length_prefix(payload)
-  | Query(sql) -> frame(81, cstring(sql))
-  | Parse(name, sql, oids) ->
-    let oid_bytes = List.fold_left(Bytes.empty(), oids, fn (acc, oid) ->
-      Bytes.concat(acc, i32_be(oid)))
-    let payload = Bytes.concat(
-      Bytes.concat(cstring(name), cstring(sql)),
-      Bytes.concat(i16_be(List.length(oids)), oid_bytes))
-    frame(80, payload)
-  | Bind(portal, stmt, params) -> encode_bind(portal, stmt, params)
-  | Execute(portal, max_rows) ->
-    frame(69, Bytes.concat(cstring(portal), i32_be(max_rows)))
-  | Sync      -> frame(83, Bytes.empty())
-  | Flush     -> frame(72, Bytes.empty())
-  | Terminate -> frame(88, Bytes.empty())
-  | PasswordMessage(pw) -> frame(112, cstring(pw))
-  | Describe(DescribeStatement(name)) ->
-    frame(68, Bytes.concat(Bytes.from_list([83]), cstring(name)))
-  | Describe(DescribePortal(name)) ->
-    frame(68, Bytes.concat(Bytes.from_list([80]), cstring(name)))
-  | _ -> panic("encode: unimplemented message type")
-  end
-end
-
-pfn encode_bind(portal, stmt, params) do
-  let n = List.length(params)
-  let param_bytes = List.fold_left(Bytes.empty(), params, fn (acc, p) ->
-    match p do
-    | ParamNull    -> Bytes.concat(acc, i32_be(-1))
-    | ParamText(s) ->
-      let b = Bytes.from_string(s)
-      Bytes.concat(acc, Bytes.concat(i32_be(Bytes.length(b)), b))
-    | ParamBinary(b) ->
-      Bytes.concat(acc, Bytes.concat(i32_be(Bytes.length(b)), b))
-    end
-  )
-  let payload = Bytes.concat(
-    Bytes.concat(cstring(portal), cstring(stmt)),
-    Bytes.concat(i16_be(1), Bytes.concat(i16_be(0),
-      Bytes.concat(i16_be(n), Bytes.concat(param_bytes,
-        Bytes.concat(i16_be(1), i16_be(0)))))))
-  frame(66, payload)
-end
-
--- ---- Inlined decode helpers ----
-
-pfn read_u16(b, pos) do
-  Bytes.get(b, pos) * 256 + Bytes.get(b, pos + 1)
-end
-
-pfn read_i32(b, pos) do
-  let raw =
-    Bytes.get(b, pos)     * 16777216 +
-    Bytes.get(b, pos + 1) * 65536    +
-    Bytes.get(b, pos + 2) * 256      +
-    Bytes.get(b, pos + 3)
-  if raw >= 2147483648 then raw - 4294967296 else raw
-end
-
-pfn read_cstring(b, pos) do
-  fn go(i, acc) do
-    let byte = Bytes.get(b, i)
-    if byte == 0 then (Bytes.to_string(Bytes.from_list(reverse(acc))), i + 1)
-    else go(i + 1, Cons(byte, acc))
-  end
-  go(pos, Nil)
-end
-
-pfn read_bytes_field(b, pos) do
-  let len = read_i32(b, pos)
-  if len == -1 then (None, pos + 4)
-  else (Some(Bytes.slice(b, pos + 4, len)), pos + 4 + len)
-end
-
-pfn parse_error_fields(b, pos) do
-  fn go(i, severity, code, message, detail, hint, position) do
-    if i >= Bytes.length(b) then
-      { severity = severity, code = code, message = message,
-        detail = detail, hint = hint, position = position }
-    else match Bytes.get(b, i) do
-      | 0 ->
-        { severity = severity, code = code, message = message,
-          detail = detail, hint = hint, position = position }
-      | field_type ->
-        let (value, next) = read_cstring(b, i + 1)
-        if      field_type == 83 then go(next, value,    code,    message, detail,        hint,        position)
-        else if field_type == 67 then go(next, severity, value,   message, detail,        hint,        position)
-        else if field_type == 77 then go(next, severity, code,    value,   detail,        hint,        position)
-        else if field_type == 68 then go(next, severity, code,    message, Some(value),   hint,        position)
-        else if field_type == 72 then go(next, severity, code,    message, detail,        Some(value), position)
-        else                          go(next, severity, code,    message, detail,        hint,        position)
-    end
-  end
-  go(pos, "", "", "", None, None, None)
-end
-
-pfn parse_one_field_desc(b, pos) do
-  let (name, pos1) = read_cstring(b, pos)
-  let table_oid = read_i32(b, pos1)
-  let attr_num  = read_u16(b, pos1 + 4)
-  let type_oid  = read_i32(b, pos1 + 6)
-  let type_size = read_u16(b, pos1 + 10)
-  let type_mod  = read_i32(b, pos1 + 12)
-  let format    = read_u16(b, pos1 + 16)
-  (FieldDesc(name, table_oid, attr_num, type_oid, type_size, type_mod, format), pos1 + 18)
-end
-
-pfn parse_field_descs(b, pos, n, acc) do
-  if n == 0 then reverse(acc)
-  else match parse_one_field_desc(b, pos) do
-    | (fd, next) -> parse_field_descs(b, next, n - 1, Cons(fd, acc))
-  end
-end
-
-pfn parse_data_columns(b, pos, n, acc) do
-  if n == 0 then reverse(acc)
-  else match read_bytes_field(b, pos) do
-    | (col, next) -> parse_data_columns(b, next, n - 1, Cons(col, acc))
-  end
-end
-
-pfn parse_sasl_mechanisms(b, pos, acc) do
-  if pos >= Bytes.length(b) then reverse(acc)
-  else
-    if Bytes.get(b, pos) == 0 then reverse(acc)
-    else match read_cstring(b, pos) do
-      | (mech, next) -> parse_sasl_mechanisms(b, next, Cons(mech, acc))
-    end
-end
-
-pfn decode_auth(payload) do
-  let auth_type = read_i32(payload, 0)
-  if      auth_type == 0  then Ok(AuthOk)
-  else if auth_type == 5  then Ok(AuthMD5(Bytes.slice(payload, 4, 4)))
-  else if auth_type == 10 then Ok(AuthSASL(parse_sasl_mechanisms(payload, 4, Nil)))
-  else if auth_type == 11 then Ok(AuthSASLContinue(Bytes.slice(payload, 4, Bytes.length(payload) - 4)))
-  else if auth_type == 12 then Ok(AuthSASLFinal(Bytes.slice(payload, 4, Bytes.length(payload) - 4)))
-  else Err("unsupported auth type: " ++ int_to_string(auth_type))
-end
-
-pfn decode_param_status(payload) do
-  match read_cstring(payload, 0) do
-  | (name, pos) ->
-    match read_cstring(payload, pos) do
-    | (value, _) -> Ok(ParameterStatus(name, value))
-    end
-  end
-end
-
-pfn decode_ready(payload) do
-  let b = Bytes.get(payload, 0)
-  Ok(ReadyForQuery(
-    if b == 84 then InTransaction
-    else if b == 69 then InFailedTransaction
-    else Idle))
-end
-
-pfn decode_command_complete(payload) do
-  match read_cstring(payload, 0) do
-  | (tag, _) -> Ok(CommandComplete(tag))
-  end
-end
-
-pfn decode_msg(type_byte, payload) do
-  if      type_byte == 82  then decode_auth(payload)
-  else if type_byte == 75  then Ok(BackendKeyData(read_i32(payload, 0), read_i32(payload, 4)))
-  else if type_byte == 83  then decode_param_status(payload)
-  else if type_byte == 90  then decode_ready(payload)
-  else if type_byte == 84  then Ok(RowDescription(parse_field_descs(payload, 2, read_u16(payload, 0), Nil)))
-  else if type_byte == 68  then Ok(DataRow(parse_data_columns(payload, 2, read_u16(payload, 0), Nil)))
-  else if type_byte == 67  then decode_command_complete(payload)
-  else if type_byte == 73  then Ok(EmptyQueryResponse)
-  else if type_byte == 69  then Ok(ErrorResponse(parse_error_fields(payload, 0)))
-  else if type_byte == 78  then Ok(NoticeResponse(parse_error_fields(payload, 0)))
-  else if type_byte == 49  then Ok(ParseComplete)
-  else if type_byte == 50  then Ok(BindComplete)
-  else if type_byte == 51  then Ok(CloseComplete)
-  else if type_byte == 110 then Ok(NoData)
-  else if type_byte == 115 then Ok(PortalSuspended)
-  else Err("unknown backend message type: " ++ int_to_string(type_byte))
-end
-
-pfn recv_msg(fd) do
-  match tcp_recv_exact(fd, 5) do
-  | Err(e) -> Err("recv header: " ++ e)
-  | Ok(header) ->
-    let type_byte   = Bytes.get(header, 0)
-    let msg_len     = read_i32(header, 1)
-    let payload_len = msg_len - 4
-    if payload_len < 0 then
-      Err("invalid message: negative payload length")
-    else if payload_len == 0 then
-      decode_msg(type_byte, Bytes.empty())
-    else
-      match tcp_recv_exact(fd, payload_len) do
-      | Err(e)      -> Err("recv payload: " ++ e)
-      | Ok(payload) -> decode_msg(type_byte, payload)
-      end
-  end
-end
+import Message
+import Encode
+import Decode
 
 -- ---- Configuration ----
 
@@ -371,6 +83,134 @@ pfn send_msg(fd, msg) do
   tcp_send_all(fd, Bytes.to_string(encode(msg)))
 end
 
+-- ---- SCRAM-SHA-256 helpers ----
+
+pfn scram_client_first_bare(user, nonce) do
+  "n=" ++ user ++ ",r=" ++ nonce
+end
+
+pfn scram_client_first_msg(user, nonce) do
+  "n,," ++ scram_client_first_bare(user, nonce)
+end
+
+pfn scram_parse_server_first(server_first) do
+  -- Parse "r=combined-nonce,s=base64-salt,i=iterations"
+  fn parse_fields(s, acc) do
+    match String.split_first(s, ",") do
+    | None ->
+      let (k, v) = parse_kv(s)
+      Cons((k, v), acc)
+    | Some((field, rest)) ->
+      let (k, v) = parse_kv(field)
+      parse_fields(rest, Cons((k, v), acc))
+    end
+  end
+  parse_fields(server_first, Nil)
+end
+
+pfn parse_kv(field) do
+  match String.split_first(field, "=") do
+  | None     -> (field, "")
+  | Some(kv) -> kv
+  end
+end
+
+pfn lookup_field(fields, key) do
+  match fields do
+  | Nil -> ""
+  | Cons((k, v), rest) ->
+    if k == key then v
+    else lookup_field(rest, key)
+  end
+end
+
+pfn scram_xor_bytes(a, b) do
+  Bytes.zip_with(a, b, fn x -> fn y -> x ^ y end)
+end
+
+pfn scram_hmac(key_bytes, msg) do
+  hmac_sha256(key_bytes, Bytes.from_string(msg))
+end
+
+pfn scram_compute_proof(password, salt_b64, iterations, client_first_bare, server_first, client_final_no_proof) do
+  let salt           = base64_decode(salt_b64)
+  let salted_pw      = pbkdf2_sha256(password, salt, iterations, 32)
+  let client_key     = scram_hmac(salted_pw, "Client Key")
+  let stored_key     = sha256(client_key)
+  let auth_message   = client_first_bare ++ "," ++ server_first ++ "," ++ client_final_no_proof
+  let client_sig     = scram_hmac(stored_key, auth_message)
+  let client_proof   = scram_xor_bytes(client_key, client_sig)
+  let server_key     = scram_hmac(salted_pw, "Server Key")
+  let server_sig     = scram_hmac(server_key, auth_message)
+  (base64_encode(client_proof), base64_encode(server_sig))
+end
+
+-- ---- SCRAM-SHA-256 authentication ----
+
+pfn authenticate_scram(fd, cfg, mechanisms) do
+  -- Verify SCRAM-SHA-256 is offered
+  fn has_scram(mechs) do
+    match mechs do
+    | Nil -> false
+    | Cons(m, rest) -> if m == "SCRAM-SHA-256" then true else has_scram(rest)
+    end
+  end
+  if has_scram(mechanisms) then
+    let nonce          = base64_encode(random_bytes(18))
+    let user           = cfg.user
+    let client_first   = scram_client_first_msg(user, nonce)
+    let client_first_bare = scram_client_first_bare(user, nonce)
+    match send_msg(fd, SASLInitialResponse("SCRAM-SHA-256", Bytes.from_string(client_first))) do
+    | Err(e) -> Err("scram send initial: " ++ e)
+    | Ok(_)  ->
+      match recv_msg(fd) do
+      | Err(e) -> Err(e)
+      | Ok(AuthSASLContinue(server_bytes)) ->
+        let server_first  = Bytes.to_string(server_bytes)
+        let fields        = scram_parse_server_first(server_first)
+        let combined_nonce = lookup_field(fields, "r")
+        let salt_b64      = lookup_field(fields, "s")
+        let iter_str      = lookup_field(fields, "i")
+        let iterations    = unwrap_or(string_to_int(iter_str), 4096)
+        -- Verify nonce prefix matches our client nonce
+        let pw            = unwrap_or(cfg.password, "")
+        let channel_bind  = "biws"  -- base64("n,,")
+        let client_final_no_proof = "c=" ++ channel_bind ++ ",r=" ++ combined_nonce
+        let (proof, expected_server_sig) =
+          scram_compute_proof(pw, salt_b64, iterations, client_first_bare,
+                              server_first, client_final_no_proof)
+        let client_final = client_final_no_proof ++ ",p=" ++ proof
+        match send_msg(fd, SASLResponse(Bytes.from_string(client_final))) do
+        | Err(e) -> Err("scram send response: " ++ e)
+        | Ok(_)  ->
+          match recv_msg(fd) do
+          | Err(e)                -> Err(e)
+          | Ok(AuthSASLFinal(server_final_bytes)) ->
+            let server_final = Bytes.to_string(server_final_bytes)
+            let sfinal_fields = scram_parse_server_first(server_final)
+            let server_sig_b64 = lookup_field(sfinal_fields, "v")
+            if server_sig_b64 == expected_server_sig then
+              -- Drain the AuthOk that follows
+              match recv_msg(fd) do
+              | Ok(AuthOk) -> Ok(())
+              | Ok(ErrorResponse(fields)) -> Err("auth failed: " ++ fields.message)
+              | Ok(_)  -> Err("unexpected message after SASL final")
+              | Err(e) -> Err(e)
+              end
+            else
+              Err("SCRAM server signature verification failed")
+          | Ok(ErrorResponse(fields)) -> Err("auth failed: " ++ fields.message)
+          | Ok(_) -> Err("unexpected reply after SASL response")
+          end
+        end
+      | Ok(ErrorResponse(fields)) -> Err("server rejected connection: " ++ fields.message)
+      | Ok(_) -> Err("unexpected reply after SASL initial")
+      end
+    end
+  else
+    Err("server offered no supported SASL mechanism")
+end
+
 -- ---- Auth exchange ----
 
 pfn authenticate(fd, cfg, auth_msg) do
@@ -388,6 +228,8 @@ pfn authenticate(fd, cfg, auth_msg) do
       | Ok(_)                     -> Err("unexpected reply after password")
       end
     end
+  | AuthSASL(mechanisms) ->
+    authenticate_scram(fd, cfg, mechanisms)
   | ErrorResponse(fields) ->
     Err("server rejected connection: " ++ fields.message)
   | _ ->

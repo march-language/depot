@@ -3,39 +3,12 @@
 
 mod TestPool do
 
--- ---- Inlined types ----
+import Connection
+import Pool
 
-type ConnConfig = {
-  host     : String,
-  port     : Int,
-  user     : String,
-  database : String,
-  password : Option(String)
-}
+-- ---- Local helpers ----
 
-type PoolConfig = {
-  min_size           : Int,
-  max_size           : Int,
-  idle_timeout_ms    : Int,
-  connect_timeout_ms : Int,
-  conn_config        : ConnConfig
-}
-
-type PoolStats = {
-  idle_count    : Int,
-  active_count  : Int,
-  waiting_count : Int,
-  total_size    : Int
-}
-
--- ---- Inlined helpers ----
-
-fn default_pool_config(conn_cfg) do
-  { min_size = 5, max_size = 20, idle_timeout_ms = 300000,
-    connect_timeout_ms = 5000, conn_config = conn_cfg }
-end
-
-fn make_conn_config(host, port, user, db) do
+pfn make_conn_config(host, port, user, db) do
   { host = host, port = port, user = user, database = db, password = None }
 end
 
