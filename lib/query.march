@@ -4,7 +4,7 @@
 mod Query do
 
 import Message
-import Connection, only: [ConnState]
+import Connection
 import Encode
 import Decode
 

@@ -125,7 +125,7 @@ pfn lookup_field(fields, key) do
 end
 
 pfn scram_xor_bytes(a, b) do
-  Bytes.zip_with(a, b, fn x -> fn y -> x ^ y end)
+  Bytes.zip_with(a, b, fn x -> fn y -> int_xor(x, y))
 end
 
 pfn scram_hmac(key_bytes, msg) do
@@ -155,7 +155,7 @@ pfn authenticate_scram(fd, cfg, mechanisms) do
     | Cons(m, rest) -> if m == "SCRAM-SHA-256" then true else has_scram(rest)
     end
   end
-  if has_scram(mechanisms) then
+  if has_scram(mechanisms) then do
     let nonce          = base64_encode(random_bytes(18))
     let user           = cfg.user
     let client_first   = scram_client_first_msg(user, nonce)
@@ -207,7 +207,7 @@ pfn authenticate_scram(fd, cfg, mechanisms) do
       | Ok(_) -> Err("unexpected reply after SASL initial")
       end
     end
-  else
+  end else
     Err("server offered no supported SASL mechanism")
 end
 
