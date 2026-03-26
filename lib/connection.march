@@ -125,7 +125,14 @@ pfn lookup_field(fields, key) do
 end
 
 pfn scram_xor_bytes(a, b) do
-  Bytes.zip_with(a, b, fn x -> fn y -> int_xor(x, y))
+  fn zip_xor(xs, ys, acc) do
+    match (xs, ys) do
+    | (Nil, _) -> List.reverse(acc)
+    | (_, Nil) -> List.reverse(acc)
+    | (Cons(x, xr), Cons(y, yr)) -> zip_xor(xr, yr, Cons(int_xor(x, y), acc))
+    end
+  end
+  Bytes.from_list(zip_xor(Bytes.to_list(a), Bytes.to_list(b), Nil))
 end
 
 pfn scram_hmac(key_bytes, msg) do
