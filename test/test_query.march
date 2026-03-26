@@ -44,7 +44,10 @@ end
 
 fn test_row_to_strings_empty() do
   let result = row_to_strings(Nil)
-  assert(result == Nil)
+  match result do
+  | Nil -> ()
+  | _   -> assert(false)
+  end
 end
 
 fn test_row_to_strings_null_cell() do
