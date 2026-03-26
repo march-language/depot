@@ -3,28 +3,7 @@
 
 mod TestConnection do
 
-type ConnConfig = {
-  host     : String,
-  port     : Int,
-  user     : String,
-  database : String,
-  password : Option(String)
-}
-
-fn default_config(user, database) do
-  { host = "127.0.0.1", port = 5432, user = user,
-    database = database, password = None }
-end
-
-fn config_with_password(user, database, password) do
-  { host = "127.0.0.1", port = 5432, user = user,
-    database = database, password = Some(password) }
-end
-
-fn full_config(host, port, user, database, password) do
-  { host = host, port = port, user = user,
-    database = database, password = password }
-end
+import Connection
 
 -- ---- Tests ----
 

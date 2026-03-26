@@ -3,30 +3,7 @@
 
 mod Encode do
 
--- ---- Inlined types from Message ----
-
-type FrontendMessage =
-    Startup(Map(String, String))
-  | Query(String)
-  | Parse(String, String, List(Int))
-  | Bind(String, String, List(Param))
-  | Execute(String, Int)
-  | Describe(DescribeTarget)
-  | Close(CloseTarget)
-  | Sync
-  | Flush
-  | Terminate
-  | PasswordMessage(String)
-  | SASLInitialResponse(String, Bytes)
-  | SASLResponse(Bytes)
-
-type DescribeTarget = DescribeStatement(String) | DescribePortal(String)
-type CloseTarget    = CloseStatement(String)    | ClosePortal(String)
-
-type Param =
-    ParamNull
-  | ParamText(String)
-  | ParamBinary(Bytes)
+import Message
 
 -- ---- Byte helpers ----
 

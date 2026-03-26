@@ -3,11 +3,7 @@
 
 mod TestQuery do
 
-type QueryResult = {
-  columns : List(String),
-  rows    : List(List(Option(String))),
-  tag     : String
-}
+import Query
 
 -- ---- Inlined helpers ----
 

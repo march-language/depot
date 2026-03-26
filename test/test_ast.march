@@ -3,31 +3,7 @@
 
 mod TestAst do
 
-type SqlValue =
-    PInt(Int)
-  | PFloat(Float)
-  | PString(String)
-  | PBool(Bool)
-  | PNull
-
-type Expr =
-    Lit(SqlValue)
-  | Col(String)
-  | QCol(String, String)
-  | Eq(Expr, Expr)
-  | And(Expr, Expr)
-  | Or(Expr, Expr)
-  | Not(Expr)
-  | IsNull(Expr)
-  | IsNotNull(Expr)
-  | Like(Expr, String)
-  | Count(Expr)
-  | CountAll
-  | Raw(String)
-
-type SortDir = Asc | Desc | AscNullsFirst | DescNullsLast
-
-type JoinKind = Inner | Left | Right | FullOuter | Cross
+import Ast
 
 -- ---- Tests ----
 

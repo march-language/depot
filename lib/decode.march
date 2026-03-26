@@ -3,43 +3,7 @@
 
 mod Decode do
 
--- ---- Inlined types from Message ----
-
-type BackendMessage =
-    AuthOk
-  | AuthMD5(Bytes)
-  | AuthSASL(List(String))
-  | AuthSASLContinue(Bytes)
-  | AuthSASLFinal(Bytes)
-  | BackendKeyData(Int, Int)
-  | ParameterStatus(String, String)
-  | ReadyForQuery(TransactionStatus)
-  | RowDescription(List(FieldDesc))
-  | DataRow(List(Option(Bytes)))
-  | CommandComplete(String)
-  | EmptyQueryResponse
-  | ErrorResponse(ErrorFields)
-  | NoticeResponse(ErrorFields)
-  | ParseComplete
-  | BindComplete
-  | CloseComplete
-  | NoData
-  | PortalSuspended
-
-type TransactionStatus = Idle | InTransaction | InFailedTransaction
-
-type FieldDesc = FieldDesc(
-  String, Int, Int, Int, Int, Int, Int
-)
-
-type ErrorFields = {
-  severity : String,
-  code     : String,
-  message  : String,
-  detail   : Option(String),
-  hint     : Option(String),
-  position : Option(Int)
-}
+import Message
 
 -- ---- Cursor helpers ----
 

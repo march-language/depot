@@ -3,179 +3,8 @@
 
 mod TestBuild do
 
--- ---- Inlined types from Ast / Build ----
-
-type Query = Query(QueryFields)
-
-type QueryFields = {
-  from_     : FromClause,
-  selects   : List(SelectExpr),
-  wheres    : List(WhereExpr),
-  joins     : List(JoinClause),
-  orders    : List(OrderExpr),
-  group_bys : List(Expr),
-  havings   : List(WhereExpr),
-  limit_    : Option(Int),
-  offset_   : Option(Int),
-  distinct_ : Bool
-}
-
-type FromClause =
-    FromTable(String)
-  | FromSubquery(Query, String)
-
-type SelectExpr =
-    SelectAll
-  | SelectField(Expr)
-  | SelectAs(Expr, String)
-
-type WhereExpr =
-    Where(Expr)
-  | OrWhere(Expr)
-
-type JoinKind = Inner | Left | Right | FullOuter | Cross
-
-type JoinClause = JoinClause(JoinKind, String, Expr)
-
-type SortDir = Asc | Desc | AscNullsFirst | DescNullsLast
-
-type OrderExpr = OrderExpr(Expr, SortDir)
-
-type Expr =
-    Lit(SqlValue)
-  | Col(String)
-  | QCol(String, String)
-  | Eq(Expr, Expr)
-  | Neq(Expr, Expr)
-  | Lt(Expr, Expr)
-  | Gt(Expr, Expr)
-  | Lte(Expr, Expr)
-  | Gte(Expr, Expr)
-  | And(Expr, Expr)
-  | Or(Expr, Expr)
-  | Not(Expr)
-  | Add(Expr, Expr)
-  | Sub(Expr, Expr)
-  | Mul(Expr, Expr)
-  | Div(Expr, Expr)
-  | IsNull(Expr)
-  | IsNotNull(Expr)
-  | In(Expr, List(Expr))
-  | NotIn(Expr, List(Expr))
-  | Between(Expr, Expr, Expr)
-  | Like(Expr, String)
-  | ILike(Expr, String)
-  | Count(Expr)
-  | Sum(Expr)
-  | Avg(Expr)
-  | Min(Expr)
-  | Max(Expr)
-  | CountAll
-  | Exists(Query)
-  | SubqueryExpr(Query)
-  | FnCall(String, List(Expr))
-  | ExprParam(Int)
-  | Raw(String)
-
-type SqlValue =
-    PInt(Int)
-  | PFloat(Float)
-  | PString(String)
-  | PBool(Bool)
-  | PNull
-
--- ---- Inlined Build functions ----
-
-pfn map_exprs_to_select(exprs) do
-  match exprs do
-  | Nil -> Nil
-  | Cons(e, rest) -> Cons(SelectField(e), map_exprs_to_select(rest))
-  end
-end
-
-pfn concat_selects(xs, ys) do
-  match xs do | Nil -> ys | Cons(x, rest) -> Cons(x, concat_selects(rest, ys)) end
-end
-
-pfn concat_wheres(xs, ys) do
-  match xs do | Nil -> ys | Cons(x, rest) -> Cons(x, concat_wheres(rest, ys)) end
-end
-
-pfn concat_joins(xs, ys) do
-  match xs do | Nil -> ys | Cons(x, rest) -> Cons(x, concat_joins(rest, ys)) end
-end
-
-pfn concat_orders(xs, ys) do
-  match xs do | Nil -> ys | Cons(x, rest) -> Cons(x, concat_orders(rest, ys)) end
-end
-
-pfn concat_exprs(xs, ys) do
-  match xs do | Nil -> ys | Cons(x, rest) -> Cons(x, concat_exprs(rest, ys)) end
-end
-
-fn from_(table) do
-  Query({
-    from_ = FromTable(table), selects = Nil, wheres = Nil,
-    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false
-  })
-end
-
-fn select_(q, exprs) do
-  match q do
-  | Query(f) ->
-    let items = map_exprs_to_select(exprs)
-    Query({ f with selects = concat_selects(f.selects, items) })
-  end
-end
-
-fn select_all_(q) do
-  match q do
-  | Query(f) -> Query({ f with selects = [SelectAll] })
-  end
-end
-
-fn where__(q, expr) do
-  match q do
-  | Query(f) -> Query({ f with wheres = concat_wheres(f.wheres, [Where(expr)]) })
-  end
-end
-
-fn or_where_(q, expr) do
-  match q do
-  | Query(f) -> Query({ f with wheres = concat_wheres(f.wheres, [OrWhere(expr)]) })
-  end
-end
-
-fn join_(q, table, on_expr) do
-  match q do
-  | Query(f) -> Query({ f with joins = concat_joins(f.joins, [JoinClause(Inner, table, on_expr)]) })
-  end
-end
-
-fn order_by_(q, expr, dir) do
-  match q do
-  | Query(f) -> Query({ f with orders = concat_orders(f.orders, [OrderExpr(expr, dir)]) })
-  end
-end
-
-fn limit_(q, n) do
-  match q do | Query(f) -> Query({ f with limit_ = Some(n) }) end
-end
-
-fn offset_(q, n) do
-  match q do | Query(f) -> Query({ f with offset_ = Some(n) }) end
-end
-
-fn distinct_(q) do
-  match q do | Query(f) -> Query({ f with distinct_ = true }) end
-end
-
-fn group_by_(q, exprs) do
-  match q do
-  | Query(f) -> Query({ f with group_bys = concat_exprs(f.group_bys, exprs) })
-  end
-end
+import Ast
+import Build
 
 -- ---- Helpers ----
 
@@ -186,7 +15,7 @@ end
 -- ---- Tests ----
 
 fn test_from_table() do
-  let q = from_("users")
+  let q = from("users")
   match q do
   | Query(f) ->
     match f.from_ do
@@ -200,7 +29,7 @@ fn test_from_table() do
 end
 
 fn test_select_exprs() do
-  let q = select_(from_("posts"), [Col("id"), Col("title")])
+  let q = select(from("posts"), [Col("id"), Col("title")])
   match q do
   | Query(f) ->
     assert(list_len(f.selects) == 2)
@@ -208,7 +37,7 @@ fn test_select_exprs() do
 end
 
 fn test_select_all() do
-  let q = select_all_(from_("posts"))
+  let q = select_all(from("posts"))
   match q do
   | Query(f) ->
     assert(list_len(f.selects) == 1)
@@ -220,7 +49,7 @@ fn test_select_all() do
 end
 
 fn test_where_clause() do
-  let q = where__(from_("users"), Eq(Col("active"), Lit(PBool(true))))
+  let q = where_(from("users"), Eq(Col("active"), Lit(PBool(true))))
   match q do
   | Query(f) ->
     assert(list_len(f.wheres) == 1)
@@ -232,16 +61,16 @@ fn test_where_clause() do
 end
 
 fn test_or_where() do
-  let q = from_("users")
-         |> where__(Eq(Col("role"), Lit(PString("admin"))))
-         |> or_where_(Eq(Col("role"), Lit(PString("superuser"))))
+  let q = from("users")
+         |> where_(Eq(Col("role"), Lit(PString("admin"))))
+         |> or_where(Eq(Col("role"), Lit(PString("superuser"))))
   match q do
   | Query(f) -> assert(list_len(f.wheres) == 2)
   end
 end
 
 fn test_limit_offset() do
-  let q = limit_(offset_(from_("events"), 20), 10)
+  let q = limit(offset(from("events"), 20), 10)
   match q do
   | Query(f) ->
     match f.limit_  do | Some(n) -> assert(n == 10) | None -> assert(false) end
@@ -250,14 +79,14 @@ fn test_limit_offset() do
 end
 
 fn test_distinct() do
-  let q = distinct_(from_("tags"))
+  let q = distinct(from("tags"))
   match q do
   | Query(f) -> assert(f.distinct_ == true)
   end
 end
 
 fn test_order_by_asc() do
-  let q = order_by_(from_("logs"), Col("created_at"), Asc)
+  let q = order_by(from("logs"), Col("created_at"), Asc)
   match q do
   | Query(f) ->
     assert(list_len(f.orders) == 1)
@@ -269,7 +98,7 @@ fn test_order_by_asc() do
 end
 
 fn test_inner_join() do
-  let q = join_(from_("orders"), "users", Eq(QCol("orders", "user_id"), QCol("users", "id")))
+  let q = join(from("orders"), "users", Eq(QCol("orders", "user_id"), QCol("users", "id")))
   match q do
   | Query(f) ->
     assert(list_len(f.joins) == 1)
@@ -281,7 +110,7 @@ fn test_inner_join() do
 end
 
 fn test_group_by() do
-  let q = group_by_(from_("sales"), [Col("category"), Col("year")])
+  let q = group_by(from("sales"), [Col("category"), Col("year")])
   match q do
   | Query(f) ->
     assert(list_len(f.group_bys) == 2)
@@ -289,11 +118,11 @@ fn test_group_by() do
 end
 
 fn test_chained_builder() do
-  let q = from_("users")
-         |> select_([Col("id"), Col("name")])
-         |> where__(Eq(Col("active"), Lit(PBool(true))))
-         |> order_by_(Col("name"), Asc)
-         |> limit_(50)
+  let q = from("users")
+         |> select([Col("id"), Col("name")])
+         |> where_(Eq(Col("active"), Lit(PBool(true))))
+         |> order_by(Col("name"), Asc)
+         |> limit(50)
   match q do
   | Query(f) ->
     assert(list_len(f.selects) == 2)

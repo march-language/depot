@@ -28,7 +28,7 @@ type FromClause =
 --- A SELECT expression.
 type SelectExpr =
     SelectAll
-  | SelectExpr(Expr)
+  | SelectField(Expr)
   | SelectAs(Expr, String)
 
 --- A WHERE predicate — AND (Where) or OR (OrWhere) combined.
@@ -82,7 +82,7 @@ type Expr =
   | Exists(Query)
   | SubqueryExpr(Query)
   | FnCall(String, List(Expr))
-  | Param(Int)
+  | ExprParam(Int)
   | Raw(String)
 
 --- A literal SQL value.
