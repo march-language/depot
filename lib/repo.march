@@ -18,27 +18,28 @@ end
 
 pfn sqlvalue_to_param(v) do
   match v do
-  | PInt(n)    -> ParamText(int_to_string(n))
-  | PFloat(f_) -> ParamText(float_to_string(f_))
-  | PString(s) -> ParamText(s)
-  | PBool(b)   -> ParamText(if b then "t" else "f")
-  | PNull      -> ParamNull
+  PInt(n)    -> ParamText(int_to_string(n))
+  PFloat(f_) -> ParamText(float_to_string(f_))
+  PString(s) -> ParamText(s)
+  PBool(b)   -> ParamText(if b do "t" else "f" end)
+  PNull      -> ParamNull
   end
 end
 
 pfn repo_quote_ident(name) do "\"" ++ name ++ "\"" end
 
 pfn make_placeholders(i, n, acc) do
-  if i > n then list_rev(acc)
-  else make_placeholders(i + 1, n, Cons("$" ++ int_to_string(i), acc))
+  if i > n do list_rev(acc)
+  else make_placeholders(i + 1, n, Cons("$" ++ int_to_string(i), acc)) end
 end
 
 pfn make_set_parts(fields, idx, acc) do
   match fields do
-  | Nil -> list_rev(acc)
-  | Cons(pair, rest) ->
+  Nil -> list_rev(acc)
+  Cons(pair, rest) -> do
     let name = match pair do | (n, _) -> n end
     make_set_parts(rest, idx + 1, Cons(repo_quote_ident(name) ++ " = $" ++ int_to_string(idx), acc))
+  end
   end
 end
 
@@ -61,9 +62,9 @@ end
 
 pfn repo_join_strs(parts, sep) do
   match parts do
-  | Nil -> ""
-  | Cons(x, Nil) -> x
-  | Cons(x, rest) -> x ++ sep ++ repo_join_strs(rest, sep)
+  Nil -> ""
+  Cons(x, Nil) -> x
+  Cons(x, rest) -> x ++ sep ++ repo_join_strs(rest, sep)
   end
 end
 
@@ -112,13 +113,13 @@ end
 --- Returns `Err` if zero or multiple rows are returned.
 fn one(pool, q) do
   match all(pool, q) do
-  | Ok(result) ->
+  Ok(result) ->
     match result.rows do
-    | Cons(row, Nil) -> Ok(row)
-    | Nil -> Err("Expected exactly one row, got 0")
-    | _ -> Err("Expected exactly one row, got multiple")
+    Cons(row, Nil) -> Ok(row)
+    Nil -> Err("Expected exactly one row, got 0")
+    _ -> Err("Expected exactly one row, got multiple")
     end
-  | Err(e) -> Err(e)
+  Err(e) -> Err(e)
   end
 end
 
@@ -161,19 +162,21 @@ end
 fn transaction(pool, callback) do
   Pool.with_conn(pool, fn (conn) ->
     match simple_query(conn, "BEGIN") do
-    | Ok(_) ->
+    Ok(_) -> do
       let result = callback(conn)
       match result do
-      | Ok(val) ->
+      Ok(val) ->
         match simple_query(conn, "COMMIT") do
-        | Ok(_) -> Ok(val)
-        | Err(e) -> Err("COMMIT failed: " ++ e)
+        Ok(_) -> Ok(val)
+        Err(e) -> Err("COMMIT failed: " ++ e)
         end
-      | Err(reason) ->
+      Err(reason) -> do
         let _ = simple_query(conn, "ROLLBACK")
         Err(reason)
       end
-    | Err(e) -> Err("BEGIN failed: " ++ e)
+      end
+    end
+    Err(e) -> Err("BEGIN failed: " ++ e)
     end
   )
   |> flatten_result()
