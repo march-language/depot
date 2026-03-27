@@ -29,8 +29,8 @@ fn test_extract_col_values_basic() do
   )
   let vals = extract_col_values(result, "user_id")
   match vals do
-  | Cons("10", Cons("20", Cons("10", Nil))) -> ()
-  | _ -> assert(false)
+  Cons("10", Cons("20", Cons("10", Nil))) -> ()
+  _ -> assert(false)
   end
 end
 
@@ -42,8 +42,8 @@ fn test_extract_col_values_nulls_excluded() do
   )
   let vals = extract_col_values(result, "user_id")
   match vals do
-  | Cons("5", Nil) -> ()
-  | _ -> assert(false)
+  Cons("5", Nil) -> ()
+  _ -> assert(false)
   end
 end
 

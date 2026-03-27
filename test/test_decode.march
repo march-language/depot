@@ -41,9 +41,10 @@ end
 fn test_read_cstring_empty() do
   let b = Bytes.from_list([0])
   match read_cstring(b, 0) do
-  | (s, next) ->
+  (s, next) -> do
     assert(s == "")
     assert(next == 1)
+  end
   end
 end
 
@@ -51,9 +52,10 @@ fn test_read_cstring_hello() do
   -- "hi" + null terminator
   let b = Bytes.from_list([104, 105, 0])
   match read_cstring(b, 0) do
-  | (s, next) ->
+  (s, next) -> do
     assert(s == "hi")
     assert(next == 3)
+  end
   end
 end
 
@@ -61,9 +63,10 @@ fn test_read_bytes_field_null() do
   -- -1 in big-endian = null field
   let b = Bytes.from_list([255, 255, 255, 255])
   match read_bytes_field(b, 0) do
-  | (opt, next) ->
+  (opt, next) -> do
     assert(next == 4)
-    match opt do | None -> () | Some(_) -> assert(false) end
+    match opt do None -> () | Some(_) -> assert(false) end
+  end
   end
 end
 
@@ -71,14 +74,16 @@ fn test_read_bytes_field_data() do
   -- length=2, then bytes [65, 66]
   let b = Bytes.from_list([0, 0, 0, 2, 65, 66])
   match read_bytes_field(b, 0) do
-  | (opt, next) ->
+  (opt, next) -> do
     assert(next == 6)
     match opt do
-    | Some(data) ->
+    Some(data) -> do
       assert(Bytes.length(data) == 2)
       assert(Bytes.get(data, 0) == 65)
-    | None -> assert(false)
     end
+    None -> assert(false)
+    end
+  end
   end
 end
 

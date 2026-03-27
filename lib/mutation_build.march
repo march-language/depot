@@ -63,7 +63,7 @@ end
 --- Appends an AND WHERE predicate.
 fn update_where(u, expr) do
   match u do
-  | Update(f) -> Update({ f with wheres = append_where(f.wheres, Where(expr)) })
+  Update(f) -> Update({ f with wheres = append_where(f.wheres, Where(expr)) })
   end
 end
 
@@ -87,7 +87,7 @@ end
 --- Appends an AND WHERE predicate.
 fn delete_where(d, expr) do
   match d do
-  | Delete(f) -> Delete({ f with wheres = append_where(f.wheres, Where(expr)) })
+  Delete(f) -> Delete({ f with wheres = append_where(f.wheres, Where(expr)) })
   end
 end
 
@@ -100,22 +100,22 @@ end
 
 pfn append_row(rows, row) do
   match rows do
-  | Nil -> Cons(row, Nil)
-  | Cons(x, rest) -> Cons(x, append_row(rest, row))
+  Nil -> Cons(row, Nil)
+  Cons(x, rest) -> Cons(x, append_row(rest, row))
   end
 end
 
 pfn append_set(sets, pair) do
   match sets do
-  | Nil -> Cons(pair, Nil)
-  | Cons(x, rest) -> Cons(x, append_set(rest, pair))
+  Nil -> Cons(pair, Nil)
+  Cons(x, rest) -> Cons(x, append_set(rest, pair))
   end
 end
 
 pfn append_where(wheres, w) do
   match wheres do
-  | Nil -> Cons(w, Nil)
-  | Cons(x, rest) -> Cons(x, append_where(rest, w))
+  Nil -> Cons(w, Nil)
+  Cons(x, rest) -> Cons(x, append_where(rest, w))
   end
 end
 

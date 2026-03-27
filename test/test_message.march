@@ -13,37 +13,37 @@ end
 
 fn test_param_text() do
   match ParamText("hello") do
-  | ParamText(s) -> assert(s == "hello")
-  | _ -> assert(false)
+  ParamText(s) -> assert(s == "hello")
+  _ -> assert(false)
   end
 end
 
 fn test_param_binary() do
   let b = Bytes.from_list([1, 2, 3])
   match ParamBinary(b) do
-  | ParamBinary(data) -> assert(Bytes.length(data) == 3)
-  | _ -> assert(false)
+  ParamBinary(data) -> assert(Bytes.length(data) == 3)
+  _ -> assert(false)
   end
 end
 
 fn test_describe_target_stmt() do
   match DescribeStatement("my_stmt") do
-  | DescribeStatement(n) -> assert(n == "my_stmt")
-  | _ -> assert(false)
+  DescribeStatement(n) -> assert(n == "my_stmt")
+  _ -> assert(false)
   end
 end
 
 fn test_describe_target_portal() do
   match DescribePortal("my_portal") do
-  | DescribePortal(n) -> assert(n == "my_portal")
-  | _ -> assert(false)
+  DescribePortal(n) -> assert(n == "my_portal")
+  _ -> assert(false)
   end
 end
 
 fn test_close_target_stmt() do
   match CloseStatement("s") do
-  | CloseStatement(n) -> assert(n == "s")
-  | _ -> assert(false)
+  CloseStatement(n) -> assert(n == "s")
+  _ -> assert(false)
   end
 end
 
@@ -78,8 +78,8 @@ fn test_error_fields_with_detail() do
     position = None
   }
   match ef.detail do
-  | Some(d) -> assert(d == "Key (id)=(1) already exists.")
-  | None -> assert(false)
+  Some(d) -> assert(d == "Key (id)=(1) already exists.")
+  None -> assert(false)
   end
 end
 

@@ -109,8 +109,8 @@ fn test_pending_filter() do
   let all_versions = [1, 2, 3, 4, 5]
   let pending = filter_pending(all_versions, applied)
   match pending do
-  | Cons(4, Cons(5, Nil)) -> ()
-  | _ -> assert(false)
+  Cons(4, Cons(5, Nil)) -> ()
+  _ -> assert(false)
   end
 end
 
@@ -126,8 +126,8 @@ fn test_pending_none_applied() do
   let all_versions = [10, 20, 30]
   let pending = filter_pending(all_versions, applied)
   match pending do
-  | Cons(10, Cons(20, Cons(30, Nil))) -> ()
-  | _ -> assert(false)
+  Cons(10, Cons(20, Cons(30, Nil))) -> ()
+  _ -> assert(false)
   end
 end
 

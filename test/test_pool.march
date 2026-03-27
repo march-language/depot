@@ -69,8 +69,8 @@ fn test_conn_config_with_password() do
     database = "d", password = Some("secret")
   }
   match cc.password do
-  | Some(pw) -> assert(pw == "secret")
-  | None     -> assert(false)
+  Some(pw) -> assert(pw == "secret")
+  None     -> assert(false)
   end
 end
 

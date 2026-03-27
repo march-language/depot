@@ -21,69 +21,70 @@ type MutState = { param_count : Int, params : List(Param) }
 --- "INSERT INTO \"t\" (\"x\") VALUES ($1)"
 fn compile_insert(i) do
   match i do
-  | Insert(f) -> ci_build(f, { param_count = 0, params = Nil })
+  Insert(f) -> ci_build(f, { param_count = 0, params = Nil })
   end
 end
 
 pfn ci_build(f, st) do
   let col_sql = "(" ++ join_strs(map_quoted(f.columns), ", ") ++ ")"
   match compile_rows(f.rows, st) do
-  | (rows_sql, st2) ->
+  (rows_sql, st2) -> do
     let conflict_sql = compile_conflict(f.on_conflict)
     let ret_sql = compile_returning(f.returning_)
     let sql = "INSERT INTO " ++ quote_ident(f.table_) ++ " " ++ col_sql
               ++ " VALUES " ++ rows_sql ++ conflict_sql ++ ret_sql
     { sql = sql, params = rev_params(st2.params) }
   end
+  end
 end
 
 pfn compile_rows(rows, st) do
   match rows do
-  | Nil -> ("()", st)
-  | _ -> compile_rows_acc(rows, st, Nil)
+  Nil -> ("()", st)
+  _   -> compile_rows_acc(rows, st, Nil)
   end
 end
 
 pfn compile_rows_acc(rows, st, acc) do
   match rows do
-  | Nil -> (join_strs(rev_strs(acc), ", "), st)
-  | Cons(row, rest) ->
+  Nil -> (join_strs(rev_strs(acc), ", "), st)
+  Cons(row, rest) ->
     match compile_one_row(row, st) do
-    | (row_sql, st2) -> compile_rows_acc(rest, st2, Cons(row_sql, acc))
+    (row_sql, st2) -> compile_rows_acc(rest, st2, Cons(row_sql, acc))
     end
   end
 end
 
 pfn compile_one_row(vals, st) do
   match compile_sql_values(vals, st, Nil) do
-  | (parts, st2) -> ("(" ++ join_strs(rev_strs(parts), ", ") ++ ")", st2)
+  (parts, st2) -> ("(" ++ join_strs(rev_strs(parts), ", ") ++ ")", st2)
   end
 end
 
 pfn compile_sql_values(vals, st, acc) do
   match vals do
-  | Nil -> (acc, st)
-  | Cons(v, rest) ->
+  Nil -> (acc, st)
+  Cons(v, rest) -> do
     let nc = st.param_count + 1
     let param = sqlval_to_param(v)
-    compile_sql_values(rest, { param_count = nc, params = Cons(param, st.params) },
-                       Cons("$" ++ int_to_string(nc), acc))
+    compile_sql_values(rest, { param_count = nc, params = Cons(param, st.params) }, Cons("$" ++ int_to_string(nc), acc))
+  end
   end
 end
 
 pfn compile_conflict(opt) do
   match opt do
-  | None -> ""
-  | Some(DoNothing) -> " ON CONFLICT DO NOTHING"
-  | Some(DoUpdate(sets)) ->
+  None -> ""
+  Some(DoNothing) -> " ON CONFLICT DO NOTHING"
+  Some(DoUpdate(sets)) ->
     " ON CONFLICT DO UPDATE SET " ++ join_strs(map_conflict_sets(sets), ", ")
   end
 end
 
 pfn map_conflict_sets(sets) do
   match sets do
-  | Nil -> Nil
-  | Cons((col, expr), rest) ->
+  Nil -> Nil
+  Cons((col, expr), rest) ->
     Cons(quote_ident(col) ++ " = " ++ compile_expr_inline_m(expr),
          map_conflict_sets(rest))
   end
@@ -97,36 +98,37 @@ end
 --- "UPDATE \"t\" SET \"x\" = $1"
 fn compile_update(u) do
   match u do
-  | Update(f) -> cu_build(f, { param_count = 0, params = Nil })
+  Update(f) -> cu_build(f, { param_count = 0, params = Nil })
   end
 end
 
 pfn cu_build(f, st) do
   match compile_sets(f.sets, st) do
-  | (sets_sql, st2) ->
+  (sets_sql, st2) ->
     match compile_wheres_m(f.wheres, st2) do
-    | (where_sql, st3) ->
+    (where_sql, st3) -> do
       let ret_sql = compile_returning(f.returning_)
       let sql = "UPDATE " ++ quote_ident(f.table_) ++ " SET " ++ sets_sql
                 ++ where_sql ++ ret_sql
       { sql = sql, params = rev_params(st3.params) }
+    end
     end
   end
 end
 
 pfn compile_sets(sets, st) do
   match sets do
-  | Nil -> ("", st)
-  | _ -> compile_sets_acc(sets, st, Nil)
+  Nil -> ("", st)
+  _   -> compile_sets_acc(sets, st, Nil)
   end
 end
 
 pfn compile_sets_acc(sets, st, acc) do
   match sets do
-  | Nil -> (join_strs(rev_strs(acc), ", "), st)
-  | Cons((col, expr), rest) ->
+  Nil -> (join_strs(rev_strs(acc), ", "), st)
+  Cons((col, expr), rest) ->
     match compile_expr_m(expr, st) do
-    | (expr_sql, st2) ->
+    (expr_sql, st2) ->
       compile_sets_acc(rest, st2, Cons(quote_ident(col) ++ " = " ++ expr_sql, acc))
     end
   end
@@ -140,16 +142,17 @@ end
 --- "DELETE FROM \"t\" WHERE \"id\" = $1"
 fn compile_delete(d) do
   match d do
-  | Delete(f) -> cd_build(f, { param_count = 0, params = Nil })
+  Delete(f) -> cd_build(f, { param_count = 0, params = Nil })
   end
 end
 
 pfn cd_build(f, st) do
   match compile_wheres_m(f.wheres, st) do
-  | (where_sql, st2) ->
+  (where_sql, st2) -> do
     let ret_sql = compile_returning(f.returning_)
     let sql = "DELETE FROM " ++ quote_ident(f.table_) ++ where_sql ++ ret_sql
     { sql = sql, params = rev_params(st2.params) }
+  end
   end
 end
 
@@ -157,26 +160,26 @@ end
 
 pfn compile_wheres_m(wheres, st) do
   match wheres do
-  | Nil -> ("", st)
-  | _ ->
+  Nil -> ("", st)
+  _   ->
     match compile_where_parts_m(wheres, st, Nil) do
-    | (parts, st2) -> (" WHERE " ++ join_where_parts_m(rev_wp_m(parts)), st2)
+    (parts, st2) -> (" WHERE " ++ join_where_parts_m(rev_wp_m(parts)), st2)
     end
   end
 end
 
 pfn compile_where_parts_m(wheres, st, acc) do
   match wheres do
-  | Nil -> (acc, st)
-  | Cons(w, rest) ->
+  Nil -> (acc, st)
+  Cons(w, rest) ->
     match w do
-    | Where(e) ->
+    Where(e) ->
       match compile_expr_m(e, st) do
-      | (s, st2) -> compile_where_parts_m(rest, st2, Cons(("AND", s), acc))
+      (s, st2) -> compile_where_parts_m(rest, st2, Cons(("AND", s), acc))
       end
-    | OrWhere(e) ->
+    OrWhere(e) ->
       match compile_expr_m(e, st) do
-      | (s, st2) -> compile_where_parts_m(rest, st2, Cons(("OR", s), acc))
+      (s, st2) -> compile_where_parts_m(rest, st2, Cons(("OR", s), acc))
       end
     end
   end
@@ -184,35 +187,36 @@ end
 
 pfn join_where_parts_m(parts) do
   match parts do
-  | Nil -> "TRUE"
-  | Cons((_, first), rest) -> join_where_rest_m(first, rest)
+  Nil -> "TRUE"
+  Cons((_, first), rest) -> join_where_rest_m(first, rest)
   end
 end
 
 pfn join_where_rest_m(acc, parts) do
   match parts do
-  | Nil -> acc
-  | Cons((op, expr), rest) -> join_where_rest_m(acc ++ " " ++ op ++ " " ++ expr, rest)
+  Nil -> acc
+  Cons((op, expr), rest) -> join_where_rest_m(acc ++ " " ++ op ++ " " ++ expr, rest)
   end
 end
 
 pfn compile_returning(exprs) do
   match exprs do
-  | Nil -> ""
-  | _ -> " RETURNING " ++ join_strs(map_returning(exprs), ", ")
+  Nil -> ""
+  _   -> " RETURNING " ++ join_strs(map_returning(exprs), ", ")
   end
 end
 
 pfn map_returning(exprs) do
   match exprs do
-  | Nil -> Nil
-  | Cons(e, rest) ->
+  Nil -> Nil
+  Cons(e, rest) -> do
     let s = match e do
-      | SelectAll      -> "*"
-      | SelectField(x) -> compile_expr_inline_m(x)
-      | SelectAs(x, a) -> compile_expr_inline_m(x) ++ " AS " ++ quote_ident(a)
+      SelectAll      -> "*"
+      SelectField(x) -> compile_expr_inline_m(x)
+      SelectAs(x, a) -> compile_expr_inline_m(x) ++ " AS " ++ quote_ident(a)
     end
     Cons(s, map_returning(rest))
+  end
   end
 end
 
@@ -220,76 +224,77 @@ end
 -- Mirrors compile_expr from Compile but with MutState.
 pfn compile_expr_m(e, st) do
   match e do
-  | Lit(v) ->
+  Lit(v) -> do
     let nc = st.param_count + 1
-    ("$" ++ int_to_string(nc),
-     { param_count = nc, params = Cons(sqlval_to_param(v), st.params) })
-  | Col(name)     -> (quote_ident(name), st)
-  | QCol(t, name) -> (quote_ident(t) ++ "." ++ quote_ident(name), st)
-  | Eq(l, r) ->
-    match compile_expr_m(l, st) do | (ls, s1) ->
-      match compile_expr_m(r, s1) do | (rs, s2) -> (ls ++ " = " ++ rs, s2) end
+    let param = sqlval_to_param(v)
+    ("$" ++ int_to_string(nc), { param_count = nc, params = Cons(param, st.params) })
+  end
+  Col(name)     -> (quote_ident(name), st)
+  QCol(t, name) -> (quote_ident(t) ++ "." ++ quote_ident(name), st)
+  Eq(l, r) ->
+    match compile_expr_m(l, st) do (ls, s1) ->
+      match compile_expr_m(r, s1) do (rs, s2) -> (ls ++ " = " ++ rs, s2) end
     end
-  | Neq(l, r) ->
-    match compile_expr_m(l, st) do | (ls, s1) ->
-      match compile_expr_m(r, s1) do | (rs, s2) -> (ls ++ " <> " ++ rs, s2) end
+  Neq(l, r) ->
+    match compile_expr_m(l, st) do (ls, s1) ->
+      match compile_expr_m(r, s1) do (rs, s2) -> (ls ++ " <> " ++ rs, s2) end
     end
-  | Lt(l, r) ->
-    match compile_expr_m(l, st) do | (ls, s1) ->
-      match compile_expr_m(r, s1) do | (rs, s2) -> (ls ++ " < " ++ rs, s2) end
+  Lt(l, r) ->
+    match compile_expr_m(l, st) do (ls, s1) ->
+      match compile_expr_m(r, s1) do (rs, s2) -> (ls ++ " < " ++ rs, s2) end
     end
-  | Gt(l, r) ->
-    match compile_expr_m(l, st) do | (ls, s1) ->
-      match compile_expr_m(r, s1) do | (rs, s2) -> (ls ++ " > " ++ rs, s2) end
+  Gt(l, r) ->
+    match compile_expr_m(l, st) do (ls, s1) ->
+      match compile_expr_m(r, s1) do (rs, s2) -> (ls ++ " > " ++ rs, s2) end
     end
-  | Lte(l, r) ->
-    match compile_expr_m(l, st) do | (ls, s1) ->
-      match compile_expr_m(r, s1) do | (rs, s2) -> (ls ++ " <= " ++ rs, s2) end
+  Lte(l, r) ->
+    match compile_expr_m(l, st) do (ls, s1) ->
+      match compile_expr_m(r, s1) do (rs, s2) -> (ls ++ " <= " ++ rs, s2) end
     end
-  | Gte(l, r) ->
-    match compile_expr_m(l, st) do | (ls, s1) ->
-      match compile_expr_m(r, s1) do | (rs, s2) -> (ls ++ " >= " ++ rs, s2) end
+  Gte(l, r) ->
+    match compile_expr_m(l, st) do (ls, s1) ->
+      match compile_expr_m(r, s1) do (rs, s2) -> (ls ++ " >= " ++ rs, s2) end
     end
-  | And(l, r) ->
-    match compile_expr_m(l, st) do | (ls, s1) ->
-      match compile_expr_m(r, s1) do | (rs, s2) -> ("(" ++ ls ++ " AND " ++ rs ++ ")", s2) end
+  And(l, r) ->
+    match compile_expr_m(l, st) do (ls, s1) ->
+      match compile_expr_m(r, s1) do (rs, s2) -> ("(" ++ ls ++ " AND " ++ rs ++ ")", s2) end
     end
-  | Or(l, r) ->
-    match compile_expr_m(l, st) do | (ls, s1) ->
-      match compile_expr_m(r, s1) do | (rs, s2) -> ("(" ++ ls ++ " OR " ++ rs ++ ")", s2) end
+  Or(l, r) ->
+    match compile_expr_m(l, st) do (ls, s1) ->
+      match compile_expr_m(r, s1) do (rs, s2) -> ("(" ++ ls ++ " OR " ++ rs ++ ")", s2) end
     end
-  | Not(inner) ->
-    match compile_expr_m(inner, st) do | (s, st2) -> ("NOT (" ++ s ++ ")", st2) end
-  | IsNull(inner) ->
-    match compile_expr_m(inner, st) do | (s, st2) -> (s ++ " IS NULL", st2) end
-  | IsNotNull(inner) ->
-    match compile_expr_m(inner, st) do | (s, st2) -> (s ++ " IS NOT NULL", st2) end
-  | In(inner, vals) ->
+  Not(inner) ->
+    match compile_expr_m(inner, st) do (s, st2) -> ("NOT (" ++ s ++ ")", st2) end
+  IsNull(inner) ->
+    match compile_expr_m(inner, st) do (s, st2) -> (s ++ " IS NULL", st2) end
+  IsNotNull(inner) ->
+    match compile_expr_m(inner, st) do (s, st2) -> (s ++ " IS NOT NULL", st2) end
+  In(inner, vals) ->
     match compile_expr_m(inner, st) do
-    | (s, s1) ->
+    (s, s1) ->
       match compile_expr_list_m(vals, s1, Nil) do
-      | (parts, s2) -> (s ++ " IN (" ++ join_strs(rev_strs(parts), ", ") ++ ")", s2)
+      (parts, s2) -> (s ++ " IN (" ++ join_strs(rev_strs(parts), ", ") ++ ")", s2)
       end
     end
-  | NotIn(inner, vals) ->
+  NotIn(inner, vals) ->
     match compile_expr_m(inner, st) do
-    | (s, s1) ->
+    (s, s1) ->
       match compile_expr_list_m(vals, s1, Nil) do
-      | (parts, s2) -> (s ++ " NOT IN (" ++ join_strs(rev_strs(parts), ", ") ++ ")", s2)
+      (parts, s2) -> (s ++ " NOT IN (" ++ join_strs(rev_strs(parts), ", ") ++ ")", s2)
       end
     end
-  | Raw(sql) -> (sql, st)
-  | ExprParam(n) -> ("$" ++ int_to_string(n), st)
-  | _ -> (quote_ident("unsupported"), st)
+  Raw(sql) -> (sql, st)
+  ExprParam(n) -> ("$" ++ int_to_string(n), st)
+  _            -> (quote_ident("unsupported"), st)
   end
 end
 
 pfn compile_expr_list_m(exprs, st, acc) do
   match exprs do
-  | Nil -> (acc, st)
-  | Cons(e, rest) ->
+  Nil -> (acc, st)
+  Cons(e, rest) ->
     match compile_expr_m(e, st) do
-    | (s, st2) -> compile_expr_list_m(rest, st2, Cons(s, acc))
+    (s, st2) -> compile_expr_list_m(rest, st2, Cons(s, acc))
     end
   end
 end
@@ -297,11 +302,11 @@ end
 -- Inline expression compiler (for ON CONFLICT DO UPDATE, no params).
 pfn compile_expr_inline_m(e) do
   match e do
-  | Lit(v)         -> sql_val_str(v)
-  | Col(name)      -> quote_ident(name)
-  | QCol(t, name)  -> quote_ident(t) ++ "." ++ quote_ident(name)
-  | Raw(sql)       -> sql
-  | _              -> "/* unsupported */"
+  Lit(v)         -> sql_val_str(v)
+  Col(name)      -> quote_ident(name)
+  QCol(t, name)  -> quote_ident(t) ++ "." ++ quote_ident(name)
+  Raw(sql)       -> sql
+  _              -> "/* unsupported */"
   end
 end
 
@@ -309,21 +314,21 @@ end
 
 pfn sqlval_to_param(v) do
   match v do
-  | PInt(n)    -> ParamText(int_to_string(n))
-  | PFloat(f_) -> ParamText(float_to_string(f_))
-  | PString(s) -> ParamText(s)
-  | PBool(b)   -> ParamText(if b then "t" else "f")
-  | PNull      -> ParamNull
+  PInt(n)    -> ParamText(int_to_string(n))
+  PFloat(f_) -> ParamText(float_to_string(f_))
+  PString(s) -> ParamText(s)
+  PBool(b)   -> ParamText(if b then "t" else "f")
+  PNull      -> ParamNull
   end
 end
 
 pfn sql_val_str(v) do
   match v do
-  | PInt(n)    -> int_to_string(n)
-  | PFloat(f_) -> float_to_string(f_)
-  | PString(s) -> "'" ++ s ++ "'"
-  | PBool(b)   -> if b then "TRUE" else "FALSE"
-  | PNull      -> "NULL"
+  PInt(n)    -> int_to_string(n)
+  PFloat(f_) -> float_to_string(f_)
+  PString(s) -> "'" ++ s ++ "'"
+  PBool(b)   -> if b then "TRUE" else "FALSE"
+  PNull      -> "NULL"
   end
 end
 
@@ -331,16 +336,16 @@ pfn quote_ident(name) do "\"" ++ name ++ "\"" end
 
 pfn map_quoted(strs) do
   match strs do
-  | Nil -> Nil
-  | Cons(s, rest) -> Cons(quote_ident(s), map_quoted(rest))
+  Nil -> Nil
+  Cons(s, rest) -> Cons(quote_ident(s), map_quoted(rest))
   end
 end
 
 pfn join_strs(parts, sep) do
   match parts do
-  | Nil -> ""
-  | Cons(first, Nil) -> first
-  | Cons(first, rest) -> first ++ sep ++ join_strs(rest, sep)
+  Nil -> ""
+  Cons(first, Nil) -> first
+  Cons(first, rest) -> first ++ sep ++ join_strs(rest, sep)
   end
 end
 

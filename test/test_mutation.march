@@ -4,6 +4,7 @@
 mod TestMutation do
 
 import Ast
+import Message
 import Mutation
 import MutationBuild
 import MutationCompile
@@ -25,13 +26,14 @@ fn test_insert_type() do
     returning_  = Nil
   })
   match i do
-  | Insert(f) ->
+  Insert(f) -> do
     assert(f.table_ == "users")
     match f.columns do
-    | Cons("name", Cons("email", Nil)) -> ()
-    | _ -> assert(false)
+    Cons("name", Cons("email", Nil)) -> ()
+    _ -> assert(false)
     end
-    match f.on_conflict do | None -> () | Some(_) -> assert(false) end
+    match f.on_conflict do None -> () | Some(_) -> assert(false) end
+  end
   end
 end
 
@@ -43,10 +45,11 @@ fn test_update_type() do
     returning_ = [SelectAll]
   })
   match u do
-  | Update(f) ->
+  Update(f) -> do
     assert(f.table_ == "users")
-    match f.sets do | Cons(("name", _), Nil) -> () | _ -> assert(false) end
-    match f.returning_ do | Cons(SelectAll, Nil) -> () | _ -> assert(false) end
+    match f.sets do Cons(("name", _), Nil) -> () | _ -> assert(false) end
+    match f.returning_ do Cons(SelectAll, Nil) -> () | _ -> assert(false) end
+  end
   end
 end
 
@@ -57,9 +60,10 @@ fn test_delete_type() do
     returning_ = Nil
   })
   match d do
-  | Delete(f) ->
+  Delete(f) -> do
     assert(f.table_ == "posts")
-    match f.wheres do | Cons(Where(_), Nil) -> () | _ -> assert(false) end
+    match f.wheres do Cons(Where(_), Nil) -> () | _ -> assert(false) end
+  end
   end
 end
 
@@ -69,9 +73,9 @@ end
 
 fn test_conflict_do_update() do
   match DoUpdate([("name", Lit(PString("new")))]) do
-  | DoUpdate(sets) ->
+  DoUpdate(sets) ->
     match sets do | Cons(("name", _), Nil) -> () | _ -> assert(false) end
-  | _ -> assert(false)
+  _ -> assert(false)
   end
 end
 
@@ -84,11 +88,12 @@ fn test_insert_builder() do
          |> insert_row([PInt(2), PString("Bob")])
          |> insert_returning_all()
   match i do
-  | Insert(f) ->
+  Insert(f) -> do
     assert(f.table_ == "users")
-    match f.columns do | Cons("id", Cons("name", Nil)) -> () | _ -> assert(false) end
-    match f.rows do | Cons(_, Cons(_, Nil)) -> () | _ -> assert(false) end
-    match f.returning_ do | Cons(SelectAll, Nil) -> () | _ -> assert(false) end
+    match f.columns do Cons("id", Cons("name", Nil)) -> () | _ -> assert(false) end
+    match f.rows do Cons(_, Cons(_, Nil)) -> () | _ -> assert(false) end
+    match f.returning_ do Cons(SelectAll, Nil) -> () | _ -> assert(false) end
+  end
   end
 end
 
@@ -98,7 +103,7 @@ fn test_insert_on_conflict_do_nothing() do
          |> insert_row([PInt(1)])
          |> on_conflict_do_nothing()
   match i do
-  | Insert(f) ->
+  Insert(f) ->
     match f.on_conflict do | Some(DoNothing) -> () | _ -> assert(false) end
   end
 end
@@ -110,11 +115,12 @@ fn test_update_builder() do
          |> update_where(Eq(Col("id"), Lit(PInt(7))))
          |> update_returning_all()
   match u do
-  | Update(f) ->
+  Update(f) -> do
     assert(f.table_ == "users")
-    match f.sets do | Cons(_, Cons(_, Nil)) -> () | _ -> assert(false) end
-    match f.wheres do | Cons(Where(_), Nil) -> () | _ -> assert(false) end
-    match f.returning_ do | Cons(SelectAll, Nil) -> () | _ -> assert(false) end
+    match f.sets do Cons(_, Cons(_, Nil)) -> () | _ -> assert(false) end
+    match f.wheres do Cons(Where(_), Nil) -> () | _ -> assert(false) end
+    match f.returning_ do Cons(SelectAll, Nil) -> () | _ -> assert(false) end
+  end
   end
 end
 
@@ -122,9 +128,10 @@ fn test_delete_builder() do
   let d = delete_from("sessions")
          |> delete_where(Eq(Col("user_id"), Lit(PInt(42))))
   match d do
-  | Delete(f) ->
+  Delete(f) -> do
     assert(f.table_ == "sessions")
-    match f.wheres do | Cons(Where(_), Nil) -> () | _ -> assert(false) end
+    match f.wheres do Cons(Where(_), Nil) -> () | _ -> assert(false) end
+  end
   end
 end
 
@@ -136,9 +143,10 @@ fn test_insert_many_builder() do
   ]
   let i = insert_many("users", ["id", "name"], rows)
   match i do
-  | Insert(f) ->
+  Insert(f) -> do
     assert(f.table_ == "users")
-    match f.rows do | Cons(_, Cons(_, Cons(_, Nil))) -> () | _ -> assert(false) end
+    match f.rows do Cons(_, Cons(_, Cons(_, Nil))) -> () | _ -> assert(false) end
+  end
   end
 end
 
@@ -153,8 +161,8 @@ fn test_compile_insert() do
   assert(r.sql == "INSERT INTO \"users\" (\"name\", \"email\") VALUES ($1, $2) RETURNING *")
   assert(list_len(r.params) == 2)
   match r.params do
-  | Cons(ParamText("Alice"), Cons(ParamText("alice@example.com"), Nil)) -> ()
-  | _ -> assert(false)
+  Cons(ParamText("Alice"), Cons(ParamText("alice@example.com"), Nil)) -> ()
+  _ -> assert(false)
   end
 end
 

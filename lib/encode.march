@@ -67,7 +67,7 @@ fn encode(msg : FrontendMessage) : Bytes do
     let payload = Bytes.concat(i32_be(196608), Bytes.concat(pairs, Bytes.from_list([0])))
     length_prefix(payload)
   end
-  Query(sql) ->
+  SimpleQuery(sql) ->
     frame(81, cstring(sql))
   Parse(name, sql, oids) -> do
     let oid_bytes = List.fold_left(Bytes.empty(), oids, fn (acc, oid) ->

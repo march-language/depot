@@ -9,36 +9,36 @@ import Schema
 
 fn test_from_oid_int4() do
   match from_oid(23) do
-  | TInt32 -> ()
-  | _ -> assert(false)
+  TInt32 -> ()
+  _ -> assert(false)
   end
 end
 
 fn test_from_oid_text() do
   match from_oid(25) do
-  | TText -> ()
-  | _ -> assert(false)
+  TText -> ()
+  _ -> assert(false)
   end
 end
 
 fn test_from_oid_bool() do
   match from_oid(16) do
-  | TBool -> ()
-  | _ -> assert(false)
+  TBool -> ()
+  _ -> assert(false)
   end
 end
 
 fn test_from_oid_array_text() do
   match from_oid(1009) do
-  | TArray(TText) -> ()
-  | _ -> assert(false)
+  TArray(TText) -> ()
+  _ -> assert(false)
   end
 end
 
 fn test_from_oid_unknown() do
   match from_oid(9999) do
-  | TUnknown(oid) -> assert(oid == 9999)
-  | _ -> assert(false)
+  TUnknown(oid) -> assert(oid == 9999)
+  _ -> assert(false)
   end
 end
 
@@ -88,36 +88,36 @@ end
 
 fn test_parse_bool_true() do
   match parse_text_value(TBool, "t") do
-  | VBool(b) -> assert(b == true)
-  | _ -> assert(false)
+  VBool(b) -> assert(b == true)
+  _ -> assert(false)
   end
 end
 
 fn test_parse_bool_false() do
   match parse_text_value(TBool, "f") do
-  | VBool(b) -> assert(b == false)
-  | _ -> assert(false)
+  VBool(b) -> assert(b == false)
+  _ -> assert(false)
   end
 end
 
 fn test_parse_int() do
   match parse_text_value(TInt32, "42") do
-  | VInt(n) -> assert(n == 42)
-  | _ -> assert(false)
+  VInt(n) -> assert(n == 42)
+  _ -> assert(false)
   end
 end
 
 fn test_parse_text() do
   match parse_text_value(TText, "hello") do
-  | VString(s) -> assert(s == "hello")
-  | _ -> assert(false)
+  VString(s) -> assert(s == "hello")
+  _ -> assert(false)
   end
 end
 
 fn test_parse_unknown() do
   match parse_text_value(TUnknown(999), "raw") do
-  | VUnparsed(s) -> assert(s == "raw")
-  | _ -> assert(false)
+  VUnparsed(s) -> assert(s == "raw")
+  _ -> assert(false)
   end
 end
 

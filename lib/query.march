@@ -61,7 +61,7 @@ end
 ---
 --- Returns a `QueryResult` with columns, rows, and command tag.
 fn simple_query(conn, sql) do
-  match send_msg(conn.fd, Query(sql)) do
+  match send_msg(conn.fd, SimpleQuery(sql)) do
   Err(e) -> Err("simple_query send: " ++ e)
   Ok(_)  -> simple_query_recv(conn.fd, Nil, Nil, "")
   end

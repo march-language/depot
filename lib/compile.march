@@ -530,32 +530,6 @@ pfn compile_expr(e, st) do
     match compile_expr(inner, st) do
     (s, st2) -> ("MAX(" ++ s ++ ")", st2)
     end
-  In(inner, vals) ->
-    match compile_expr(inner, st) do
-    (s, s1) ->
-      match compile_expr_list(vals, s1, Nil) do
-      (parts, s2) ->
-        (s ++ " IN (" ++ join_strs(rev_strs(parts), ", ") ++ ")", s2)
-      end
-    end
-  NotIn(inner, vals) ->
-    match compile_expr(inner, st) do
-    (s, s1) ->
-      match compile_expr_list(vals, s1, Nil) do
-      (parts, s2) ->
-        (s ++ " NOT IN (" ++ join_strs(rev_strs(parts), ", ") ++ ")", s2)
-      end
-    end
-  Between(e, lo, hi) ->
-    match compile_expr(e, st) do
-    (es, s1) ->
-      match compile_expr(lo, s1) do
-      (los, s2) ->
-        match compile_expr(hi, s2) do
-        (his, s3) -> (es ++ " BETWEEN " ++ los ++ " AND " ++ his, s3)
-        end
-      end
-    end
   CountAll     -> ("COUNT(*)", st)
   ExprParam(n) -> ("$" ++ int_to_string(n), st)
   Raw(sql)     -> (sql, st)
@@ -602,12 +576,6 @@ pfn compile_expr_inline(e) do
   Avg(inner)     -> "AVG("   ++ compile_expr_inline(inner) ++ ")"
   Min(inner)     -> "MIN("   ++ compile_expr_inline(inner) ++ ")"
   Max(inner)     -> "MAX("   ++ compile_expr_inline(inner) ++ ")"
-  In(inner, vals)    ->
-    compile_expr_inline(inner) ++ " IN (" ++ join_strs(compile_exprs_inline(vals), ", ") ++ ")"
-  NotIn(inner, vals) ->
-    compile_expr_inline(inner) ++ " NOT IN (" ++ join_strs(compile_exprs_inline(vals), ", ") ++ ")"
-  Between(e, lo, hi) ->
-    compile_expr_inline(e) ++ " BETWEEN " ++ compile_expr_inline(lo) ++ " AND " ++ compile_expr_inline(hi)
   CountAll       -> "COUNT(*)"
   ExprParam(n)   -> "$" ++ int_to_string(n)
   Raw(sql)       -> sql
