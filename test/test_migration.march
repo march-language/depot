@@ -1,0 +1,152 @@
+-- test/test_migration.march
+-- Tests for migration DDL generation and versioned runner logic.
+-- All tests are pure (no DB connection required).
+
+mod TestMigration do
+
+import Migration
+
+-- ---- Column/table def helpers ----
+
+pfn text_col(name) do
+  { name = name, col_type = "text", nullable = false,
+    default_ = None, primary_key = false, unique_ = false, references = None }
+end
+
+pfn pk_col(name) do
+  { name = name, col_type = "bigint", nullable = false,
+    default_ = Some("GENERATED ALWAYS AS IDENTITY"), primary_key = true,
+    unique_ = false, references = None }
+end
+
+pfn null_col(name, t) do
+  { name = name, col_type = t, nullable = true,
+    default_ = None, primary_key = false, unique_ = false, references = None }
+end
+
+-- ---- DDL generation tests ----
+
+fn test_create_table() do
+  let op = CreateTable({
+    name = "users",
+    columns = [pk_col("id"), text_col("name"), text_col("email")],
+    pk = None
+  })
+  let sql = op_to_sql(op)
+  assert(sql == "CREATE TABLE IF NOT EXISTS \"users\" (\n  \"id\" bigint DEFAULT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,\n  \"name\" text NOT NULL,\n  \"email\" text NOT NULL\n)")
+end
+
+fn test_add_column() do
+  let op = AddColumn("users", { name = "phone", col_type = "text", nullable = true,
+    default_ = None, primary_key = false, unique_ = false, references = None })
+  let sql = op_to_sql(op)
+  assert(sql == "ALTER TABLE \"users\" ADD COLUMN IF NOT EXISTS \"phone\" text")
+end
+
+fn test_add_column_not_null_default() do
+  let op = AddColumn("orders", { name = "status", col_type = "text", nullable = false,
+    default_ = Some("'pending'"), primary_key = false, unique_ = false, references = None })
+  let sql = op_to_sql(op)
+  assert(sql == "ALTER TABLE \"orders\" ADD COLUMN IF NOT EXISTS \"status\" text NOT NULL DEFAULT 'pending'")
+end
+
+fn test_remove_column() do
+  let sql = op_to_sql(RemoveColumn("users", "phone"))
+  assert(sql == "ALTER TABLE \"users\" DROP COLUMN IF EXISTS \"phone\"")
+end
+
+fn test_drop_table() do
+  let sql = op_to_sql(DropTable("temp_cache"))
+  assert(sql == "DROP TABLE IF EXISTS \"temp_cache\"")
+end
+
+fn test_add_index() do
+  let sql = op_to_sql(AddIndex({ name = "users_email_idx", table = "users",
+    columns = ["email"], unique_ = false }))
+  assert(sql == "CREATE INDEX IF NOT EXISTS \"users_email_idx\" ON \"users\" (\"email\")")
+end
+
+fn test_add_unique_index() do
+  let sql = op_to_sql(AddIndex({ name = "users_email_key", table = "users",
+    columns = ["email"], unique_ = true }))
+  assert(sql == "CREATE UNIQUE INDEX IF NOT EXISTS \"users_email_key\" ON \"users\" (\"email\")")
+end
+
+fn test_drop_index() do
+  let sql = op_to_sql(DropIndex("users_email_idx"))
+  assert(sql == "DROP INDEX IF EXISTS \"users_email_idx\"")
+end
+
+fn test_raw_sql_passthrough() do
+  let sql = op_to_sql(RawSql("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\""))
+  assert(sql == "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\"")
+end
+
+fn test_rename_column() do
+  let sql = op_to_sql(AlterTable("users", [RenameColumn("full_name", "name")]))
+  assert(sql == "ALTER TABLE \"users\" RENAME COLUMN \"full_name\" TO \"name\"")
+end
+
+-- ---- Migration ADT tests ----
+
+fn test_migration_structure() do
+  let m = {
+    version = 20260327001,
+    name    = "create_users",
+    up      = [CreateTable({ name = "users", columns = [pk_col("id"), text_col("name")], pk = None })],
+    down    = [DropTable("users")]
+  }
+  assert(m.version == 20260327001)
+  assert(m.name == "create_users")
+  match m.up do | Cons(CreateTable(_), Nil) -> () | _ -> assert(false) end
+  match m.down do | Cons(DropTable(_), Nil) -> () | _ -> assert(false) end
+end
+
+-- ---- Version filtering logic tests ----
+
+fn test_pending_filter() do
+  let applied = [1, 2, 3]
+  let all_versions = [1, 2, 3, 4, 5]
+  let pending = filter_pending(all_versions, applied)
+  match pending do
+  | Cons(4, Cons(5, Nil)) -> ()
+  | _ -> assert(false)
+  end
+end
+
+fn test_pending_all_applied() do
+  let applied = [1, 2, 3]
+  let all_versions = [1, 2, 3]
+  let pending = filter_pending(all_versions, applied)
+  match pending do | Nil -> () | _ -> assert(false) end
+end
+
+fn test_pending_none_applied() do
+  let applied = Nil
+  let all_versions = [10, 20, 30]
+  let pending = filter_pending(all_versions, applied)
+  match pending do
+  | Cons(10, Cons(20, Cons(30, Nil))) -> ()
+  | _ -> assert(false)
+  end
+end
+
+fn main() : Unit do
+  test_create_table()
+  test_add_column()
+  test_add_column_not_null_default()
+  test_remove_column()
+  test_drop_table()
+  test_add_index()
+  test_add_unique_index()
+  test_drop_index()
+  test_raw_sql_passthrough()
+  test_rename_column()
+  test_migration_structure()
+  test_pending_filter()
+  test_pending_all_applied()
+  test_pending_none_applied()
+  println("test_migration: all tests passed")
+end
+
+end

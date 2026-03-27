@@ -1,0 +1,61 @@
+-- depot/lib/cursor.march
+-- Server-side cursor support for streaming large result sets.
+--
+-- PostgreSQL cursors allow fetching rows in batches, avoiding loading
+-- millions of rows into memory. Cursors MUST be used within a transaction.
+--
+-- IMPORTANT: declare_sql uses compile_inline (literal values embedded in SQL)
+-- because PostgreSQL DECLARE ... CURSOR FOR does not support $N parameters
+-- in this form. Only use cursor queries where you control the filter values
+-- (not arbitrary user input). For user-supplied filters, build the query
+-- carefully using the ADT (values go through Lit(SqlValue)) so that even
+-- the inline path quotes strings safely.
+--
+-- Usage:
+--   match simple_query(conn, "BEGIN") do
+--   | Ok(_) ->
+--     let name = "my_cursor"
+--     match simple_query(conn, declare_sql(name, q)) do
+--     | Ok(_) -> fetch_loop(conn, name, 500)
+--     | Err(e) -> ...
+--     end
+--   | Err(e) -> ...
+--   end
+
+mod Cursor do
+
+import Ast
+import Compile
+
+--- Generates the DECLARE ... CURSOR FOR ... SQL.
+---
+--- Uses inline compilation (literal values) since DECLARE does not accept
+--- $N placeholders. Returns a plain SQL string.
+fn declare_sql(cursor_name, q) do
+  let compiled = compile_inline(q)
+  "DECLARE " ++ quote_ident(cursor_name) ++ " CURSOR FOR " ++ compiled.sql
+end
+
+--- Generates FETCH n FROM cursor_name.
+fn fetch_sql(cursor_name, n) do
+  "FETCH " ++ int_to_string(n) ++ " FROM " ++ quote_ident(cursor_name)
+end
+
+--- Generates FETCH ALL FROM cursor_name.
+fn fetch_all_sql(cursor_name) do
+  "FETCH ALL FROM " ++ quote_ident(cursor_name)
+end
+
+--- Generates CLOSE cursor_name.
+fn close_sql(cursor_name) do
+  "CLOSE " ++ quote_ident(cursor_name)
+end
+
+--- Generates MOVE n FROM cursor_name (skip n rows without fetching).
+fn move_sql(cursor_name, n) do
+  "MOVE " ++ int_to_string(n) ++ " FROM " ++ quote_ident(cursor_name)
+end
+
+pfn quote_ident(name) do "\"" ++ name ++ "\"" end
+
+end

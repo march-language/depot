@@ -1,0 +1,235 @@
+-- test/test_mutation.march
+-- Tests for DML ADT types, builders, and compiler.
+
+mod TestMutation do
+
+import Ast
+import Mutation
+import MutationBuild
+import MutationCompile
+
+-- ---- Helpers ----
+
+pfn list_len(lst) do
+  match lst do | Nil -> 0 | Cons(_, rest) -> 1 + list_len(rest) end
+end
+
+-- ---- ADT type tests ----
+
+fn test_insert_type() do
+  let i = Insert({
+    table_      = "users",
+    columns     = ["name", "email"],
+    rows        = [[PString("Alice"), PString("a@b.com")]],
+    on_conflict = None,
+    returning_  = Nil
+  })
+  match i do
+  | Insert(f) ->
+    assert(f.table_ == "users")
+    match f.columns do
+    | Cons("name", Cons("email", Nil)) -> ()
+    | _ -> assert(false)
+    end
+    match f.on_conflict do | None -> () | Some(_) -> assert(false) end
+  end
+end
+
+fn test_update_type() do
+  let u = Update({
+    table_     = "users",
+    sets       = [("name", Lit(PString("Bob")))],
+    wheres     = [Where(Eq(Col("id"), Lit(PInt(1))))],
+    returning_ = [SelectAll]
+  })
+  match u do
+  | Update(f) ->
+    assert(f.table_ == "users")
+    match f.sets do | Cons(("name", _), Nil) -> () | _ -> assert(false) end
+    match f.returning_ do | Cons(SelectAll, Nil) -> () | _ -> assert(false) end
+  end
+end
+
+fn test_delete_type() do
+  let d = Delete({
+    table_     = "posts",
+    wheres     = [Where(Eq(Col("id"), Lit(PInt(99))))],
+    returning_ = Nil
+  })
+  match d do
+  | Delete(f) ->
+    assert(f.table_ == "posts")
+    match f.wheres do | Cons(Where(_), Nil) -> () | _ -> assert(false) end
+  end
+end
+
+fn test_conflict_do_nothing() do
+  match DoNothing do | DoNothing -> () | _ -> assert(false) end
+end
+
+fn test_conflict_do_update() do
+  match DoUpdate([("name", Lit(PString("new")))]) do
+  | DoUpdate(sets) ->
+    match sets do | Cons(("name", _), Nil) -> () | _ -> assert(false) end
+  | _ -> assert(false)
+  end
+end
+
+-- ---- Builder tests ----
+
+fn test_insert_builder() do
+  let i = insert_into("users")
+         |> insert_cols(["id", "name"])
+         |> insert_row([PInt(1), PString("Alice")])
+         |> insert_row([PInt(2), PString("Bob")])
+         |> insert_returning_all()
+  match i do
+  | Insert(f) ->
+    assert(f.table_ == "users")
+    match f.columns do | Cons("id", Cons("name", Nil)) -> () | _ -> assert(false) end
+    match f.rows do | Cons(_, Cons(_, Nil)) -> () | _ -> assert(false) end
+    match f.returning_ do | Cons(SelectAll, Nil) -> () | _ -> assert(false) end
+  end
+end
+
+fn test_insert_on_conflict_do_nothing() do
+  let i = insert_into("t")
+         |> insert_cols(["x"])
+         |> insert_row([PInt(1)])
+         |> on_conflict_do_nothing()
+  match i do
+  | Insert(f) ->
+    match f.on_conflict do | Some(DoNothing) -> () | _ -> assert(false) end
+  end
+end
+
+fn test_update_builder() do
+  let u = update("users")
+         |> set_("name", Lit(PString("Carol")))
+         |> set_("active", Lit(PBool(true)))
+         |> update_where(Eq(Col("id"), Lit(PInt(7))))
+         |> update_returning_all()
+  match u do
+  | Update(f) ->
+    assert(f.table_ == "users")
+    match f.sets do | Cons(_, Cons(_, Nil)) -> () | _ -> assert(false) end
+    match f.wheres do | Cons(Where(_), Nil) -> () | _ -> assert(false) end
+    match f.returning_ do | Cons(SelectAll, Nil) -> () | _ -> assert(false) end
+  end
+end
+
+fn test_delete_builder() do
+  let d = delete_from("sessions")
+         |> delete_where(Eq(Col("user_id"), Lit(PInt(42))))
+  match d do
+  | Delete(f) ->
+    assert(f.table_ == "sessions")
+    match f.wheres do | Cons(Where(_), Nil) -> () | _ -> assert(false) end
+  end
+end
+
+fn test_insert_many_builder() do
+  let rows = [
+    [PInt(1), PString("Alice")],
+    [PInt(2), PString("Bob")],
+    [PInt(3), PString("Carol")]
+  ]
+  let i = insert_many("users", ["id", "name"], rows)
+  match i do
+  | Insert(f) ->
+    assert(f.table_ == "users")
+    match f.rows do | Cons(_, Cons(_, Cons(_, Nil))) -> () | _ -> assert(false) end
+  end
+end
+
+-- ---- Compiler tests ----
+
+fn test_compile_insert() do
+  let i = insert_into("users")
+         |> insert_cols(["name", "email"])
+         |> insert_row([PString("Alice"), PString("alice@example.com")])
+         |> insert_returning_all()
+  let r = compile_insert(i)
+  assert(r.sql == "INSERT INTO \"users\" (\"name\", \"email\") VALUES ($1, $2) RETURNING *")
+  assert(list_len(r.params) == 2)
+  match r.params do
+  | Cons(ParamText("Alice"), Cons(ParamText("alice@example.com"), Nil)) -> ()
+  | _ -> assert(false)
+  end
+end
+
+fn test_compile_insert_many() do
+  let i = insert_many("t", ["x", "y"], [[PInt(1), PInt(2)], [PInt(3), PInt(4)]])
+  let r = compile_insert(i)
+  assert(r.sql == "INSERT INTO \"t\" (\"x\", \"y\") VALUES ($1, $2), ($3, $4)")
+  assert(list_len(r.params) == 4)
+end
+
+fn test_compile_insert_on_conflict_do_nothing() do
+  let i = insert_into("t")
+         |> insert_cols(["id"])
+         |> insert_row([PInt(1)])
+         |> on_conflict_do_nothing()
+  let r = compile_insert(i)
+  assert(r.sql == "INSERT INTO \"t\" (\"id\") VALUES ($1) ON CONFLICT DO NOTHING")
+end
+
+fn test_compile_update() do
+  let u = update("users")
+         |> set_("active", Lit(PBool(false)))
+         |> update_where(Eq(Col("id"), Lit(PInt(42))))
+         |> update_returning_all()
+  let r = compile_update(u)
+  assert(r.sql == "UPDATE \"users\" SET \"active\" = $1 WHERE \"id\" = $2 RETURNING *")
+  assert(list_len(r.params) == 2)
+end
+
+fn test_compile_update_multi_set() do
+  let u = update("orders")
+         |> set_("status", Lit(PString("shipped")))
+         |> set_("shipped_at", Lit(PString("2026-01-01")))
+         |> update_where(Eq(Col("id"), Lit(PInt(7))))
+  let r = compile_update(u)
+  assert(r.sql == "UPDATE \"orders\" SET \"status\" = $1, \"shipped_at\" = $2 WHERE \"id\" = $3")
+  assert(list_len(r.params) == 3)
+end
+
+fn test_compile_delete() do
+  let d = delete_from("sessions")
+         |> delete_where(Eq(Col("user_id"), Lit(PInt(5))))
+         |> delete_returning_all()
+  let r = compile_delete(d)
+  assert(r.sql == "DELETE FROM \"sessions\" WHERE \"user_id\" = $1 RETURNING *")
+  assert(list_len(r.params) == 1)
+end
+
+fn test_compile_delete_no_returning() do
+  let d = delete_from("logs")
+         |> delete_where(Lt(Col("created_at"), Lit(PString("2025-01-01"))))
+  let r = compile_delete(d)
+  assert(r.sql == "DELETE FROM \"logs\" WHERE \"created_at\" < $1")
+  assert(list_len(r.params) == 1)
+end
+
+fn main() : Unit do
+  test_insert_type()
+  test_update_type()
+  test_delete_type()
+  test_conflict_do_nothing()
+  test_conflict_do_update()
+  test_insert_builder()
+  test_insert_on_conflict_do_nothing()
+  test_update_builder()
+  test_delete_builder()
+  test_insert_many_builder()
+  test_compile_insert()
+  test_compile_insert_many()
+  test_compile_insert_on_conflict_do_nothing()
+  test_compile_update()
+  test_compile_update_multi_set()
+  test_compile_delete()
+  test_compile_delete_no_returning()
+  println("test_mutation: all tests passed")
+end
+
+end
