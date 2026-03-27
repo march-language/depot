@@ -44,9 +44,10 @@ end
 --- true
 fn select(q, exprs) do
   match q do
-  | Query(f) ->
+  Query(f) -> do
     let items = map_exprs_to_select(exprs)
     Query({ f with selects = concat_selects(f.selects, items) })
+  end
   end
 end
 
@@ -56,7 +57,7 @@ end
 --- "uid"
 fn select_as(q, expr, alias_name) do
   match q do
-  | Query(f) -> Query({ f with selects = concat_selects(f.selects, [SelectAs(expr, alias_name)]) })
+  Query(f) -> Query({ f with selects = concat_selects(f.selects, [SelectAs(expr, alias_name)]) })
   end
 end
 
@@ -66,7 +67,7 @@ end
 --- true
 fn select_all(q) do
   match q do
-  | Query(f) -> Query({ f with selects = [SelectAll] })
+  Query(f) -> Query({ f with selects = [SelectAll] })
   end
 end
 
@@ -76,7 +77,7 @@ end
 --- true
 fn where_(q, expr) do
   match q do
-  | Query(f) -> Query({ f with wheres = concat_wheres(f.wheres, [Where(expr)]) })
+  Query(f) -> Query({ f with wheres = concat_wheres(f.wheres, [Where(expr)]) })
   end
 end
 
@@ -86,7 +87,7 @@ end
 --- true
 fn or_where(q, expr) do
   match q do
-  | Query(f) -> Query({ f with wheres = concat_wheres(f.wheres, [OrWhere(expr)]) })
+  Query(f) -> Query({ f with wheres = concat_wheres(f.wheres, [OrWhere(expr)]) })
   end
 end
 
@@ -96,7 +97,7 @@ end
 --- "u"
 fn join(q, table, on_expr) do
   match q do
-  | Query(f) -> Query({ f with joins = concat_joins(f.joins, [JoinClause(Inner, table, on_expr)]) })
+  Query(f) -> Query({ f with joins = concat_joins(f.joins, [JoinClause(Inner, table, on_expr)]) })
   end
 end
 
@@ -106,7 +107,7 @@ end
 --- true
 fn left_join(q, table, on_expr) do
   match q do
-  | Query(f) -> Query({ f with joins = concat_joins(f.joins, [JoinClause(Left, table, on_expr)]) })
+  Query(f) -> Query({ f with joins = concat_joins(f.joins, [JoinClause(Left, table, on_expr)]) })
   end
 end
 
@@ -116,7 +117,7 @@ end
 --- true
 fn right_join(q, table, on_expr) do
   match q do
-  | Query(f) -> Query({ f with joins = concat_joins(f.joins, [JoinClause(Right, table, on_expr)]) })
+  Query(f) -> Query({ f with joins = concat_joins(f.joins, [JoinClause(Right, table, on_expr)]) })
   end
 end
 
@@ -126,7 +127,7 @@ end
 --- true
 fn full_join(q, table, on_expr) do
   match q do
-  | Query(f) -> Query({ f with joins = concat_joins(f.joins, [JoinClause(FullOuter, table, on_expr)]) })
+  Query(f) -> Query({ f with joins = concat_joins(f.joins, [JoinClause(FullOuter, table, on_expr)]) })
   end
 end
 
@@ -136,7 +137,7 @@ end
 --- "u"
 fn cross_join(q, table) do
   match q do
-  | Query(f) -> Query({ f with joins = concat_joins(f.joins, [JoinClause(Cross, table, Lit(PBool(true)))]) })
+  Query(f) -> Query({ f with joins = concat_joins(f.joins, [JoinClause(Cross, table, Lit(PBool(true)))]) })
   end
 end
 
@@ -146,7 +147,7 @@ end
 --- true
 fn order_by(q, expr, dir) do
   match q do
-  | Query(f) -> Query({ f with orders = concat_orders(f.orders, [OrderExpr(expr, dir)]) })
+  Query(f) -> Query({ f with orders = concat_orders(f.orders, [OrderExpr(expr, dir)]) })
   end
 end
 
@@ -168,7 +169,7 @@ fn order_desc(q, expr) do order_by(q, expr, Desc) end
 --- true
 fn group_by(q, exprs) do
   match q do
-  | Query(f) -> Query({ f with group_bys = concat_exprs(f.group_bys, exprs) })
+  Query(f) -> Query({ f with group_bys = concat_exprs(f.group_bys, exprs) })
   end
 end
 
@@ -178,7 +179,7 @@ end
 --- true
 fn having(q, expr) do
   match q do
-  | Query(f) -> Query({ f with havings = concat_wheres(f.havings, [Where(expr)]) })
+  Query(f) -> Query({ f with havings = concat_wheres(f.havings, [Where(expr)]) })
   end
 end
 
@@ -210,43 +211,43 @@ end
 
 pfn map_exprs_to_select(exprs) do
   match exprs do
-  | Nil -> Nil
-  | Cons(e, rest) -> Cons(SelectField(e), map_exprs_to_select(rest))
+  Nil -> Nil
+  Cons(e, rest) -> Cons(SelectField(e), map_exprs_to_select(rest))
   end
 end
 
 pfn concat_selects(xs, ys) do
   match xs do
-  | Nil -> ys
-  | Cons(x, rest) -> Cons(x, concat_selects(rest, ys))
+  Nil -> ys
+  Cons(x, rest) -> Cons(x, concat_selects(rest, ys))
   end
 end
 
 pfn concat_wheres(xs, ys) do
   match xs do
-  | Nil -> ys
-  | Cons(x, rest) -> Cons(x, concat_wheres(rest, ys))
+  Nil -> ys
+  Cons(x, rest) -> Cons(x, concat_wheres(rest, ys))
   end
 end
 
 pfn concat_joins(xs, ys) do
   match xs do
-  | Nil -> ys
-  | Cons(x, rest) -> Cons(x, concat_joins(rest, ys))
+  Nil -> ys
+  Cons(x, rest) -> Cons(x, concat_joins(rest, ys))
   end
 end
 
 pfn concat_orders(xs, ys) do
   match xs do
-  | Nil -> ys
-  | Cons(x, rest) -> Cons(x, concat_orders(rest, ys))
+  Nil -> ys
+  Cons(x, rest) -> Cons(x, concat_orders(rest, ys))
   end
 end
 
 pfn concat_exprs(xs, ys) do
   match xs do
-  | Nil -> ys
-  | Cons(x, rest) -> Cons(x, concat_exprs(rest, ys))
+  Nil -> ys
+  Cons(x, rest) -> Cons(x, concat_exprs(rest, ys))
   end
 end
 

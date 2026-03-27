@@ -31,7 +31,7 @@ fn read_i32(b, pos) do
     Bytes.get(b, pos + 1) * 65536    +
     Bytes.get(b, pos + 2) * 256      +
     Bytes.get(b, pos + 3)
-  if raw >= 2147483648 then raw - 4294967296 else raw
+  if raw >= 2147483648 do raw - 4294967296 else raw end
 end
 
 --- Reads a null-terminated C string from bytes starting at `pos`.
@@ -45,8 +45,8 @@ end
 fn read_cstring(b, pos) do
   fn go(i, acc) do
     let byte = Bytes.get(b, i)
-    if byte == 0 then (Bytes.to_string(Bytes.from_list(reverse(acc))), i + 1)
-    else go(i + 1, Cons(byte, acc))
+    if byte == 0 do (Bytes.to_string(Bytes.from_list(reverse(acc))), i + 1)
+    else go(i + 1, Cons(byte, acc)) end
   end
   go(pos, Nil)
 end
@@ -61,29 +61,32 @@ end
 --- 2
 fn read_bytes_field(b, pos) do
   let len = read_i32(b, pos)
-  if len == -1 then (None, pos + 4)
-  else (Some(Bytes.slice(b, pos + 4, len)), pos + 4 + len)
+  if len == -1 do (None, pos + 4)
+  else (Some(Bytes.slice(b, pos + 4, len)), pos + 4 + len) end
 end
 
 -- ---- Error/Notice field parsing ----
 
 pfn parse_error_fields(b, pos) do
   fn go(i, severity, code, message, detail, hint, position) do
-    if i >= Bytes.length(b) then
+    if i >= Bytes.length(b) do
       { severity = severity, code = code, message = message,
         detail = detail, hint = hint, position = position }
-    else match Bytes.get(b, i) do
-      | 0 ->
+    else
+      match Bytes.get(b, i) do
+      0 ->
         { severity = severity, code = code, message = message,
           detail = detail, hint = hint, position = position }
-      | field_type ->
+      field_type -> do
         let (value, next) = read_cstring(b, i + 1)
         if      field_type == 83 then go(next, value,    code,    message, detail,        hint,        position)
         else if field_type == 67 then go(next, severity, value,   message, detail,        hint,        position)
         else if field_type == 77 then go(next, severity, code,    value,   detail,        hint,        position)
         else if field_type == 68 then go(next, severity, code,    message, Some(value),   hint,        position)
         else if field_type == 72 then go(next, severity, code,    message, detail,        Some(value), position)
-        else                          go(next, severity, code,    message, detail,        hint,        position)
+        else                        go(next, severity, code,    message, detail,        hint,        position)
+      end
+      end
     end
   end
   go(pos, "", "", "", None, None, None)
@@ -103,26 +106,33 @@ pfn parse_one_field_desc(b, pos) do
 end
 
 pfn parse_field_descs(b, pos, n, acc) do
-  if n == 0 then reverse(acc)
-  else match parse_one_field_desc(b, pos) do
-    | (fd, next) -> parse_field_descs(b, next, n - 1, Cons(fd, acc))
+  if n == 0 do reverse(acc)
+  else
+    match parse_one_field_desc(b, pos) do
+    (fd, next) -> parse_field_descs(b, next, n - 1, Cons(fd, acc))
+    end
   end
 end
 
 pfn parse_data_columns(b, pos, n, acc) do
-  if n == 0 then reverse(acc)
-  else match read_bytes_field(b, pos) do
-    | (col, next) -> parse_data_columns(b, next, n - 1, Cons(col, acc))
+  if n == 0 do reverse(acc)
+  else
+    match read_bytes_field(b, pos) do
+    (col, next) -> parse_data_columns(b, next, n - 1, Cons(col, acc))
+    end
   end
 end
 
 pfn parse_sasl_mechanisms(b, pos, acc) do
-  if pos >= Bytes.length(b) then reverse(acc)
+  if pos >= Bytes.length(b) do reverse(acc)
   else
-    if Bytes.get(b, pos) == 0 then reverse(acc)
-    else match read_cstring(b, pos) do
-      | (mech, next) -> parse_sasl_mechanisms(b, next, Cons(mech, acc))
+    if Bytes.get(b, pos) == 0 do reverse(acc)
+    else
+      match read_cstring(b, pos) do
+      (mech, next) -> parse_sasl_mechanisms(b, next, Cons(mech, acc))
+      end
     end
+  end
 end
 
 -- ---- Sub-decoders ----
@@ -139,9 +149,9 @@ end
 
 pfn decode_param_status(payload) do
   match read_cstring(payload, 0) do
-  | (name, pos) ->
+  (name, pos) ->
     match read_cstring(payload, pos) do
-    | (value, _) -> Ok(ParameterStatus(name, value))
+    (value, _) -> Ok(ParameterStatus(name, value))
     end
   end
 end
@@ -156,7 +166,7 @@ end
 
 pfn decode_command_complete(payload) do
   match read_cstring(payload, 0) do
-  | (tag, _) -> Ok(CommandComplete(tag))
+  (tag, _) -> Ok(CommandComplete(tag))
   end
 end
 
@@ -201,8 +211,8 @@ end
 --- and decodes the result.
 fn recv_msg(fd) do
   match tcp_recv_exact(fd, 5) do
-  | Err(e)     -> Err("recv header: " ++ e)
-  | Ok(header) ->
+  Err(e)     -> Err("recv header: " ++ e)
+  Ok(header) -> do
     let type_byte   = Bytes.get(header, 0)
     let msg_len     = read_i32(header, 1)
     let payload_len = msg_len - 4
@@ -212,9 +222,10 @@ fn recv_msg(fd) do
       decode(type_byte, Bytes.empty())
     else
       match tcp_recv_exact(fd, payload_len) do
-      | Err(e)      -> Err("recv payload: " ++ e)
-      | Ok(payload) -> decode(type_byte, payload)
+      Err(e)      -> Err("recv payload: " ++ e)
+      Ok(payload) -> decode(type_byte, payload)
       end
+  end
   end
 end
 

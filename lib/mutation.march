@@ -5,34 +5,43 @@ mod Mutation do
 
 import Ast
 
---- INSERT query ADT.
---- `rows` is a list of rows; each row is a list of SqlValue in column order.
-type Insert = Insert({
+--- Fields of an INSERT query.
+type InsertFields = {
   table_      : String,
   columns     : List(String),
   rows        : List(List(SqlValue)),
   on_conflict : Option(ConflictAction),
   returning_  : List(SelectExpr)
-})
+}
+
+--- INSERT query ADT.
+--- `rows` is a list of rows; each row is a list of SqlValue in column order.
+type Insert = Insert(InsertFields)
 
 --- Action to take on INSERT conflict.
 type ConflictAction =
     DoNothing
   | DoUpdate(List((String, Expr)))    -- (column, new_value_expr)
 
---- UPDATE query ADT.
-type Update = Update({
+--- Fields of an UPDATE query.
+type UpdateFields = {
   table_     : String,
   sets       : List((String, Expr)),  -- (column, value_expr)
   wheres     : List(WhereExpr),
   returning_ : List(SelectExpr)
-})
+}
 
---- DELETE query ADT.
-type Delete = Delete({
+--- UPDATE query ADT.
+type Update = Update(UpdateFields)
+
+--- Fields of a DELETE query.
+type DeleteFields = {
   table_     : String,
   wheres     : List(WhereExpr),
   returning_ : List(SelectExpr)
-})
+}
+
+--- DELETE query ADT.
+type Delete = Delete(DeleteFields)
 
 end

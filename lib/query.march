@@ -36,22 +36,22 @@ end
 
 pfn field_desc_name(fd_) do
   match fd_ do
-  | FieldDesc(name, _, _, _, _, _, _) -> name
+  FieldDesc(name, _, _, _, _, _, _) -> name
   end
 end
 
 pfn row_to_strings(cells) do
   match cells do
-  | Nil -> Nil
-  | Cons(None, rest)    -> Cons(None, row_to_strings(rest))
-  | Cons(Some(b), rest) -> Cons(Some(Bytes.to_string(b)), row_to_strings(rest))
+  Nil -> Nil
+  Cons(None, rest)    -> Cons(None, row_to_strings(rest))
+  Cons(Some(b), rest) -> Cons(Some(Bytes.to_string(b)), row_to_strings(rest))
   end
 end
 
 pfn map_field_names(xs) do
   match xs do
-  | Nil -> Nil
-  | Cons(x, rest) -> Cons(field_desc_name(x), map_field_names(rest))
+  Nil -> Nil
+  Cons(x, rest) -> Cons(field_desc_name(x), map_field_names(rest))
   end
 end
 
@@ -61,32 +61,32 @@ end
 ---
 --- Returns a `QueryResult` with columns, rows, and command tag.
 fn simple_query(conn, sql) do
-  match send_msg(conn.fd, Query(sql)) do
-  | Err(e) -> Err("simple_query send: " ++ e)
-  | Ok(_)  -> simple_query_recv(conn.fd, Nil, Nil, "")
+  match send_msg(conn.fd, SimpleQuery(sql)) do
+  Err(e) -> Err("simple_query send: " ++ e)
+  Ok(_)  -> simple_query_recv(conn.fd, Nil, Nil, "")
   end
 end
 
 pfn simple_query_recv(fd, columns, rows, tag) do
   match recv_msg(fd) do
-  | Err(e) -> Err(e)
-  | Ok(msg) ->
+  Err(e) -> Err(e)
+  Ok(msg) ->
     match msg do
-    | RowDescription(fields) ->
+    RowDescription(fields) ->
       simple_query_recv(fd, map_field_names(fields), Nil, tag)
-    | DataRow(cells) ->
+    DataRow(cells) ->
       simple_query_recv(fd, columns, Cons(row_to_strings(cells), rows), tag)
-    | CommandComplete(t) ->
+    CommandComplete(t) ->
       simple_query_recv(fd, columns, rows, t)
-    | EmptyQueryResponse ->
+    EmptyQueryResponse ->
       simple_query_recv(fd, columns, rows, "")
-    | ErrorResponse(fields) ->
+    ErrorResponse(fields) ->
       simple_query_drain_error(fd, fields.message)
-    | NoticeResponse(_) ->
+    NoticeResponse(_) ->
       simple_query_recv(fd, columns, rows, tag)
-    | ReadyForQuery(_) ->
+    ReadyForQuery(_) ->
       Ok({ columns = columns, rows = reverse(rows), tag = tag })
-    | _ ->
+    _ ->
       simple_query_recv(fd, columns, rows, tag)
     end
   end
@@ -94,9 +94,9 @@ end
 
 pfn simple_query_drain_error(fd, error_msg) do
   match recv_msg(fd) do
-  | Err(e)               -> Err(e)
-  | Ok(ReadyForQuery(_)) -> Err(error_msg)
-  | Ok(_)                -> simple_query_drain_error(fd, error_msg)
+  Err(e)               -> Err(e)
+  Ok(ReadyForQuery(_)) -> Err(error_msg)
+  Ok(_)                -> simple_query_drain_error(fd, error_msg)
   end
 end
 
@@ -113,20 +113,20 @@ end
 pfn exec_prepared_named(conn, stmt_name, portal_name, sql, params) do
   let fd = conn.fd
   match send_msg(fd, Parse(stmt_name, sql, Nil)) do
-  | Err(e) -> Err("exec_prepared parse: " ++ e)
-  | Ok(_) ->
+  Err(e) -> Err("exec_prepared parse: " ++ e)
+  Ok(_) ->
     match send_msg(fd, Bind(portal_name, stmt_name, params)) do
-    | Err(e) -> Err("exec_prepared bind: " ++ e)
-    | Ok(_) ->
+    Err(e) -> Err("exec_prepared bind: " ++ e)
+    Ok(_) ->
       match send_msg(fd, Describe(DescribePortal(portal_name))) do
-      | Err(e) -> Err("exec_prepared describe: " ++ e)
-      | Ok(_) ->
+      Err(e) -> Err("exec_prepared describe: " ++ e)
+      Ok(_) ->
         match send_msg(fd, Execute(portal_name, 0)) do
-        | Err(e) -> Err("exec_prepared execute: " ++ e)
-        | Ok(_) ->
+        Err(e) -> Err("exec_prepared execute: " ++ e)
+        Ok(_) ->
           match send_msg(fd, Sync) do
-          | Err(e) -> Err("exec_prepared sync: " ++ e)
-          | Ok(_) -> extended_recv(fd)
+          Err(e) -> Err("exec_prepared sync: " ++ e)
+          Ok(_) -> extended_recv(fd)
           end
         end
       end
@@ -140,30 +140,30 @@ end
 
 pfn extended_recv_loop(fd, columns, rows, tag) do
   match recv_msg(fd) do
-  | Err(e) -> Err(e)
-  | Ok(msg) ->
+  Err(e) -> Err(e)
+  Ok(msg) ->
     match msg do
-    | ParseComplete    -> extended_recv_loop(fd, columns, rows, tag)
-    | BindComplete     -> extended_recv_loop(fd, columns, rows, tag)
-    | RowDescription(fields) ->
+    ParseComplete    -> extended_recv_loop(fd, columns, rows, tag)
+    BindComplete     -> extended_recv_loop(fd, columns, rows, tag)
+    RowDescription(fields) ->
       extended_recv_loop(fd, map_field_names(fields), Nil, tag)
-    | NoData           -> extended_recv_loop(fd, columns, rows, tag)
-    | DataRow(cells)   -> extended_recv_loop(fd, columns, Cons(row_to_strings(cells), rows), tag)
-    | CommandComplete(t) -> extended_recv_loop(fd, columns, rows, t)
-    | EmptyQueryResponse -> extended_recv_loop(fd, columns, rows, "")
-    | ErrorResponse(fields) -> extended_drain_error(fd, fields.message)
-    | NoticeResponse(_) -> extended_recv_loop(fd, columns, rows, tag)
-    | ReadyForQuery(_) -> Ok({ columns = columns, rows = reverse(rows), tag = tag })
-    | _                -> extended_recv_loop(fd, columns, rows, tag)
+    NoData           -> extended_recv_loop(fd, columns, rows, tag)
+    DataRow(cells)   -> extended_recv_loop(fd, columns, Cons(row_to_strings(cells), rows), tag)
+    CommandComplete(t) -> extended_recv_loop(fd, columns, rows, t)
+    EmptyQueryResponse -> extended_recv_loop(fd, columns, rows, "")
+    ErrorResponse(fields) -> extended_drain_error(fd, fields.message)
+    NoticeResponse(_) -> extended_recv_loop(fd, columns, rows, tag)
+    ReadyForQuery(_) -> Ok({ columns = columns, rows = reverse(rows), tag = tag })
+    _                -> extended_recv_loop(fd, columns, rows, tag)
     end
   end
 end
 
 pfn extended_drain_error(fd, error_msg) do
   match recv_msg(fd) do
-  | Err(e)               -> Err(e)
-  | Ok(ReadyForQuery(_)) -> Err(error_msg)
-  | Ok(_)                -> extended_drain_error(fd, error_msg)
+  Err(e)               -> Err(e)
+  Ok(ReadyForQuery(_)) -> Err(error_msg)
+  Ok(_)                -> extended_drain_error(fd, error_msg)
   end
 end
 
@@ -172,16 +172,16 @@ end
 --- Executes a SQL string and returns only the rows.
 fn query(conn, sql) do
   match simple_query(conn, sql) do
-  | Err(e)     -> Err(e)
-  | Ok(result) -> Ok(result.rows)
+  Err(e)     -> Err(e)
+  Ok(result) -> Ok(result.rows)
   end
 end
 
 --- Executes a SQL string and returns only the command tag.
 fn exec(conn, sql) do
   match simple_query(conn, sql) do
-  | Err(e)     -> Err(e)
-  | Ok(result) -> Ok(result.tag)
+  Err(e)     -> Err(e)
+  Ok(result) -> Ok(result.tag)
   end
 end
 

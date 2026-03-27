@@ -6,7 +6,7 @@ mod Message do
 --- Frontend messages sent from client to PostgreSQL server.
 type FrontendMessage =
     Startup(Map(String, String))
-  | Query(String)
+  | SimpleQuery(String)
   | Parse(String, String, List(Int))
   | Bind(String, String, List(Param))
   | Execute(String, Int)

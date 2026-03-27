@@ -17,21 +17,22 @@ end
 fn test_from_table() do
   let q = from("users")
   match q do
-  | Query(f) ->
+  Query(f) -> do
     match f.from_ do
-    | FromTable(t) -> assert(t == "users")
-    | _ -> assert(false)
+    FromTable(t) -> assert(t == "users")
+    _ -> assert(false)
     end
     assert(f.distinct_ == false)
-    match f.limit_  do | None -> () | Some(_) -> assert(false) end
-    match f.offset_ do | None -> () | Some(_) -> assert(false) end
+    match f.limit_  do None -> () | Some(_) -> assert(false) end
+    match f.offset_ do None -> () | Some(_) -> assert(false) end
+  end
   end
 end
 
 fn test_select_exprs() do
   let q = select(from("posts"), [Col("id"), Col("title")])
   match q do
-  | Query(f) ->
+  Query(f) ->
     assert(list_len(f.selects) == 2)
   end
 end
@@ -39,24 +40,26 @@ end
 fn test_select_all() do
   let q = select_all(from("posts"))
   match q do
-  | Query(f) ->
+  Query(f) -> do
     assert(list_len(f.selects) == 1)
     match f.selects do
-    | Cons(SelectAll, Nil) -> ()
-    | _ -> assert(false)
+    Cons(SelectAll, Nil) -> ()
+    _ -> assert(false)
     end
+  end
   end
 end
 
 fn test_where_clause() do
   let q = where_(from("users"), Eq(Col("active"), Lit(PBool(true))))
   match q do
-  | Query(f) ->
+  Query(f) -> do
     assert(list_len(f.wheres) == 1)
     match f.wheres do
-    | Cons(Where(_), Nil) -> ()
-    | _ -> assert(false)
+    Cons(Where(_), Nil) -> ()
+    _ -> assert(false)
     end
+  end
   end
 end
 
@@ -65,54 +68,57 @@ fn test_or_where() do
          |> where_(Eq(Col("role"), Lit(PString("admin"))))
          |> or_where(Eq(Col("role"), Lit(PString("superuser"))))
   match q do
-  | Query(f) -> assert(list_len(f.wheres) == 2)
+  Query(f) -> assert(list_len(f.wheres) == 2)
   end
 end
 
 fn test_limit_offset() do
   let q = limit(offset(from("events"), 20), 10)
   match q do
-  | Query(f) ->
-    match f.limit_  do | Some(n) -> assert(n == 10) | None -> assert(false) end
-    match f.offset_ do | Some(n) -> assert(n == 20) | None -> assert(false) end
+  Query(f) -> do
+    match f.limit_  do Some(n) -> assert(n == 10) | None -> assert(false) end
+    match f.offset_ do Some(n) -> assert(n == 20) | None -> assert(false) end
+  end
   end
 end
 
 fn test_distinct() do
   let q = distinct(from("tags"))
   match q do
-  | Query(f) -> assert(f.distinct_ == true)
+  Query(f) -> assert(f.distinct_ == true)
   end
 end
 
 fn test_order_by_asc() do
   let q = order_by(from("logs"), Col("created_at"), Asc)
   match q do
-  | Query(f) ->
+  Query(f) -> do
     assert(list_len(f.orders) == 1)
     match f.orders do
-    | Cons(OrderExpr(Col("created_at"), Asc), Nil) -> ()
-    | _ -> assert(false)
+    Cons(OrderExpr(Col("created_at"), Asc), Nil) -> ()
+    _ -> assert(false)
     end
+  end
   end
 end
 
 fn test_inner_join() do
   let q = join(from("orders"), "users", Eq(QCol("orders", "user_id"), QCol("users", "id")))
   match q do
-  | Query(f) ->
+  Query(f) -> do
     assert(list_len(f.joins) == 1)
     match f.joins do
-    | Cons(JoinClause(Inner, "users", _), Nil) -> ()
-    | _ -> assert(false)
+    Cons(JoinClause(Inner, "users", _), Nil) -> ()
+    _ -> assert(false)
     end
+  end
   end
 end
 
 fn test_group_by() do
   let q = group_by(from("sales"), [Col("category"), Col("year")])
   match q do
-  | Query(f) ->
+  Query(f) ->
     assert(list_len(f.group_bys) == 2)
   end
 end
@@ -124,11 +130,12 @@ fn test_chained_builder() do
          |> order_by(Col("name"), Asc)
          |> limit(50)
   match q do
-  | Query(f) ->
+  Query(f) -> do
     assert(list_len(f.selects) == 2)
     assert(list_len(f.wheres) == 1)
     assert(list_len(f.orders) == 1)
-    match f.limit_ do | Some(n) -> assert(n == 50) | None -> assert(false) end
+    match f.limit_ do Some(n) -> assert(n == 50) | None -> assert(false) end
+  end
   end
 end
 
