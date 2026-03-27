@@ -9,6 +9,10 @@ import Query
 import Pool
 import Ast
 import Compile
+import MutationBuild
+import MutationCompile
+import Preload
+import Cursor
 
 -- ---- Repo helpers ----
 
@@ -153,6 +157,78 @@ end
 fn delete(pool, table, where_clause, where_params) do
   let sql = "DELETE FROM " ++ repo_quote_ident(table) ++ " WHERE " ++ where_clause
   query_params(pool, sql, where_params)
+end
+
+--- Executes a compiled Insert ADT and returns the QueryResult (usually RETURNING rows).
+fn insert_query(pool, i) do
+  let compiled = compile_insert(i)
+  query_params(pool, compiled.sql, compiled.params)
+end
+
+--- Executes a compiled Update ADT and returns the QueryResult.
+fn update_query(pool, u) do
+  let compiled = compile_update(u)
+  query_params(pool, compiled.sql, compiled.params)
+end
+
+--- Executes a compiled Delete ADT and returns the QueryResult.
+fn delete_query(pool, d) do
+  let compiled = compile_delete(d)
+  query_params(pool, compiled.sql, compiled.params)
+end
+
+--- Inserts multiple rows in a single batch INSERT statement.
+---
+--- `cols` is the column list; `rows` is a list of value lists (one per row).
+fn insert_many_query(pool, table, cols, rows) do
+  let i = insert_many(table, cols, rows)
+  let compiled = compile_insert(i)
+  query_params(pool, compiled.sql, compiled.params)
+end
+
+--- Batch-loads associated records to prevent N+1 queries.
+---
+--- Extracts `parent_fk_col` values from `parent_result`, issues one
+--- SELECT * FROM `child_table` WHERE `child_fk_col` IN (...) query,
+--- and returns the child QueryResult.
+fn preload_assoc(pool, parent_result, parent_fk_col, child_table, child_fk_col) do
+  Preload.preload(pool, parent_result, parent_fk_col, child_table, child_fk_col)
+end
+
+--- Returns the EXPLAIN ANALYZE output for a SELECT query as a list of text rows.
+---
+--- Useful for profiling slow queries in development.
+fn explain(pool, q) do
+  let compiled = compile(q)
+  query_params(pool, "EXPLAIN ANALYZE " ++ compiled.sql, compiled.params)
+end
+
+--- Runs a callback with a server-side cursor for streaming large result sets.
+---
+--- Opens a transaction, declares the cursor, calls `callback` with the
+--- cursor name and connection, then commits. `callback` should use
+--- Cursor.fetch_sql / simple_query to fetch rows in batches.
+fn with_cursor(pool, cursor_name, q, callback) do
+  Pool.with_conn(pool, fn (conn) ->
+    match simple_query(conn, "BEGIN") do
+    | Err(e) -> Err("BEGIN: " ++ e)
+    | Ok(_) ->
+      let decl_sql = Cursor.declare_sql(cursor_name, q)
+      match simple_query(conn, decl_sql) do
+      | Err(e) ->
+        let _ = simple_query(conn, "ROLLBACK")
+        Err("DECLARE: " ++ e)
+      | Ok(_) ->
+        let result = callback(cursor_name, conn)
+        let _ = simple_query(conn, Cursor.close_sql(cursor_name))
+        match simple_query(conn, "COMMIT") do
+        | Err(e) -> Err("COMMIT: " ++ e)
+        | Ok(_)  -> result
+        end
+      end
+    end
+  )
+  |> flatten_result()
 end
 
 --- Executes a callback inside a transaction.

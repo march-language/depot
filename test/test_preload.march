@@ -1,0 +1,85 @@
+-- test/test_preload.march
+-- Tests for preload query construction (pure — no DB required).
+
+mod TestPreload do
+
+import Ast
+import Build
+import Compile
+import Preload
+
+-- ---- Helpers ----
+
+pfn list_len(lst) do
+  match lst do | Nil -> 0 | Cons(_, rest) -> 1 + list_len(rest) end
+end
+
+pfn make_result(cols, rows) do
+  { columns = cols, rows = rows, tag = "" }
+end
+
+-- ---- Tests ----
+
+fn test_extract_col_values_basic() do
+  let result = make_result(
+    ["id", "user_id", "title"],
+    [[Some("1"), Some("10"), Some("Post A")],
+     [Some("2"), Some("20"), Some("Post B")],
+     [Some("3"), Some("10"), Some("Post C")]]
+  )
+  let vals = extract_col_values(result, "user_id")
+  match vals do
+  | Cons("10", Cons("20", Cons("10", Nil))) -> ()
+  | _ -> assert(false)
+  end
+end
+
+fn test_extract_col_values_nulls_excluded() do
+  let result = make_result(
+    ["id", "user_id"],
+    [[Some("1"), None],
+     [Some("2"), Some("5")]]
+  )
+  let vals = extract_col_values(result, "user_id")
+  match vals do
+  | Cons("5", Nil) -> ()
+  | _ -> assert(false)
+  end
+end
+
+fn test_extract_col_values_unknown_col() do
+  let result = make_result(["id"], [[Some("1")]])
+  let vals = extract_col_values(result, "nonexistent")
+  match vals do | Nil -> () | _ -> assert(false) end
+end
+
+fn test_build_preload_query() do
+  let q = build_preload_query("posts", "user_id", ["10", "20", "30"])
+  let compiled = compile(q)
+  assert(compiled.sql == "SELECT * FROM \"posts\" WHERE \"user_id\" IN ($1, $2, $3)")
+  assert(list_len(compiled.params) == 3)
+end
+
+fn test_build_preload_query_empty() do
+  let q = build_preload_query("posts", "user_id", Nil)
+  let compiled = compile(q)
+  assert(compiled.sql == "SELECT * FROM \"posts\" WHERE FALSE")
+  assert(list_len(compiled.params) == 0)
+end
+
+fn test_deduplicate_vals() do
+  let deduped = dedup_strings(["10", "20", "10", "30", "20"])
+  assert(list_len(deduped) == 3)
+end
+
+fn main() : Unit do
+  test_extract_col_values_basic()
+  test_extract_col_values_nulls_excluded()
+  test_extract_col_values_unknown_col()
+  test_build_preload_query()
+  test_build_preload_query_empty()
+  test_deduplicate_vals()
+  println("test_preload: all tests passed")
+end
+
+end

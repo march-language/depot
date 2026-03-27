@@ -1,0 +1,38 @@
+-- depot/lib/mutation.march
+-- ADT types for INSERT, UPDATE, and DELETE queries.
+
+mod Mutation do
+
+import Ast
+
+--- INSERT query ADT.
+--- `rows` is a list of rows; each row is a list of SqlValue in column order.
+type Insert = Insert({
+  table_      : String,
+  columns     : List(String),
+  rows        : List(List(SqlValue)),
+  on_conflict : Option(ConflictAction),
+  returning_  : List(SelectExpr)
+})
+
+--- Action to take on INSERT conflict.
+type ConflictAction =
+    DoNothing
+  | DoUpdate(List((String, Expr)))    -- (column, new_value_expr)
+
+--- UPDATE query ADT.
+type Update = Update({
+  table_     : String,
+  sets       : List((String, Expr)),  -- (column, value_expr)
+  wheres     : List(WhereExpr),
+  returning_ : List(SelectExpr)
+})
+
+--- DELETE query ADT.
+type Delete = Delete({
+  table_     : String,
+  wheres     : List(WhereExpr),
+  returning_ : List(SelectExpr)
+})
+
+end
