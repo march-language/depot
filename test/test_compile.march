@@ -150,6 +150,64 @@ fn test_raw_expr() do
   assert(r.sql == "SELECT 1+1 FROM \"t\"")
 end
 
+fn test_in_expr() do
+  let q = Query({
+    from_ = FromTable("users"), selects = Nil,
+    wheres = [Where(In(Col("id"), [Lit(PInt(1)), Lit(PInt(2)), Lit(PInt(3))]))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false
+  })
+  let r = compile(q)
+  assert(r.sql == "SELECT * FROM \"users\" WHERE \"id\" IN ($1, $2, $3)")
+  assert(list_len(r.params) == 3)
+end
+
+fn test_not_in_expr() do
+  let q = Query({
+    from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(NotIn(Col("status"), [Lit(PString("banned")), Lit(PString("deleted"))]))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false
+  })
+  let r = compile(q)
+  assert(r.sql == "SELECT * FROM \"t\" WHERE \"status\" NOT IN ($1, $2)")
+  assert(list_len(r.params) == 2)
+end
+
+fn test_between_expr() do
+  let q = Query({
+    from_ = FromTable("products"), selects = Nil,
+    wheres = [Where(Between(Col("price"), Lit(PInt(10)), Lit(PInt(100))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false
+  })
+  let r = compile(q)
+  assert(r.sql == "SELECT * FROM \"products\" WHERE \"price\" BETWEEN $1 AND $2")
+  assert(list_len(r.params) == 2)
+end
+
+fn test_in_inline() do
+  let q = Query({
+    from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(In(Col("id"), [Lit(PInt(10)), Lit(PInt(20))]))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false
+  })
+  let r = compile_inline(q)
+  assert(r.sql == "SELECT * FROM \"t\" WHERE \"id\" IN (10, 20)")
+end
+
+fn test_between_inline() do
+  let q = Query({
+    from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Between(Col("score"), Lit(PInt(0)), Lit(PInt(100))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false
+  })
+  let r = compile_inline(q)
+  assert(r.sql == "SELECT * FROM \"t\" WHERE \"score\" BETWEEN 0 AND 100")
+end
+
 fn main() : Unit do
   test_simple_select_star()
   test_select_with_columns()
@@ -162,6 +220,11 @@ fn main() : Unit do
   test_select_as()
   test_is_null()
   test_raw_expr()
+  test_in_expr()
+  test_not_in_expr()
+  test_between_expr()
+  test_in_inline()
+  test_between_inline()
   println("test_compile: all tests passed")
 end
 
