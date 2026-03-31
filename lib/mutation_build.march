@@ -15,32 +15,44 @@ end
 
 --- Sets the column list for the INSERT.
 fn insert_cols(i, cols) do
-  match i do | Insert(f) -> Insert({ f with columns = cols }) end
+  match i do
+    Insert(f) -> Insert({ f with columns = cols })
+  end
 end
 
 --- Appends one row of values to the INSERT.
 fn insert_row(i, vals) do
-  match i do | Insert(f) -> Insert({ f with rows = append_row(f.rows, vals) }) end
+  match i do
+    Insert(f) -> Insert({ f with rows = append_row(f.rows, vals) })
+  end
 end
 
 --- Adds ON CONFLICT DO NOTHING.
 fn on_conflict_do_nothing(i) do
-  match i do | Insert(f) -> Insert({ f with on_conflict = Some(DoNothing) }) end
+  match i do
+    Insert(f) -> Insert({ f with on_conflict = Some(DoNothing) })
+  end
 end
 
 --- Adds ON CONFLICT DO UPDATE SET for the given column/expr pairs.
 fn on_conflict_do_update(i, sets) do
-  match i do | Insert(f) -> Insert({ f with on_conflict = Some(DoUpdate(sets)) }) end
+  match i do
+    Insert(f) -> Insert({ f with on_conflict = Some(DoUpdate(sets)) })
+  end
 end
 
 --- Sets RETURNING * on the INSERT.
 fn insert_returning_all(i) do
-  match i do | Insert(f) -> Insert({ f with returning_ = [SelectAll] }) end
+  match i do
+    Insert(f) -> Insert({ f with returning_ = [SelectAll] })
+  end
 end
 
 --- Sets RETURNING with specific expressions.
 fn insert_returning(i, exprs) do
-  match i do | Insert(f) -> Insert({ f with returning_ = exprs }) end
+  match i do
+    Insert(f) -> Insert({ f with returning_ = exprs })
+  end
 end
 
 --- Builds a batch INSERT for multiple rows in one call.
@@ -57,7 +69,9 @@ end
 
 --- Appends a SET col = expr clause.
 fn set_(u, col, expr) do
-  match u do | Update(f) -> Update({ f with sets = append_set(f.sets, (col, expr)) }) end
+  match u do
+    Update(f) -> Update({ f with sets = append_set(f.sets, (col, expr)) })
+  end
 end
 
 --- Appends an AND WHERE predicate.
@@ -69,12 +83,16 @@ end
 
 --- Sets RETURNING * on the UPDATE.
 fn update_returning_all(u) do
-  match u do | Update(f) -> Update({ f with returning_ = [SelectAll] }) end
+  match u do
+    Update(f) -> Update({ f with returning_ = [SelectAll] })
+  end
 end
 
 --- Sets RETURNING with specific expressions.
 fn update_returning(u, exprs) do
-  match u do | Update(f) -> Update({ f with returning_ = exprs }) end
+  match u do
+    Update(f) -> Update({ f with returning_ = exprs })
+  end
 end
 
 -- ---- DELETE builders ----
@@ -93,7 +111,9 @@ end
 
 --- Sets RETURNING * on the DELETE.
 fn delete_returning_all(d) do
-  match d do | Delete(f) -> Delete({ f with returning_ = [SelectAll] }) end
+  match d do
+    Delete(f) -> Delete({ f with returning_ = [SelectAll] })
+  end
 end
 
 -- ---- Private list helpers ----

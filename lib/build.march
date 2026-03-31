@@ -188,7 +188,9 @@ end
 --- march> match limit(from("t"), 10) do | Query(f) -> match f.limit_ do | Some(n) -> n | None -> 0 end end
 --- 10
 fn limit(q, n) do
-  match q do | Query(f) -> Query({ f with limit_ = Some(n) }) end
+  match q do
+    Query(f) -> Query({ f with limit_ = Some(n) })
+  end
 end
 
 --- Sets the OFFSET clause.
@@ -196,7 +198,9 @@ end
 --- march> match offset(from("t"), 20) do | Query(f) -> match f.offset_ do | Some(n) -> n | None -> 0 end end
 --- 20
 fn offset(q, n) do
-  match q do | Query(f) -> Query({ f with offset_ = Some(n) }) end
+  match q do
+    Query(f) -> Query({ f with offset_ = Some(n) })
+  end
 end
 
 --- Adds DISTINCT to the SELECT.
@@ -204,7 +208,9 @@ end
 --- march> match distinct(from("t")) do | Query(f) -> f.distinct_ end
 --- true
 fn distinct(q) do
-  match q do | Query(f) -> Query({ f with distinct_ = true }) end
+  match q do
+    Query(f) -> Query({ f with distinct_ = true })
+  end
 end
 
 -- ---- Per-type list helpers (March pfn are monomorphic) ----

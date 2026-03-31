@@ -17,7 +17,11 @@ import Cursor
 -- ---- Repo helpers ----
 
 pfn flatten_result(r) do
-  match r do | Ok(Ok(val)) -> Ok(val) | Ok(Err(e)) -> Err(e) | Err(e) -> Err(e) end
+  match r do
+    Ok(Ok(val)) -> Ok(val)
+    Ok(Err(e)) -> Err(e)
+    Err(e) -> Err(e)
+  end
 end
 
 pfn sqlvalue_to_param(v) do
@@ -40,27 +44,41 @@ pfn make_set_parts(fields, idx, acc) do
   match fields do
   Nil -> list_rev(acc)
   Cons(pair, rest) -> do
-    let name = match pair do | (n, _) -> n end
+    let name = match pair do
+      (n, _) -> n
+    end
     make_set_parts(rest, idx + 1, Cons(repo_quote_ident(name) ++ " = $" ++ int_to_string(idx), acc))
   end
   end
 end
 
 pfn repo_list_map(lst, f) do
-  match lst do | Nil -> Nil | Cons(x, rest) -> Cons(f(x), repo_list_map(rest, f)) end
+  match lst do
+    Nil -> Nil
+    Cons(x, rest) -> Cons(f(x), repo_list_map(rest, f))
+  end
 end
 
 pfn repo_list_length(lst) do
-  match lst do | Nil -> 0 | Cons(_, rest) -> 1 + repo_list_length(rest) end
+  match lst do
+    Nil -> 0
+    Cons(_, rest) -> 1 + repo_list_length(rest)
+  end
 end
 
 pfn repo_list_append(a, b) do
-  match a do | Nil -> b | Cons(x, rest) -> Cons(x, repo_list_append(rest, b)) end
+  match a do
+    Nil -> b
+    Cons(x, rest) -> Cons(x, repo_list_append(rest, b))
+  end
 end
 
 pfn list_rev(lst) do list_rev_acc(lst, Nil) end
 pfn list_rev_acc(lst, acc) do
-  match lst do | Nil -> acc | Cons(x, rest) -> list_rev_acc(rest, Cons(x, acc)) end
+  match lst do
+    Nil -> acc
+    Cons(x, rest) -> list_rev_acc(rest, Cons(x, acc))
+  end
 end
 
 pfn repo_join_strs(parts, sep) do
@@ -130,8 +148,12 @@ end
 ---
 --- `fields` is a `List((String, SqlValue))` of column-name / value pairs.
 fn insert(pool, table, fields) do
-  let col_names = repo_list_map(fields, fn (pair) -> match pair do | (name, _) -> name end)
-  let values    = repo_list_map(fields, fn (pair) -> match pair do | (_, val) -> val end)
+  let col_names = repo_list_map(fields, fn (pair) -> match pair do
+    (name, _) -> name
+  end)
+  let values    = repo_list_map(fields, fn (pair) -> match pair do
+    (_, val) -> val
+  end)
   let col_str   = repo_join_strs(repo_list_map(col_names, repo_quote_ident), ", ")
   let n         = repo_list_length(values)
   let ph        = make_placeholders(1, n, Nil)
@@ -148,7 +170,9 @@ fn update(pool, table, fields, where_clause, where_params) do
   let set_parts = make_set_parts(fields, 1, Nil)
   let sql = "UPDATE " ++ repo_quote_ident(table) ++ " SET "
             ++ repo_join_strs(set_parts, ", ") ++ " WHERE " ++ where_clause
-  let fv = repo_list_map(fields, fn (pair) -> match pair do | (_, val) -> val end)
+  let fv = repo_list_map(fields, fn (pair) -> match pair do
+    (_, val) -> val
+  end)
   let all_params = repo_list_append(repo_list_map(fv, sqlvalue_to_param), where_params)
   query_params(pool, sql, all_params)
 end

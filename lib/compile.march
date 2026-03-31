@@ -382,11 +382,17 @@ end
 -- ---- LIMIT / OFFSET ----
 
 pfn compile_limit(lim) do
-  match lim do | None -> "" | Some(n) -> " LIMIT " ++ int_to_string(n) end
+  match lim do
+    None -> ""
+    Some(n) -> " LIMIT " ++ int_to_string(n)
+  end
 end
 
 pfn compile_offset(off) do
-  match off do | None -> "" | Some(n) -> " OFFSET " ++ int_to_string(n) end
+  match off do
+    None -> ""
+    Some(n) -> " OFFSET " ++ int_to_string(n)
+  end
 end
 
 -- ---- Expression compiler (parameterized) ----
@@ -625,17 +631,26 @@ end
 
 pfn rev_strs(xs) do rev_strs_acc(xs, Nil) end
 pfn rev_strs_acc(xs, acc) do
-  match xs do | Nil -> acc | Cons(x, rest) -> rev_strs_acc(rest, Cons(x, acc)) end
+  match xs do
+    Nil -> acc
+    Cons(x, rest) -> rev_strs_acc(rest, Cons(x, acc))
+  end
 end
 
 pfn rev_params(xs) do rev_params_acc(xs, Nil) end
 pfn rev_params_acc(xs, acc) do
-  match xs do | Nil -> acc | Cons(x, rest) -> rev_params_acc(rest, Cons(x, acc)) end
+  match xs do
+    Nil -> acc
+    Cons(x, rest) -> rev_params_acc(rest, Cons(x, acc))
+  end
 end
 
 pfn rev_where_parts(xs) do rev_wp2_acc(xs, Nil) end
 pfn rev_wp2_acc(xs, acc) do
-  match xs do | Nil -> acc | Cons(x, rest) -> rev_wp2_acc(rest, Cons(x, acc)) end
+  match xs do
+    Nil -> acc
+    Cons(x, rest) -> rev_wp2_acc(rest, Cons(x, acc))
+  end
 end
 
 end

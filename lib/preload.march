@@ -119,11 +119,18 @@ end
 
 pfn list_rev(lst) do list_rev_acc(lst, Nil) end
 pfn list_rev_acc(lst, acc) do
-  match lst do | Nil -> acc | Cons(x, rest) -> list_rev_acc(rest, Cons(x, acc)) end
+  match lst do
+    Nil -> acc
+    Cons(x, rest) -> list_rev_acc(rest, Cons(x, acc))
+  end
 end
 
 pfn flatten_result(r) do
-  match r do | Ok(Ok(v)) -> Ok(v) | Ok(Err(e)) -> Err(e) | Err(e) -> Err(e) end
+  match r do
+    Ok(Ok(v)) -> Ok(v)
+    Ok(Err(e)) -> Err(e)
+    Err(e) -> Err(e)
+  end
 end
 
 end

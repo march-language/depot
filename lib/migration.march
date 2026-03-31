@@ -120,7 +120,10 @@ end
 
 pfn compile_add_column(table, col) do
   let null_c = if col.nullable do "" else " NOT NULL" end
-  let def_c  = match col.default_ do | None -> "" | Some(d) -> " DEFAULT " ++ d end
+  let def_c  = match col.default_ do
+    None -> ""
+    Some(d) -> " DEFAULT " ++ d
+  end
   let uniq_c = if col.unique_ do " UNIQUE" else "" end
   let ref_c  = match col.references do
     None         -> ""
@@ -456,11 +459,18 @@ end
 
 pfn list_rev(lst) do list_rev_acc(lst, Nil) end
 pfn list_rev_acc(lst, acc) do
-  match lst do | Nil -> acc | Cons(x, rest) -> list_rev_acc(rest, Cons(x, acc)) end
+  match lst do
+    Nil -> acc
+    Cons(x, rest) -> list_rev_acc(rest, Cons(x, acc))
+  end
 end
 
 pfn flatten_result(r) do
-  match r do | Ok(Ok(v)) -> Ok(v) | Ok(Err(e)) -> Err(e) | Err(e) -> Err(e) end
+  match r do
+    Ok(Ok(v)) -> Ok(v)
+    Ok(Err(e)) -> Err(e)
+    Err(e) -> Err(e)
+  end
 end
 
 pfn qi(name) do "\"" ++ name ++ "\"" end
