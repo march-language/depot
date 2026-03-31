@@ -25,7 +25,7 @@ pfn sqlvalue_to_param(v) do
   PInt(n)    -> ParamText(int_to_string(n))
   PFloat(f_) -> ParamText(float_to_string(f_))
   PString(s) -> ParamText(s)
-  PBool(b)   -> ParamText(if b then "t" else "f")
+  PBool(b)   -> ParamText(if b do "t" else "f" end)
   PNull      -> ParamNull
   end
 end
@@ -33,7 +33,7 @@ end
 pfn repo_quote_ident(name) do "\"" ++ name ++ "\"" end
 
 pfn make_placeholders(i, n, acc) do
-  if i > n then list_rev(acc) else make_placeholders(i + 1, n, Cons("$" ++ int_to_string(i), acc))
+  if i > n do list_rev(acc) else make_placeholders(i + 1, n, Cons("$" ++ int_to_string(i), acc)) end
 end
 
 pfn make_set_parts(fields, idx, acc) do

@@ -103,14 +103,14 @@ pfn compile_create_table(def) do
 end
 
 pfn compile_col_def(col) do
-  let pk_c   = if col.primary_key then " PRIMARY KEY" else ""
+  let pk_c   = if col.primary_key do " PRIMARY KEY" else "" end
   -- PRIMARY KEY implies NOT NULL; suppress redundant NOT NULL when pk is set
-  let null_c = if col.nullable || col.primary_key then "" else " NOT NULL"
+  let null_c = if col.nullable || col.primary_key do "" else " NOT NULL" end
   let def_c  = match col.default_ do
     None    -> ""
     Some(d) -> " DEFAULT " ++ d
   end
-  let uniq_c = if col.unique_ && !col.primary_key then " UNIQUE" else ""
+  let uniq_c = if col.unique_ && !col.primary_key do " UNIQUE" else "" end
   let ref_c  = match col.references do
     None         -> ""
     Some((t, c)) -> " REFERENCES " ++ qi(t) ++ "(" ++ qi(c) ++ ")"
@@ -119,9 +119,9 @@ pfn compile_col_def(col) do
 end
 
 pfn compile_add_column(table, col) do
-  let null_c = if col.nullable then "" else " NOT NULL"
+  let null_c = if col.nullable do "" else " NOT NULL" end
   let def_c  = match col.default_ do | None -> "" | Some(d) -> " DEFAULT " ++ d end
-  let uniq_c = if col.unique_ then " UNIQUE" else ""
+  let uniq_c = if col.unique_ do " UNIQUE" else "" end
   let ref_c  = match col.references do
     None         -> ""
     Some((t, c)) -> " REFERENCES " ++ qi(t) ++ "(" ++ qi(c) ++ ")"
@@ -131,7 +131,7 @@ pfn compile_add_column(table, col) do
 end
 
 pfn compile_add_index(idx) do
-  let uniq = if idx.unique_ then "UNIQUE " else ""
+  let uniq = if idx.unique_ do "UNIQUE " else "" end
   let cols  = join_strs(map_qi(idx.columns), ", ")
   "CREATE " ++ uniq ++ "INDEX IF NOT EXISTS " ++ qi(idx.name)
   ++ " ON " ++ qi(idx.table) ++ " (" ++ cols ++ ")"
@@ -197,14 +197,19 @@ fn filter_pending(all_versions, applied) do
   match all_versions do
   Nil -> Nil
   Cons(v, rest) ->
-    if int_list_contains(applied, v) then filter_pending(rest, applied) else Cons(v, filter_pending(rest, applied))
+    if int_list_contains(applied, v) do
+      filter_pending(rest, applied)
+    else
+      Cons(v, filter_pending(rest, applied))
+    end
   end
 end
 
 pfn int_list_contains(lst, n) do
   match lst do
   Nil -> false
-  Cons(x, rest) -> if x == n then true else int_list_contains(rest, n)
+  Cons(x, rest) ->
+    if x == n do true else int_list_contains(rest, n) end
   end
 end
 
@@ -353,7 +358,7 @@ pfn find_migration(migrations, version) do
   match migrations do
   Nil -> None
   Cons(m, rest) ->
-    if m.version == version then Some(m) else find_migration(rest, version)
+    if m.version == version do Some(m) else find_migration(rest, version) end
   end
 end
 
@@ -391,7 +396,7 @@ pfn insert_sorted(sorted, n) do
   match sorted do
   Nil -> [n]
   Cons(x, rest) ->
-    if n <= x then Cons(n, Cons(x, rest)) else Cons(x, insert_sorted(rest, n))
+    if n <= x do Cons(n, Cons(x, rest)) else Cons(x, insert_sorted(rest, n)) end
   end
 end
 
@@ -436,7 +441,8 @@ end
 pfn col_index(columns, name_, idx) do
   match columns do
   Nil -> 0
-  Cons(c, rest) -> if c == name_ then idx else col_index(rest, name_, idx + 1)
+  Cons(c, rest) ->
+    if c == name_ do idx else col_index(rest, name_, idx + 1) end
   end
 end
 
@@ -444,7 +450,7 @@ pfn nth_cell(row, idx) do
   match row do
   Nil -> None
   Cons(cell, rest) ->
-    if idx == 0 then cell else nth_cell(rest, idx - 1)
+    if idx == 0 do cell else nth_cell(rest, idx - 1) end
   end
 end
 

@@ -317,7 +317,7 @@ pfn sqlval_to_param(v) do
   PInt(n)    -> ParamText(int_to_string(n))
   PFloat(f_) -> ParamText(float_to_string(f_))
   PString(s) -> ParamText(s)
-  PBool(b)   -> ParamText(if b then "t" else "f")
+  PBool(b)   -> ParamText(if b do "t" else "f" end)
   PNull      -> ParamNull
   end
 end
@@ -327,7 +327,7 @@ pfn sql_val_str(v) do
   PInt(n)    -> int_to_string(n)
   PFloat(f_) -> float_to_string(f_)
   PString(s) -> "'" ++ s ++ "'"
-  PBool(b)   -> if b then "TRUE" else "FALSE"
+  PBool(b)   -> if b do "TRUE" else "FALSE" end
   PNull      -> "NULL"
   end
 end

@@ -189,9 +189,11 @@ pfn compile_joins_acc(joins, st, acc) do
   Nil -> (acc, st)
   Cons(JoinClause(kind, table, on_expr), rest) -> do
     let k = match kind do
-      Inner -> " INNER JOIN " | Left -> " LEFT JOIN "
-      Right -> " RIGHT JOIN " | FullOuter -> " FULL OUTER JOIN "
-      Cross -> " CROSS JOIN "
+      Inner    -> " INNER JOIN "
+      Left     -> " LEFT JOIN "
+      Right    -> " RIGHT JOIN "
+      FullOuter -> " FULL OUTER JOIN "
+      Cross    -> " CROSS JOIN "
     end
     match compile_expr(on_expr, st) do
     (on_sql, st2) ->
@@ -206,9 +208,11 @@ pfn compile_joins_inline(joins) do
   Nil -> ""
   Cons(JoinClause(kind, table, on_expr), rest) -> do
     let k = match kind do
-      Inner -> " INNER JOIN " | Left -> " LEFT JOIN "
-      Right -> " RIGHT JOIN " | FullOuter -> " FULL OUTER JOIN "
-      Cross -> " CROSS JOIN "
+      Inner    -> " INNER JOIN "
+      Left     -> " LEFT JOIN "
+      Right    -> " RIGHT JOIN "
+      FullOuter -> " FULL OUTER JOIN "
+      Cross    -> " CROSS JOIN "
     end
     k ++ quote_ident(table) ++ " ON " ++ compile_expr_inline(on_expr)
     ++ compile_joins_inline(rest)
@@ -342,8 +346,10 @@ pfn compile_order_parts(orders, st, acc) do
     match compile_expr(e, st) do
     (s, st2) -> do
       let d = match dir do
-        Asc -> " ASC" | Desc -> " DESC"
-        AscNullsFirst -> " ASC NULLS FIRST" | DescNullsLast -> " DESC NULLS LAST"
+        Asc            -> " ASC"
+        Desc           -> " DESC"
+        AscNullsFirst  -> " ASC NULLS FIRST"
+        DescNullsLast  -> " DESC NULLS LAST"
       end
       compile_order_parts(rest, st2, Cons(s ++ d, acc))
     end
@@ -363,8 +369,10 @@ pfn compile_order_items_inline(orders) do
   Nil -> Nil
   Cons(OrderExpr(e, dir), rest) -> do
     let d = match dir do
-      Asc -> " ASC" | Desc -> " DESC"
-      AscNullsFirst -> " ASC NULLS FIRST" | DescNullsLast -> " DESC NULLS LAST"
+      Asc            -> " ASC"
+      Desc           -> " DESC"
+      AscNullsFirst  -> " ASC NULLS FIRST"
+      DescNullsLast  -> " DESC NULLS LAST"
     end
     Cons(compile_expr_inline(e) ++ d, compile_order_items_inline(rest))
   end

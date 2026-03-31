@@ -29,13 +29,13 @@ import Pool
 --- Returns them in row order (duplicates preserved; use dedup_strings to deduplicate).
 fn extract_col_values(result, col_name) do
   let idx = find_col_idx(result.columns, col_name, 0)
-  if idx == -1 then Nil else extract_values_at(result.rows, idx, Nil)
+  if idx == -1 do Nil else extract_values_at(result.rows, idx, Nil) end
 end
 
 pfn find_col_idx(cols, name_, idx) do
   match cols do
   Nil -> -1
-  Cons(c, rest) -> if c == name_ then idx else find_col_idx(rest, name_, idx + 1)
+  Cons(c, rest) -> if c == name_ do idx else find_col_idx(rest, name_, idx + 1) end
   end
 end
 
@@ -56,7 +56,7 @@ end
 pfn nth_opt(lst, idx) do
   match lst do
   Nil -> None
-  Cons(x, rest) -> if idx == 0 then Some(x) else nth_opt(rest, idx - 1)
+  Cons(x, rest) -> if idx == 0 do Some(x) else nth_opt(rest, idx - 1) end
   end
 end
 
@@ -99,14 +99,14 @@ pfn dedup_acc(strs, seen) do
   match strs do
   Nil -> list_rev(seen)
   Cons(s, rest) ->
-    if str_list_contains(seen, s) then dedup_acc(rest, seen) else dedup_acc(rest, Cons(s, seen))
+    if str_list_contains(seen, s) do dedup_acc(rest, seen) else dedup_acc(rest, Cons(s, seen)) end
   end
 end
 
 pfn str_list_contains(lst, s) do
   match lst do
   Nil -> false
-  Cons(x, rest) -> if x == s then true else str_list_contains(rest, s)
+  Cons(x, rest) -> if x == s do true else str_list_contains(rest, s) end
   end
 end
 

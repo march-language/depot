@@ -94,8 +94,11 @@ pfn replenish_idle(cfg_opt, healthy) do
   Some(cfg) -> do
     let n = list_len(healthy)
     let deficit = cfg.min_size - n
-    if deficit > 0 do warm_up(cfg.conn_config, deficit, healthy, 0)
-    else healthy end
+    if deficit > 0 do
+      warm_up(cfg.conn_config, deficit, healthy, 0)
+    else
+      healthy
+    end
   end
   end
 end
