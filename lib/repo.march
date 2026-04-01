@@ -44,9 +44,7 @@ pfn make_set_parts(fields, idx, acc) do
   match fields do
   Nil -> list_rev(acc)
   Cons(pair, rest) -> do
-    let name = match pair do
-      (n, _) -> n
-    end
+    let (name, _) = pair
     make_set_parts(rest, idx + 1, Cons(repo_quote_ident(name) ++ " = $" ++ int_to_string(idx), acc))
   end
   end
@@ -148,11 +146,13 @@ end
 ---
 --- `fields` is a `List((String, SqlValue))` of column-name / value pairs.
 fn insert(pool, table, fields) do
-  let col_names = repo_list_map(fields, fn (pair) -> match pair do
-    (name, _) -> name
+  let col_names = repo_list_map(fields, fn (pair) -> do
+    let (name, _) = pair
+    name
   end)
-  let values    = repo_list_map(fields, fn (pair) -> match pair do
-    (_, val) -> val
+  let values    = repo_list_map(fields, fn (pair) -> do
+    let (_, val) = pair
+    val
   end)
   let col_str   = repo_join_strs(repo_list_map(col_names, repo_quote_ident), ", ")
   let n         = repo_list_length(values)
@@ -170,8 +170,9 @@ fn update(pool, table, fields, where_clause, where_params) do
   let set_parts = make_set_parts(fields, 1, Nil)
   let sql = "UPDATE " ++ repo_quote_ident(table) ++ " SET "
             ++ repo_join_strs(set_parts, ", ") ++ " WHERE " ++ where_clause
-  let fv = repo_list_map(fields, fn (pair) -> match pair do
-    (_, val) -> val
+  let fv = repo_list_map(fields, fn (pair) -> do
+    let (_, val) = pair
+    val
   end)
   let all_params = repo_list_append(repo_list_map(fv, sqlvalue_to_param), where_params)
   query_params(pool, sql, all_params)

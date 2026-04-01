@@ -35,9 +35,8 @@ pfn send_msg(fd, msg) do
 end
 
 pfn field_desc_name(fd_) do
-  match fd_ do
-  FieldDesc(name, _, _, _, _, _, _) -> name
-  end
+  let FieldDesc(name, _, _, _, _, _, _) = fd_
+  name
 end
 
 pfn row_to_strings(cells) do
