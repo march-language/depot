@@ -35,8 +35,8 @@ mod TestHelpers do
 -- Get or create the sandbox state Vault table.
 pfn sandbox_vault() do
   match Vault.whereis("__depot_test_sandbox__") do
-  Some(t) -> t
-  None -> do
+  | Some(t) -> t
+  | None -> do
     let t = Vault.new("__depot_test_sandbox__")
     Vault.set(t, "active", false)
     Vault.set(t, "snapshots", Nil)
@@ -48,23 +48,23 @@ end
 pfn is_active() do
   let t = sandbox_vault()
   match Vault.get(t, "active") do
-  Some(true) -> true
-  _ -> false
+  | Some(true) -> true
+  | _ -> false
   end
 end
 
 -- Snapshot a single key from a Vault table.
 pfn snapshot_one(tbl, k) do
   match Vault.get(tbl, k) do
-  Some(v) -> (k, v)
-  None -> (k, None)
+  | Some(v) -> (k, v)
+  | None -> (k, None)
   end
 end
 
 pfn snapshot_table(table_name) do
   match Vault.whereis(table_name) do
-  None -> Nil
-  Some(tbl) ->
+  | None -> Nil
+  | Some(tbl) ->
     let ks = Vault.keys(tbl)
     map(ks, fn k -> snapshot_one(tbl, k))
   end
@@ -73,8 +73,8 @@ end
 -- Drop all keys from a Vault table.
 pfn drop_keys(tbl, ks) do
   match ks do
-  Nil -> ()
-  Cons(k, rest) -> do
+  | Nil -> ()
+  | Cons(k, rest) -> do
     Vault.drop(tbl, k)
     drop_keys(tbl, rest)
   end
@@ -84,8 +84,8 @@ end
 -- Restore a Vault table from a snapshot.
 pfn restore_entries(tbl, snapshot) do
   match snapshot do
-  Nil -> ()
-  Cons((k, v), rest) -> do
+  | Nil -> ()
+  | Cons((k, v), rest) -> do
     Vault.set(tbl, k, v)
     restore_entries(tbl, rest)
   end
@@ -94,16 +94,16 @@ end
 
 pfn restore_table(table_name, snapshot) do
   match Vault.whereis(table_name) do
-  None -> do
+  | None -> do
     match snapshot do
-    Nil -> ()
-    _ -> do
+    | Nil -> ()
+    | _ -> do
       let tbl = Vault.new(table_name)
       restore_entries(tbl, snapshot)
     end
     end
   end
-  Some(tbl) -> do
+  | Some(tbl) -> do
     let ks = Vault.keys(tbl)
     drop_keys(tbl, ks)
     restore_entries(tbl, snapshot)
@@ -114,8 +114,8 @@ end
 -- Apply rollback to each (table_name, snapshot) pair.
 pfn rollback_all(snaps) do
   match snaps do
-  Nil -> ()
-  Cons((tbl_name, snap), rest) -> do
+  | Nil -> ()
+  | Cons((tbl_name, snap), rest) -> do
     restore_table(tbl_name, snap)
     rollback_all(rest)
   end
@@ -149,13 +149,12 @@ tables is a list of table name strings matching your schemas.
 """
 fn checkout(tables) do
   let t = sandbox_vault()
-  if is_active() do
+  if is_active() then do
     let snaps = map(tables, fn tbl_name -> (tbl_name, snapshot_table(tbl_name)))
     Vault.set(t, "snapshots", snaps)
     ()
-  else
+  end else
     panic("TestHelpers.checkout called but sandbox is not active. Call start_sandbox() first.")
-  end
 end
 
 doc """
@@ -166,17 +165,16 @@ Call after each test to undo any writes.
 """
 fn checkin() do
   let t = sandbox_vault()
-  if is_active() do
+  if is_active() then do
     let snaps = match Vault.get(t, "snapshots") do
-      Some(s) -> s
-      None -> Nil
+      | Some(s) -> s
+      | None -> Nil
     end
     rollback_all(snaps)
     Vault.set(t, "snapshots", Nil)
     ()
-  else
+  end else
     panic("TestHelpers.checkin called but sandbox is not active. Call start_sandbox() first.")
-  end
 end
 
 doc """

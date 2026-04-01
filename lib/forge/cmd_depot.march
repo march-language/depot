@@ -6,7 +6,7 @@
 -- up/0 and down/0 functions, and tracks applied versions via a local
 -- .march/depot/migrations.log file.
 
-mod Forge.CmdDepot do
+mod CmdDepot do
 
 -- ---- Constants ----
 
@@ -17,29 +17,25 @@ pfn log_file() do Path.join(log_dir(), "migrations.log") end
 -- ---- Migration log — flat file of applied version timestamps ----
 
 pfn read_applied() do
-  if !File.exists(log_file()) do
-    []
+  if !File.exists(log_file()) then []
   else
     match File.read(log_file()) do
-    Err(_)       -> []
-    Ok(content)  -> parse_versions(String.split(content, "\n"), [])
+    | Err(_)       -> []
+    | Ok(content)  -> parse_versions(String.split(content, "\n"), [])
     end
-  end
 end
 
 pfn parse_versions(lines, acc) do
   match lines do
-  Nil -> sort_int_list(acc)
-  Cons(line, rest) -> do
+  | Nil -> sort_int_list(acc)
+  | Cons(line, rest) -> do
     let trimmed = String.trim(line)
-    if String.is_empty(trimmed) do
-      parse_versions(rest, acc)
+    if String.is_empty(trimmed) then parse_versions(rest, acc)
     else
       match string_to_int(trimmed) do
-      None    -> parse_versions(rest, acc)
-      Some(v) -> parse_versions(rest, Cons(v, acc))
+      | None    -> parse_versions(rest, acc)
+      | Some(v) -> parse_versions(rest, Cons(v, acc))
       end
-    end
   end
   end
 end
@@ -51,30 +47,29 @@ pfn record_applied(version) do
 end
 
 pfn remove_applied(version) do
-  if File.exists(log_file()) do
+  if File.exists(log_file()) then do
     let applied   = read_applied()
     let remaining = filter_out(applied, version)
     let content   = build_version_lines(remaining, "")
     let _ = File.write(log_file(), content)
     ()
-  else
+  end else
     ()
-  end
 end
 
 pfn filter_out(lst, n) do
   match lst do
-  Nil -> Nil
-  Cons(x, rest) ->
-    if x == n do filter_out(rest, n)
-    else Cons(x, filter_out(rest, n)) end
+  | Nil -> Nil
+  | Cons(x, rest) ->
+    if x == n then filter_out(rest, n)
+    else Cons(x, filter_out(rest, n))
   end
 end
 
 pfn build_version_lines(versions, acc) do
   match versions do
-  Nil            -> acc
-  Cons(v, rest)  -> build_version_lines(rest, acc ++ int_to_string(v) ++ "\n")
+  | Nil            -> acc
+  | Cons(v, rest)  -> build_version_lines(rest, acc ++ int_to_string(v) ++ "\n")
   end
 end
 
@@ -85,33 +80,31 @@ type MigFile = { version: Int, name: String, path: String }
 
 --- Discover all migration files, sorted by version ascending.
 pfn discover_migrations() do
-  if !Dir.exists(migration_dir()) do
-    []
+  if !Dir.exists(migration_dir()) then []
   else
     match Dir.list(migration_dir()) do
-    Err(_)    -> []
-    Ok(names) -> do
+    | Err(_)    -> []
+    | Ok(names) -> do
       let paths = prepend_dir(names, migration_dir())
       sort_migrations(collect_migrations(paths, []))
     end
     end
-  end
 end
 
 pfn prepend_dir(names, dir) do
   match names do
-  Nil               -> Nil
-  Cons(name, rest)  -> Cons(Path.join(dir, name), prepend_dir(rest, dir))
+  | Nil               -> Nil
+  | Cons(name, rest)  -> Cons(Path.join(dir, name), prepend_dir(rest, dir))
   end
 end
 
 pfn collect_migrations(paths, acc) do
   match paths do
-  Nil              -> acc
-  Cons(path, rest) ->
+  | Nil              -> acc
+  | Cons(path, rest) ->
     match parse_migration_file(path) do
-    None    -> collect_migrations(rest, acc)
-    Some(m) -> collect_migrations(rest, Cons(m, acc))
+    | None    -> collect_migrations(rest, acc)
+    | Some(m) -> collect_migrations(rest, Cons(m, acc))
     end
   end
 end
@@ -120,16 +113,15 @@ end
 --- Expected format: <TIMESTAMP>_<name>.march
 pfn parse_migration_file(path) do
   let base = Path.basename(path)
-  if !String.ends_with(base, ".march") do
-    None
-  else
+  if !String.ends_with(base, ".march") then None
+  else do
     let stem = Path.basename(Path.strip_extension(path))
     match String.split_first(stem, "_") do
-    None              -> None
-    Some((ts_str, name)) ->
+    | None              -> None
+    | Some((ts_str, name)) ->
       match string_to_int(ts_str) do
-      None          -> None
-      Some(version) -> Some({ version = version, name = name, path = path })
+      | None          -> None
+      | Some(version) -> Some({ version = version, name = name, path = path })
       end
     end
   end
@@ -141,17 +133,17 @@ end
 
 pfn sort_mig_acc(lst, acc) do
   match lst do
-  Nil           -> acc
-  Cons(m, rest) -> sort_mig_acc(rest, insert_sorted_mig(acc, m))
+  | Nil           -> acc
+  | Cons(m, rest) -> sort_mig_acc(rest, insert_sorted_mig(acc, m))
   end
 end
 
 pfn insert_sorted_mig(sorted, m) do
   match sorted do
-  Nil           -> [m]
-  Cons(h, rest) ->
-    if m.version <= h.version do Cons(m, Cons(h, rest))
-    else Cons(h, insert_sorted_mig(rest, m)) end
+  | Nil           -> [m]
+  | Cons(h, rest) ->
+    if m.version <= h.version then Cons(m, Cons(h, rest))
+    else Cons(h, insert_sorted_mig(rest, m))
   end
 end
 
@@ -160,25 +152,24 @@ end
 --- Scan for the first "mod <Name> do" line and return the module name.
 pfn extract_module_name(path) do
   match File.read(path) do
-  Err(_)      -> None
-  Ok(content) -> find_module_line(String.split(content, "\n"))
+  | Err(_)      -> None
+  | Ok(content) -> find_module_line(String.split(content, "\n"))
   end
 end
 
 pfn find_module_line(lines) do
   match lines do
-  Nil               -> None
-  Cons(line, rest)  -> do
+  | Nil               -> None
+  | Cons(line, rest)  -> do
     let trimmed = String.trim(line)
-    if String.starts_with(trimmed, "mod ") do
+    if String.starts_with(trimmed, "mod ") then do
       let after = String.trim(String.slice_bytes(trimmed, 4, String.byte_size(trimmed) - 4))
       match String.split(after, " ") do
-      Nil              -> find_module_line(rest)
-      Cons(name, _)    -> Some(name)
+      | Nil              -> find_module_line(rest)
+      | Cons(name, _)    -> Some(name)
       end
-    else
+    end else
       find_module_line(rest)
-    end
   end
   end
 end
@@ -195,34 +186,33 @@ end
 --- Run a migration's up() or down() function by shelling out to march.
 pfn run_migration(m, fn_name) do
   match extract_module_name(m.path) do
-  None ->
+  | None ->
     Err("cannot find module declaration in " ++ m.path)
-  Some(mod_name) ->
+  | Some(mod_name) ->
     match File.read(m.path) do
-    Err(_) ->
+    | Err(_) ->
       Err("cannot read migration file: " ++ m.path)
-    Ok(mig_content) -> do
+    | Ok(mig_content) -> do
       let runner  = build_runner_source(mig_content, mod_name, fn_name)
       let ts      = int_to_string(DateTime.now())
       let tmp     = Path.join("/tmp", "forge_migration_" ++ ts ++ ".march")
       match File.write(tmp, runner) do
-      Err(_) ->
+      | Err(_) ->
         Err("cannot write runner file: " ++ tmp)
-      Ok(_) ->
+      | Ok(_) ->
         let result = Process.run("march", [tmp])
         let _ = File.delete(tmp)
         match result do
-        Err(msg) ->
+        | Err(msg) ->
           Err("migration " ++ int_to_string(m.version) ++ " (" ++ m.name ++ ") " ++ fn_name ++ "() failed: " ++ msg)
-        Ok(proc) -> do
+        | Ok(proc) -> do
           let out = Process.stdout(proc)
           let err = Process.stderr(proc)
-          if !String.is_empty(out) do print(out) else () end
-          if !String.is_empty(err) do print(err) else () end
-          if Process.ok(proc) do Ok(())
+          if !String.is_empty(out) then print(out) else ()
+          if !String.is_empty(err) then print(err) else ()
+          if Process.ok(proc) then Ok(())
           else
             Err("migration " ++ int_to_string(m.version) ++ " (" ++ m.name ++ ") " ++ fn_name ++ "() failed with exit code " ++ int_to_string(Process.exit_code(proc)))
-          end
         end
         end
       end
@@ -238,42 +228,41 @@ fn migrate() do
   let all     = discover_migrations()
   let applied = read_applied()
   let pending = filter_pending(all, applied)
-  if list_is_empty(pending) do
+  if list_is_empty(pending) then do
     println("Already up to date. No pending migrations.")
     Ok(())
-  else do
+  end else do
     println("Running " ++ int_to_string(list_length(pending)) ++ " migration(s)...")
     match run_pending_up(pending) do
-    Err(e) -> Err(e)
-    Ok(_)  -> do
+    | Err(e) -> Err(e)
+    | Ok(_)  -> do
       println("Migrations complete. " ++ int_to_string(list_length(pending)) ++ " applied.")
       Ok(())
     end
     end
   end
-  end
 end
 
 pfn filter_pending(all, applied) do
   match all do
-  Nil           -> Nil
-  Cons(m, rest) ->
-    if int_list_contains(applied, m.version) do filter_pending(rest, applied)
-    else Cons(m, filter_pending(rest, applied)) end
+  | Nil           -> Nil
+  | Cons(m, rest) ->
+    if int_list_contains(applied, m.version) then filter_pending(rest, applied)
+    else Cons(m, filter_pending(rest, applied))
   end
 end
 
 pfn run_pending_up(pending) do
   match pending do
-  Nil           -> Ok(())
-  Cons(m, rest) -> do
+  | Nil           -> Ok(())
+  | Cons(m, rest) -> do
     print("  * migrating " ++ int_to_string(m.version) ++ "_" ++ m.name ++ "... ")
     match run_migration(m, "up") do
-    Err(msg) -> do
+    | Err(msg) -> do
       println("FAILED")
       Err(msg)
     end
-    Ok(_) -> do
+    | Ok(_) -> do
       record_applied(m.version)
       println("done")
       run_pending_up(rest)
@@ -289,40 +278,39 @@ fn rollback(step) do
   let applied      = read_applied()
   let applied_desc = list_reverse(sort_int_list(applied))
   let to_rollback  = take(step, applied_desc)
-  if list_is_empty(to_rollback) do
+  if list_is_empty(to_rollback) then do
     println("Nothing to roll back.")
     Ok(())
-  else do
+  end else do
     println("Rolling back " ++ int_to_string(list_length(to_rollback)) ++ " migration(s)...")
     match run_rollback_list(to_rollback, all) do
-    Err(e) -> Err(e)
-    Ok(_)  -> do
+    | Err(e) -> Err(e)
+    | Ok(_)  -> do
       println("Rollback complete.")
       Ok(())
     end
     end
   end
-  end
 end
 
 pfn run_rollback_list(versions, all) do
   match versions do
-  Nil                -> Ok(())
-  Cons(version, rest) ->
+  | Nil                -> Ok(())
+  | Cons(version, rest) ->
     match find_migration(all, version) do
-    None -> do
+    | None -> do
       println("  * rolling back " ++ int_to_string(version) ++ "... MISSING FILE (skipped)")
       remove_applied(version)
       run_rollback_list(rest, all)
     end
-    Some(m) -> do
+    | Some(m) -> do
       print("  * rolling back " ++ int_to_string(m.version) ++ "_" ++ m.name ++ "... ")
       match run_migration(m, "down") do
-      Err(msg) -> do
+      | Err(msg) -> do
         println("FAILED")
         Err(msg)
       end
-      Ok(_) -> do
+      | Ok(_) -> do
         remove_applied(m.version)
         println("done")
         run_rollback_list(rest, all)
@@ -335,10 +323,10 @@ end
 
 pfn find_migration(all, version) do
   match all do
-  Nil           -> None
-  Cons(m, rest) ->
-    if m.version == version do Some(m)
-    else find_migration(rest, version) end
+  | Nil           -> None
+  | Cons(m, rest) ->
+    if m.version == version then Some(m)
+    else find_migration(rest, version)
   end
 end
 
@@ -346,10 +334,10 @@ end
 fn migrations() do
   let all     = discover_migrations()
   let applied = read_applied()
-  if list_is_empty(all) do
+  if list_is_empty(all) then do
     println("No migrations found in " ++ migration_dir() ++ "/")
     Ok(())
-  else do
+  end else do
     println("Migration status:\n")
     println("  " ++ String.pad_right("Version", 14, " ") ++ "  " ++ String.pad_right("Status", 8, " ") ++ "  Name")
     println("  " ++ String.repeat("-", 14) ++ "  " ++ String.repeat("-", 8) ++ "  ----")
@@ -359,16 +347,15 @@ fn migrations() do
     println("\n  " ++ int_to_string(n_applied) ++ " applied, " ++ int_to_string(n_pending) ++ " pending")
     Ok(())
   end
-  end
 end
 
 pfn print_migration_rows(all, applied) do
   match all do
-  Nil           -> ()
-  Cons(m, rest) -> do
+  | Nil           -> ()
+  | Cons(m, rest) -> do
     let status =
-      if int_list_contains(applied, m.version) do "\027[32m  up  \027[0m"
-      else "\027[33m down \027[0m" end
+      if int_list_contains(applied, m.version) then "\027[32m  up  \027[0m"
+      else "\027[33m down \027[0m"
     println("  " ++ String.pad_right(int_to_string(m.version), 14, " ") ++ "  " ++ status ++ "  " ++ m.name)
     print_migration_rows(rest, applied)
   end
@@ -377,10 +364,10 @@ end
 
 pfn count_applied(all, applied, acc) do
   match all do
-  Nil           -> acc
-  Cons(m, rest) ->
-    if int_list_contains(applied, m.version) do count_applied(rest, applied, acc + 1)
-    else count_applied(rest, applied, acc) end
+  | Nil           -> acc
+  | Cons(m, rest) ->
+    if int_list_contains(applied, m.version) then count_applied(rest, applied, acc + 1)
+    else count_applied(rest, applied, acc)
   end
 end
 
@@ -388,18 +375,17 @@ end
 fn reset() do
   let applied = read_applied()
   let n       = list_length(applied)
-  if n > 0 do
+  if n > 0 then do
     println("Resetting: rolling back " ++ int_to_string(n) ++ " migration(s)...")
     match rollback(n) do
-    Err(e) -> Err(e)
-    Ok(_)  -> do
+    | Err(e) -> Err(e)
+    | Ok(_)  -> do
       println("")
       migrate()
     end
     end
-  else
+  end else
     migrate()
-  end
 end
 
 --- forge depot gen migration <name> — generate a timestamped migration stub.
@@ -434,8 +420,8 @@ fn gen_migration(name) do
     ++ "end\n\n"
     ++ "end\n"
   match File.write(filepath, content) do
-  Err(_) -> Err("cannot write migration file: " ++ filepath)
-  Ok(_)  -> do
+  | Err(_) -> Err("cannot write migration file: " ++ filepath)
+  | Ok(_)  -> do
     println("* creating " ++ filepath)
     Ok(())
   end
@@ -450,10 +436,10 @@ end
 
 pfn to_pascal_acc(parts, acc) do
   match parts do
-  Nil            -> acc
-  Cons(p, rest)  ->
-    if String.is_empty(p) do to_pascal_acc(rest, acc)
-    else
+  | Nil            -> acc
+  | Cons(p, rest)  ->
+    if String.is_empty(p) then to_pascal_acc(rest, acc)
+    else do
       let cap = String.to_uppercase(String.slice_bytes(p, 0, 1))
               ++ String.slice_bytes(p, 1, String.byte_size(p) - 1)
       to_pascal_acc(rest, acc ++ cap)
@@ -465,59 +451,58 @@ end
 
 pfn int_list_contains(lst, n) do
   match lst do
-  Nil           -> false
-  Cons(x, rest) ->
-    if x == n do true else int_list_contains(rest, n) end
+  | Nil           -> false
+  | Cons(x, rest) ->
+    if x == n then true else int_list_contains(rest, n)
   end
 end
 
 pfn list_is_empty(lst) do
   match lst do
-  Nil -> true
-  _   -> false
+  | Nil -> true
+  | _   -> false
   end
 end
 
 pfn list_length(lst) do list_len_acc(lst, 0) end
 pfn list_len_acc(lst, acc) do
   match lst do
-  Nil           -> acc
-  Cons(_, rest) -> list_len_acc(rest, acc + 1)
+  | Nil           -> acc
+  | Cons(_, rest) -> list_len_acc(rest, acc + 1)
   end
 end
 
 pfn list_reverse(lst) do list_rev_acc(lst, []) end
 pfn list_rev_acc(lst, acc) do
   match lst do
-  Nil           -> acc
-  Cons(x, rest) -> list_rev_acc(rest, Cons(x, acc))
+  | Nil           -> acc
+  | Cons(x, rest) -> list_rev_acc(rest, Cons(x, acc))
   end
 end
 
 pfn take(n, lst) do
-  if n == 0 do []
+  if n == 0 then []
   else
     match lst do
-    Nil           -> []
-    Cons(x, rest) -> Cons(x, take(n - 1, rest))
+    | Nil           -> []
+    | Cons(x, rest) -> Cons(x, take(n - 1, rest))
     end
-  end
 end
 
 pfn sort_int_list(lst) do sort_int_acc(lst, []) end
 pfn sort_int_acc(lst, acc) do
   match lst do
-  Nil           -> acc
-  Cons(x, rest) -> sort_int_acc(rest, insert_sorted_int(acc, x))
+  | Nil           -> acc
+  | Cons(x, rest) -> sort_int_acc(rest, insert_sorted_int(acc, x))
   end
 end
 
 pfn insert_sorted_int(sorted, n) do
   match sorted do
-  Nil           -> [n]
-  Cons(x, rest) ->
-    if n <= x do Cons(n, Cons(x, rest))
-    else Cons(x, insert_sorted_int(rest, n)) end
+  | Nil           -> [n]
+  | Cons(x, rest) ->
+    if n <= x then Cons(n, Cons(x, rest))
+    else Cons(x, insert_sorted_int(rest, n))
   end
 end
 

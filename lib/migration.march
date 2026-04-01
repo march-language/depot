@@ -84,15 +84,15 @@ type Migration = {
 --- Converts a MigrationOp to its DDL SQL string.
 fn op_to_sql(op) do
   match op do
-  CreateTable(def) -> compile_create_table(def)
-  AlterTable(table, ops) -> join_strs(map_alter_ops(table, ops), ";\n")
-  DropTable(name)  -> "DROP TABLE IF EXISTS " ++ qi(name)
-  AddColumn(table, col) -> compile_add_column(table, col)
-  RemoveColumn(table, col) ->
+  | CreateTable(def) -> compile_create_table(def)
+  | AlterTable(table, ops) -> join_strs(map_alter_ops(table, ops), ";\n")
+  | DropTable(name)  -> "DROP TABLE IF EXISTS " ++ qi(name)
+  | AddColumn(table, col) -> compile_add_column(table, col)
+  | RemoveColumn(table, col) ->
     "ALTER TABLE " ++ qi(table) ++ " DROP COLUMN IF EXISTS " ++ qi(col)
-  AddIndex(idx) -> compile_add_index(idx)
-  DropIndex(name) -> "DROP INDEX IF EXISTS " ++ qi(name)
-  RawSql(sql) -> sql
+  | AddIndex(idx) -> compile_add_index(idx)
+  | DropIndex(name) -> "DROP INDEX IF EXISTS " ++ qi(name)
+  | RawSql(sql) -> sql
   end
 end
 
@@ -103,38 +103,38 @@ pfn compile_create_table(def) do
 end
 
 pfn compile_col_def(col) do
-  let pk_c   = if col.primary_key do " PRIMARY KEY" else "" end
+  let pk_c   = if col.primary_key then " PRIMARY KEY" else ""
   -- PRIMARY KEY implies NOT NULL; suppress redundant NOT NULL when pk is set
-  let null_c = if col.nullable || col.primary_key do "" else " NOT NULL" end
+  let null_c = if col.nullable || col.primary_key then "" else " NOT NULL"
   let def_c  = match col.default_ do
-    None    -> ""
-    Some(d) -> " DEFAULT " ++ d
+    | None    -> ""
+    | Some(d) -> " DEFAULT " ++ d
   end
-  let uniq_c = if col.unique_ && !col.primary_key do " UNIQUE" else "" end
+  let uniq_c = if col.unique_ && !col.primary_key then " UNIQUE" else ""
   let ref_c  = match col.references do
-    None         -> ""
-    Some((t, c)) -> " REFERENCES " ++ qi(t) ++ "(" ++ qi(c) ++ ")"
+    | None         -> ""
+    | Some((t, c)) -> " REFERENCES " ++ qi(t) ++ "(" ++ qi(c) ++ ")"
   end
   qi(col.name) ++ " " ++ col.col_type ++ def_c ++ pk_c ++ null_c ++ uniq_c ++ ref_c
 end
 
 pfn compile_add_column(table, col) do
-  let null_c = if col.nullable do "" else " NOT NULL" end
+  let null_c = if col.nullable then "" else " NOT NULL"
   let def_c  = match col.default_ do
-    None -> ""
-    Some(d) -> " DEFAULT " ++ d
+    | None -> ""
+    | Some(d) -> " DEFAULT " ++ d
   end
-  let uniq_c = if col.unique_ do " UNIQUE" else "" end
+  let uniq_c = if col.unique_ then " UNIQUE" else ""
   let ref_c  = match col.references do
-    None         -> ""
-    Some((t, c)) -> " REFERENCES " ++ qi(t) ++ "(" ++ qi(c) ++ ")"
+    | None         -> ""
+    | Some((t, c)) -> " REFERENCES " ++ qi(t) ++ "(" ++ qi(c) ++ ")"
   end
   "ALTER TABLE " ++ qi(table) ++ " ADD COLUMN IF NOT EXISTS "
   ++ qi(col.name) ++ " " ++ col.col_type ++ null_c ++ def_c ++ uniq_c ++ ref_c
 end
 
 pfn compile_add_index(idx) do
-  let uniq = if idx.unique_ do "UNIQUE " else "" end
+  let uniq = if idx.unique_ then "UNIQUE " else ""
   let cols  = join_strs(map_qi(idx.columns), ", ")
   "CREATE " ++ uniq ++ "INDEX IF NOT EXISTS " ++ qi(idx.name)
   ++ " ON " ++ qi(idx.table) ++ " (" ++ cols ++ ")"
@@ -142,14 +142,14 @@ end
 
 pfn map_alter_ops(table, ops) do
   match ops do
-  Nil -> Nil
-  Cons(op, rest) -> do
+  | Nil -> Nil
+  | Cons(op, rest) -> do
     let sql = match op do
-      RenameColumn(old, new_) ->
+      | RenameColumn(old, new_) ->
         "ALTER TABLE " ++ qi(table) ++ " RENAME COLUMN " ++ qi(old) ++ " TO " ++ qi(new_)
-      SetDefault(col, def) ->
+      | SetDefault(col, def) ->
         "ALTER TABLE " ++ qi(table) ++ " ALTER COLUMN " ++ qi(col) ++ " SET DEFAULT " ++ def
-      DropDefault(col) ->
+      | DropDefault(col) ->
         "ALTER TABLE " ++ qi(table) ++ " ALTER COLUMN " ++ qi(col) ++ " DROP DEFAULT"
     end
     Cons(sql, map_alter_ops(table, rest))
@@ -159,15 +159,15 @@ end
 
 pfn map_col_defs(cols) do
   match cols do
-  Nil -> Nil
-  Cons(c, rest) -> Cons(compile_col_def(c), map_col_defs(rest))
+  | Nil -> Nil
+  | Cons(c, rest) -> Cons(compile_col_def(c), map_col_defs(rest))
   end
 end
 
 pfn map_qi(strs) do
   match strs do
-  Nil -> Nil
-  Cons(s, rest) -> Cons(qi(s), map_qi(rest))
+  | Nil -> Nil
+  | Cons(s, rest) -> Cons(qi(s), map_qi(rest))
   end
 end
 
@@ -198,21 +198,20 @@ end
 --- Returns versions from `all_versions` that are not in `applied`.
 fn filter_pending(all_versions, applied) do
   match all_versions do
-  Nil -> Nil
-  Cons(v, rest) ->
-    if int_list_contains(applied, v) do
+  | Nil -> Nil
+  | Cons(v, rest) ->
+    if int_list_contains(applied, v) then
       filter_pending(rest, applied)
     else
       Cons(v, filter_pending(rest, applied))
-    end
   end
 end
 
 pfn int_list_contains(lst, n) do
   match lst do
-  Nil -> false
-  Cons(x, rest) ->
-    if x == n do true else int_list_contains(rest, n) end
+  | Nil -> false
+  | Cons(x, rest) ->
+    if x == n then true else int_list_contains(rest, n)
   end
 end
 
@@ -225,8 +224,8 @@ end
 fn run(pool, migrations) do
   with_conn(pool, fn (conn) ->
     match simple_query(conn, ensure_schema_migrations_sql()) do
-    Err(e) -> Err("ensure schema_migrations: " ++ e)
-    Ok(_)  -> run_fetch_applied(conn, pool, migrations)
+    | Err(e) -> Err("ensure schema_migrations: " ++ e)
+    | Ok(_)  -> run_fetch_applied(conn, pool, migrations)
     end
   )
   |> flatten_result()
@@ -234,8 +233,8 @@ end
 
 pfn run_fetch_applied(conn, pool, migrations) do
   match simple_query(conn, applied_versions_sql()) do
-  Err(e) -> Err("fetch applied: " ++ e)
-  Ok(result) -> do
+  | Err(e) -> Err("fetch applied: " ++ e)
+  | Ok(result) -> do
     let applied = extract_versions(result.rows, result.columns)
     let pending = filter_pending(sort_by_version(migrations), applied)
     run_pending(pool, pending, migrations)
@@ -245,14 +244,14 @@ end
 
 pfn run_pending(pool, pending_versions, all_migrations) do
   match pending_versions do
-  Nil -> Ok(())
-  Cons(v, rest) ->
+  | Nil -> Ok(())
+  | Cons(v, rest) ->
     match find_migration(all_migrations, v) do
-    None -> Err("migration not found for version: " ++ int_to_string(v))
-    Some(m) ->
+    | None -> Err("migration not found for version: " ++ int_to_string(v))
+    | Some(m) ->
       match apply_migration(pool, m) do
-      Err(e) -> Err(e)
-      Ok(_)  -> run_pending(pool, rest, all_migrations)
+      | Err(e) -> Err(e)
+      | Ok(_)  -> run_pending(pool, rest, all_migrations)
       end
     end
   end
@@ -261,23 +260,23 @@ end
 pfn apply_migration(pool, m) do
   with_conn(pool, fn (conn) ->
     match simple_query(conn, "BEGIN") do
-    Err(e) -> Err("BEGIN: " ++ e)
-    Ok(_)  ->
+    | Err(e) -> Err("BEGIN: " ++ e)
+    | Ok(_)  ->
       match run_ops(conn, m.up) do
-      Err(e) -> do
+      | Err(e) -> do
         let _ = simple_query(conn, "ROLLBACK")
         Err("migration " ++ int_to_string(m.version) ++ " up failed: " ++ e)
       end
-      Ok(_) ->
+      | Ok(_) ->
         match simple_query(conn, record_migration_sql(m.version, m.name)) do
-        Err(e) -> do
+        | Err(e) -> do
           let _ = simple_query(conn, "ROLLBACK")
           Err("record migration: " ++ e)
         end
-        Ok(_) ->
+        | Ok(_) ->
           match simple_query(conn, "COMMIT") do
-          Err(e) -> Err("COMMIT: " ++ e)
-          Ok(_)  -> Ok(())
+          | Err(e) -> Err("COMMIT: " ++ e)
+          | Ok(_)  -> Ok(())
           end
         end
       end
@@ -290,8 +289,8 @@ end
 fn rollback(pool, migrations) do
   with_conn(pool, fn (conn) ->
     match simple_query(conn, ensure_schema_migrations_sql()) do
-    Err(e) -> Err("ensure schema_migrations: " ++ e)
-    Ok(_)  -> rollback_fetch_applied(conn, pool, migrations)
+    | Err(e) -> Err("ensure schema_migrations: " ++ e)
+    | Ok(_)  -> rollback_fetch_applied(conn, pool, migrations)
     end
   )
   |> flatten_result()
@@ -299,15 +298,15 @@ end
 
 pfn rollback_fetch_applied(conn, pool, migrations) do
   match simple_query(conn, applied_versions_sql()) do
-  Err(e) -> Err("fetch applied: " ++ e)
-  Ok(result) -> do
+  | Err(e) -> Err("fetch applied: " ++ e)
+  | Ok(result) -> do
     let applied = extract_versions(result.rows, result.columns)
     match last_version(applied) do
-    None -> Err("no migrations to roll back")
-    Some(v) ->
+    | None -> Err("no migrations to roll back")
+    | Some(v) ->
       match find_migration(migrations, v) do
-      None -> Err("migration definition not found for version: " ++ int_to_string(v))
-      Some(m) -> rollback_migration(pool, m)
+      | None -> Err("migration definition not found for version: " ++ int_to_string(v))
+      | Some(m) -> rollback_migration(pool, m)
       end
     end
   end
@@ -317,23 +316,23 @@ end
 pfn rollback_migration(pool, m) do
   with_conn(pool, fn (conn) ->
     match simple_query(conn, "BEGIN") do
-    Err(e) -> Err("BEGIN: " ++ e)
-    Ok(_)  ->
+    | Err(e) -> Err("BEGIN: " ++ e)
+    | Ok(_)  ->
       match run_ops(conn, m.down) do
-      Err(e) -> do
+      | Err(e) -> do
         let _ = simple_query(conn, "ROLLBACK")
         Err("migration " ++ int_to_string(m.version) ++ " down failed: " ++ e)
       end
-      Ok(_) ->
+      | Ok(_) ->
         match simple_query(conn, delete_migration_sql(m.version)) do
-        Err(e) -> do
+        | Err(e) -> do
           let _ = simple_query(conn, "ROLLBACK")
           Err("delete migration record: " ++ e)
         end
-        Ok(_) ->
+        | Ok(_) ->
           match simple_query(conn, "COMMIT") do
-          Err(e) -> Err("COMMIT: " ++ e)
-          Ok(_)  -> Ok(())
+          | Err(e) -> Err("COMMIT: " ++ e)
+          | Ok(_)  -> Ok(())
           end
         end
       end
@@ -344,12 +343,12 @@ end
 
 pfn run_ops(conn, ops) do
   match ops do
-  Nil -> Ok(())
-  Cons(op, rest) -> do
+  | Nil -> Ok(())
+  | Cons(op, rest) -> do
     let sql = op_to_sql(op)
     match simple_query(conn, sql) do
-    Err(e) -> Err(e)
-    Ok(_)  -> run_ops(conn, rest)
+    | Err(e) -> Err(e)
+    | Ok(_)  -> run_ops(conn, rest)
     end
   end
   end
@@ -359,9 +358,9 @@ end
 
 pfn find_migration(migrations, version) do
   match migrations do
-  Nil -> None
-  Cons(m, rest) ->
-    if m.version == version do Some(m) else find_migration(rest, version) end
+  | Nil -> None
+  | Cons(m, rest) ->
+    if m.version == version then Some(m) else find_migration(rest, version)
   end
 end
 
@@ -371,18 +370,18 @@ end
 
 pfn map_migration_versions(migrations) do
   match migrations do
-  Nil -> Nil
-  Cons(m, rest) -> Cons(m.version, map_migration_versions(rest))
+  | Nil -> Nil
+  | Cons(m, rest) -> Cons(m.version, map_migration_versions(rest))
   end
 end
 
 pfn map_versions(versions, migrations) do
   match versions do
-  Nil -> Nil
-  Cons(v, rest) ->
+  | Nil -> Nil
+  | Cons(v, rest) ->
     match find_migration(migrations, v) do
-    None    -> map_versions(rest, migrations)
-    Some(m) -> Cons(m.version, map_versions(rest, migrations))
+    | None    -> map_versions(rest, migrations)
+    | Some(m) -> Cons(m.version, map_versions(rest, migrations))
     end
   end
 end
@@ -390,24 +389,24 @@ end
 pfn sort_int_list(lst) do sort_int_acc(lst, Nil) end
 pfn sort_int_acc(lst, acc) do
   match lst do
-  Nil -> acc
-  Cons(x, rest) -> sort_int_acc(rest, insert_sorted(acc, x))
+  | Nil -> acc
+  | Cons(x, rest) -> sort_int_acc(rest, insert_sorted(acc, x))
   end
 end
 
 pfn insert_sorted(sorted, n) do
   match sorted do
-  Nil -> [n]
-  Cons(x, rest) ->
-    if n <= x do Cons(n, Cons(x, rest)) else Cons(x, insert_sorted(rest, n)) end
+  | Nil -> [n]
+  | Cons(x, rest) ->
+    if n <= x then Cons(n, Cons(x, rest)) else Cons(x, insert_sorted(rest, n))
   end
 end
 
 pfn last_version(versions) do
   match versions do
-  Nil -> None
-  Cons(v, Nil) -> Some(v)
-  Cons(_, rest) -> last_version(rest)
+  | Nil -> None
+  | Cons(v, Nil) -> Some(v)
+  | Cons(_, rest) -> last_version(rest)
   end
 end
 
@@ -418,8 +417,8 @@ end
 
 pfn extract_versions_acc(rows, idx, acc) do
   match rows do
-  Nil -> list_rev(acc)
-  Cons(row, rest) -> do
+  | Nil -> list_rev(acc)
+  | Cons(row, rest) -> do
     let v = str_to_int_or_zero(opt_to_str(nth_cell(row, idx)))
     extract_versions_acc(rest, idx, Cons(v, acc))
   end
@@ -428,48 +427,48 @@ end
 
 pfn str_to_int_or_zero(s) do
   match string_to_int(s) do
-  None    -> 0
-  Some(n) -> n
+  | None    -> 0
+  | Some(n) -> n
   end
 end
 
 pfn opt_to_str(opt) do
   match opt do
-  None          -> ""
-  Some(None)    -> ""
-  Some(Some(s)) -> s
+  | None          -> ""
+  | Some(None)    -> ""
+  | Some(Some(s)) -> s
   end
 end
 
 pfn col_index(columns, name_, idx) do
   match columns do
-  Nil -> 0
-  Cons(c, rest) ->
-    if c == name_ do idx else col_index(rest, name_, idx + 1) end
+  | Nil -> 0
+  | Cons(c, rest) ->
+    if c == name_ then idx else col_index(rest, name_, idx + 1)
   end
 end
 
 pfn nth_cell(row, idx) do
   match row do
-  Nil -> None
-  Cons(cell, rest) ->
-    if idx == 0 do cell else nth_cell(rest, idx - 1) end
+  | Nil -> None
+  | Cons(cell, rest) ->
+    if idx == 0 then cell else nth_cell(rest, idx - 1)
   end
 end
 
 pfn list_rev(lst) do list_rev_acc(lst, Nil) end
 pfn list_rev_acc(lst, acc) do
   match lst do
-    Nil -> acc
-    Cons(x, rest) -> list_rev_acc(rest, Cons(x, acc))
+  | Nil -> acc
+  | Cons(x, rest) -> list_rev_acc(rest, Cons(x, acc))
   end
 end
 
 pfn flatten_result(r) do
   match r do
-    Ok(Ok(v)) -> Ok(v)
-    Ok(Err(e)) -> Err(e)
-    Err(e) -> Err(e)
+  | Ok(Ok(v)) -> Ok(v)
+  | Ok(Err(e)) -> Err(e)
+  | Err(e) -> Err(e)
   end
 end
 
@@ -477,9 +476,9 @@ pfn qi(name) do "\"" ++ name ++ "\"" end
 
 pfn join_strs(parts, sep) do
   match parts do
-  Nil -> ""
-  Cons(first, Nil) -> first
-  Cons(first, rest) -> first ++ sep ++ join_strs(rest, sep)
+  | Nil -> ""
+  | Cons(first, Nil) -> first
+  | Cons(first, rest) -> first ++ sep ++ join_strs(rest, sep)
   end
 end
 

@@ -31,7 +31,7 @@ fn read_i32(b, pos) do
     Bytes.get(b, pos + 1) * 65536    +
     Bytes.get(b, pos + 2) * 256      +
     Bytes.get(b, pos + 3)
-  if raw >= 2147483648 do raw - 4294967296 else raw end
+  if raw >= 2147483648 then raw - 4294967296 else raw
 end
 
 --- Reads a null-terminated C string from bytes starting at `pos`.
@@ -45,8 +45,8 @@ end
 fn read_cstring(b, pos) do
   fn go(i, acc) do
     let byte = Bytes.get(b, i)
-    if byte == 0 do (Bytes.to_string(Bytes.from_list(reverse(acc))), i + 1)
-    else go(i + 1, Cons(byte, acc)) end
+    if byte == 0 then (Bytes.to_string(Bytes.from_list(reverse(acc))), i + 1)
+    else go(i + 1, Cons(byte, acc))
   end
   go(pos, Nil)
 end
@@ -61,31 +61,31 @@ end
 --- 2
 fn read_bytes_field(b, pos) do
   let len = read_i32(b, pos)
-  if len == -1 do (None, pos + 4)
-  else (Some(Bytes.slice(b, pos + 4, len)), pos + 4 + len) end
+  if len == -1 then (None, pos + 4)
+  else (Some(Bytes.slice(b, pos + 4, len)), pos + 4 + len)
 end
 
 -- ---- Error/Notice field parsing ----
 
 pfn parse_error_fields(b, pos) do
   fn go(i, severity, code, message, detail, hint, position) do
-    if i >= Bytes.length(b) do
+    if i >= Bytes.length(b) then
       { severity = severity, code = code, message = message,
         detail = detail, hint = hint, position = position }
     else
       match Bytes.get(b, i) do
-      0 ->
+      | 0 ->
         { severity = severity, code = code, message = message,
           detail = detail, hint = hint, position = position }
-      field_type -> do
+      | field_type -> do
         let (value, next) = read_cstring(b, i + 1)
         match field_type do
-        83 -> go(next, value,    code,    message, detail,        hint,        position)
-        67 -> go(next, severity, value,   message, detail,        hint,        position)
-        77 -> go(next, severity, code,    value,   detail,        hint,        position)
-        68 -> go(next, severity, code,    message, Some(value),   hint,        position)
-        72 -> go(next, severity, code,    message, detail,        Some(value), position)
-        _  -> go(next, severity, code,    message, detail,        hint,        position)
+        | 83 -> go(next, value,    code,    message, detail,        hint,        position)
+        | 67 -> go(next, severity, value,   message, detail,        hint,        position)
+        | 77 -> go(next, severity, code,    value,   detail,        hint,        position)
+        | 68 -> go(next, severity, code,    message, Some(value),   hint,        position)
+        | 72 -> go(next, severity, code,    message, detail,        Some(value), position)
+        | _  -> go(next, severity, code,    message, detail,        hint,        position)
         end
       end
       end
@@ -108,33 +108,29 @@ pfn parse_one_field_desc(b, pos) do
 end
 
 pfn parse_field_descs(b, pos, n, acc) do
-  if n == 0 do reverse(acc)
+  if n == 0 then reverse(acc)
   else
     match parse_one_field_desc(b, pos) do
     (fd, next) -> parse_field_descs(b, next, n - 1, Cons(fd, acc))
     end
-  end
 end
 
 pfn parse_data_columns(b, pos, n, acc) do
-  if n == 0 do reverse(acc)
+  if n == 0 then reverse(acc)
   else
     match read_bytes_field(b, pos) do
     (col, next) -> parse_data_columns(b, next, n - 1, Cons(col, acc))
     end
-  end
 end
 
 pfn parse_sasl_mechanisms(b, pos, acc) do
-  if pos >= Bytes.length(b) do reverse(acc)
+  if pos >= Bytes.length(b) then reverse(acc)
   else
-    if Bytes.get(b, pos) == 0 do reverse(acc)
+    if Bytes.get(b, pos) == 0 then reverse(acc)
     else
       match read_cstring(b, pos) do
       (mech, next) -> parse_sasl_mechanisms(b, next, Cons(mech, acc))
       end
-    end
-  end
 end
 
 -- ---- Sub-decoders ----
@@ -142,12 +138,12 @@ end
 pfn decode_auth(payload) do
   let auth_type = read_i32(payload, 0)
   match auth_type do
-  0  -> Ok(AuthOk)
-  5  -> Ok(AuthMD5(Bytes.slice(payload, 4, 4)))
-  10 -> Ok(AuthSASL(parse_sasl_mechanisms(payload, 4, Nil)))
-  11 -> Ok(AuthSASLContinue(Bytes.slice(payload, 4, Bytes.length(payload) - 4)))
-  12 -> Ok(AuthSASLFinal(Bytes.slice(payload, 4, Bytes.length(payload) - 4)))
-  _  -> Err("unsupported auth type: " ++ int_to_string(auth_type))
+  | 0  -> Ok(AuthOk)
+  | 5  -> Ok(AuthMD5(Bytes.slice(payload, 4, 4)))
+  | 10 -> Ok(AuthSASL(parse_sasl_mechanisms(payload, 4, Nil)))
+  | 11 -> Ok(AuthSASLContinue(Bytes.slice(payload, 4, Bytes.length(payload) - 4)))
+  | 12 -> Ok(AuthSASLFinal(Bytes.slice(payload, 4, Bytes.length(payload) - 4)))
+  | _  -> Err("unsupported auth type: " ++ int_to_string(auth_type))
   end
 end
 
@@ -164,9 +160,9 @@ pfn decode_ready(payload) do
   let b = Bytes.get(payload, 0)
   Ok(ReadyForQuery(
     match b do
-    84 -> InTransaction
-    69 -> InFailedTransaction
-    _  -> Idle
+    | 84 -> InTransaction
+    | 69 -> InFailedTransaction
+    | _  -> Idle
     end))
 end
 
@@ -192,22 +188,22 @@ end
 --- Ok(CloseComplete)
 fn decode(type_byte, payload) do
   match type_byte do
-  82  -> decode_auth(payload)
-  75  -> Ok(BackendKeyData(read_i32(payload, 0), read_i32(payload, 4)))
-  83  -> decode_param_status(payload)
-  90  -> decode_ready(payload)
-  84  -> Ok(RowDescription(parse_field_descs(payload, 2, read_u16(payload, 0), Nil)))
-  68  -> Ok(DataRow(parse_data_columns(payload, 2, read_u16(payload, 0), Nil)))
-  67  -> decode_command_complete(payload)
-  73  -> Ok(EmptyQueryResponse)
-  69  -> Ok(ErrorResponse(parse_error_fields(payload, 0)))
-  78  -> Ok(NoticeResponse(parse_error_fields(payload, 0)))
-  49  -> Ok(ParseComplete)
-  50  -> Ok(BindComplete)
-  51  -> Ok(CloseComplete)
-  110 -> Ok(NoData)
-  115 -> Ok(PortalSuspended)
-  _   -> Err("unknown backend message type: " ++ int_to_string(type_byte))
+  | 82  -> decode_auth(payload)
+  | 75  -> Ok(BackendKeyData(read_i32(payload, 0), read_i32(payload, 4)))
+  | 83  -> decode_param_status(payload)
+  | 90  -> decode_ready(payload)
+  | 84  -> Ok(RowDescription(parse_field_descs(payload, 2, read_u16(payload, 0), Nil)))
+  | 68  -> Ok(DataRow(parse_data_columns(payload, 2, read_u16(payload, 0), Nil)))
+  | 67  -> decode_command_complete(payload)
+  | 73  -> Ok(EmptyQueryResponse)
+  | 69  -> Ok(ErrorResponse(parse_error_fields(payload, 0)))
+  | 78  -> Ok(NoticeResponse(parse_error_fields(payload, 0)))
+  | 49  -> Ok(ParseComplete)
+  | 50  -> Ok(BindComplete)
+  | 51  -> Ok(CloseComplete)
+  | 110 -> Ok(NoData)
+  | 115 -> Ok(PortalSuspended)
+  | _   -> Err("unknown backend message type: " ++ int_to_string(type_byte))
   end
 end
 
@@ -219,23 +215,21 @@ end
 --- and decodes the result.
 fn recv_msg(fd) do
   match tcp_recv_exact(fd, 5) do
-  Err(e)     -> Err("recv header: " ++ e)
-  Ok(header) -> do
+  | Err(e)     -> Err("recv header: " ++ e)
+  | Ok(header) -> do
     let type_byte   = Bytes.get(header, 0)
     let msg_len     = read_i32(header, 1)
     let payload_len = msg_len - 4
-    if payload_len < 0 do
+    if payload_len < 0 then
       Err("invalid message: negative payload length")
     else
-      if payload_len == 0 do
+      if payload_len == 0 then
         decode(type_byte, Bytes.empty())
       else
         match tcp_recv_exact(fd, payload_len) do
-        Err(e)      -> Err("recv payload: " ++ e)
-        Ok(payload) -> decode(type_byte, payload)
+        | Err(e)      -> Err("recv payload: " ++ e)
+        | Ok(payload) -> decode(type_byte, payload)
         end
-      end
-    end
   end
   end
 end
