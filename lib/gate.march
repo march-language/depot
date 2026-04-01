@@ -19,11 +19,10 @@
 --   end
 --
 --   let gate = user_gate(conn_params)
---   if is_valid(gate) do
+--   if is_valid(gate) then
 --     Ok(gate)
 --   else
 --     Err(errors(gate))
---   end
 
 mod Gate do
 
@@ -70,53 +69,63 @@ type ConstraintOpt =
 -- ---------------------------------------------------------------------------
 
 pfn form_params(f) do
-  let Gate(p, _, _, _, _) = f
-  p
+  match f do
+  Gate(p, _, _, _, _) -> p
+  end
 end
 
 pfn form_base(f) do
-  let Gate(b, _, _, _, _) = f
-  b
+  match f do
+  Gate(b, _, _, _, _) -> b
+  end
 end
 
 pfn form_changes(f) do
-  let Gate(_, ch, _, _, _) = f
-  ch
+  match f do
+  Gate(_, ch, _, _, _) -> ch
+  end
 end
 
 pfn form_errors(f) do
-  let Gate(_, _, e, _, _) = f
-  e
+  match f do
+  Gate(_, _, e, _, _) -> e
+  end
 end
 
 pfn form_valid(f) do
-  let Gate(_, _, _, v, _) = f
-  v
+  match f do
+  Gate(_, _, _, v, _) -> v
+  end
 end
 
 pfn form_constraints(f) do
-  let Gate(_, _, _, _, cs) = f
-  cs
+  match f do
+  Gate(_, _, _, _, cs) -> cs
+  end
 end
 
 pfn set_changes(f, changes) do
-  let Gate(p, _, e, v, cs) = f
-  Gate(p, changes, e, v, cs)
+  match f do
+  Gate(p, _, e, v, cs) -> Gate(p, changes, e, v, cs)
+  end
 end
 
 pfn set_errors_field(f, errs) do
-  let Gate(p, ch, _, v, cs) = f
-  Gate(p, ch, errs, v, cs)
+  match f do
+  Gate(p, ch, _, v, cs) -> Gate(p, ch, errs, v, cs)
+  end
 end
 
 pfn set_valid_field(f, v) do
-  let Gate(p, ch, e, _, cs) = f
-  Gate(p, ch, e, v, cs)
+  match f do
+  Gate(p, ch, e, _, cs) -> Gate(p, ch, e, v, cs)
+  end
 end
 
 pfn set_constraints_field(f, cs) do
-  let Gate(p, ch, e, v, _) = f
-  Gate(p, ch, e, v, cs)
+  match f do
+  Gate(p, ch, e, v, _) -> Gate(p, ch, e, v, cs)
+  end
 end
 
 -- ---------------------------------------------------------------------------
@@ -126,9 +135,9 @@ end
 -- Find the first value for a key.
 pfn alist_get(pairs, key) do
   match pairs do
-  Nil -> None
-  Cons((k, v), rest) ->
-    if k == key do Some(v) else alist_get(rest, key) end
+  | Nil -> None
+  | Cons((k, v), rest) ->
+    if k == key then Some(v) else alist_get(rest, key)
   end
 end
 
@@ -136,10 +145,10 @@ end
 pfn alist_set(pairs, key, value) do
   fn go(ps, acc) do
     match ps do
-    Nil ->
+    | Nil ->
       List.append(reverse(acc), Cons((key, value), Nil))
-    Cons((k, v), rest) ->
-      if k == key do List.append(reverse(acc), Cons((key, value), rest)) else go(rest, Cons((k, v), acc)) end
+    | Cons((k, v), rest) ->
+      if k == key then List.append(reverse(acc), Cons((key, value), rest)) else go(rest, Cons((k, v), acc))
     end
   end
   go(pairs, Nil)
@@ -158,9 +167,9 @@ end
 pfn alist_get_all(pairs, key) do
   fn go(ps, acc) do
     match ps do
-    Nil -> reverse(acc)
-    Cons((k, v), rest) ->
-      if k == key do go(rest, Cons(v, acc)) else go(rest, acc) end
+    | Nil -> reverse(acc)
+    | Cons((k, v), rest) ->
+      if k == key then go(rest, Cons(v, acc)) else go(rest, acc)
     end
   end
   go(pairs, Nil)
@@ -173,9 +182,8 @@ end
 
 -- Check if a value is "blank" — empty string or whitespace-only.
 pfn is_blank(v) do
-  if v == "" do true
+  if v == "" then true
   else String.trim(to_string(v)) == ""
-  end
 end
 
 -- ---------------------------------------------------------------------------
@@ -185,9 +193,9 @@ end
 pfn extract_constraint_name(opts, default) do
   fn go(os) do
     match os do
-    Nil -> default
-    Cons(ConstraintName(n), _) -> n
-    Cons(_, rest) -> go(rest)
+    | Nil -> default
+    | Cons(ConstraintName(n), _) -> n
+    | Cons(_, rest) -> go(rest)
     end
   end
   go(opts)
@@ -196,9 +204,9 @@ end
 pfn extract_constraint_message(opts, default) do
   fn go(os) do
     match os do
-    Nil -> default
-    Cons(ConstraintMessage(m), _) -> m
-    Cons(_, rest) -> go(rest)
+    | Nil -> default
+    | Cons(ConstraintMessage(m), _) -> m
+    | Cons(_, rest) -> go(rest)
     end
   end
   go(opts)
@@ -211,15 +219,15 @@ end
 pfn apply_number_opts(form, field, n, opts) do
   fn go(os, f) do
     match os do
-    Nil -> f
-    Cons(opt, rest) ->
+    | Nil -> f
+    | Cons(opt, rest) ->
       go(rest, match opt do
-      NumMin(m) -> if n < m do add_error(f, field, "must be greater than or equal to " ++ int_to_string(m)) else f end
-      NumMax(m) -> if n > m do add_error(f, field, "must be less than or equal to " ++ int_to_string(m)) else f end
-      NumGreaterThan(m) -> if n <= m do add_error(f, field, "must be greater than " ++ int_to_string(m)) else f end
-      NumLessThan(m) -> if n >= m do add_error(f, field, "must be less than " ++ int_to_string(m)) else f end
-      NumEqualTo(m) -> if n != m do add_error(f, field, "must be equal to " ++ int_to_string(m)) else f end
-      NumMessage(_) -> f
+      | NumMin(m) -> if n < m then add_error(f, field, "must be greater than or equal to " ++ int_to_string(m)) else f
+      | NumMax(m) -> if n > m then add_error(f, field, "must be less than or equal to " ++ int_to_string(m)) else f
+      | NumGreaterThan(m) -> if n <= m then add_error(f, field, "must be greater than " ++ int_to_string(m)) else f
+      | NumLessThan(m) -> if n >= m then add_error(f, field, "must be less than " ++ int_to_string(m)) else f
+      | NumEqualTo(m) -> if n != m then add_error(f, field, "must be equal to " ++ int_to_string(m)) else f
+      | NumMessage(_) -> f
       end)
     end
   end
@@ -236,26 +244,22 @@ end
 -- ---------------------------------------------------------------------------
 
 pfn cast_diff_entry(base_entries, k, v, rest, fields, acc) do
-  if str_member(fields, k) do
+  if str_member(fields, k) then do
     let base_val = alist_get(base_entries, k)
     let is_changed = match base_val do
-      Some(bv) -> bv != v
-      None     -> true
+      | Some(bv) -> bv != v
+      | None     -> true
     end
-    if is_changed do
-      cast_diff(base_entries, rest, fields, Cons((k, v), acc))
-    else
-      cast_diff(base_entries, rest, fields, acc)
-    end
-  else
+    if is_changed then cast_diff(base_entries, rest, fields, Cons((k, v), acc))
+    else cast_diff(base_entries, rest, fields, acc)
+  end else
     cast_diff(base_entries, rest, fields, acc)
-  end
 end
 
 pfn cast_diff(base_entries, param_entries, fields, acc) do
   match param_entries do
-  Nil -> reverse(acc)
-  Cons((k, v), rest) -> cast_diff_entry(base_entries, k, v, rest, fields, acc)
+  | Nil -> reverse(acc)
+  | Cons((k, v), rest) -> cast_diff_entry(base_entries, k, v, rest, fields, acc)
   end
 end
 
@@ -307,8 +311,8 @@ Returns the current value of a field, checking changes first then base/params.
 """
 fn get_field(form, field) do
   match get_change(form, field) do
-  Some(v) -> Some(v)
-  None    -> alist_get(form_base(form), field)
+  | Some(v) -> Some(v)
+  | None    -> alist_get(form_base(form), field)
   end
 end
 
@@ -364,15 +368,15 @@ Returns true if the given field has a change recorded.
 """
 fn changed(form, field) do
   match get_change(form, field) do
-  Some(_) -> true
-  None    -> false
+  | Some(_) -> true
+  | None    -> false
   end
 end
 
 pfn merge_changes(base_entries, changes) do
   match changes do
-  Nil -> base_entries
-  Cons((k, v), rest) -> merge_changes(alist_set(base_entries, k, v), rest)
+  | Nil -> base_entries
+  | Cons((k, v), rest) -> merge_changes(alist_set(base_entries, k, v), rest)
   end
 end
 
@@ -400,7 +404,7 @@ end
 doc """
 Returns true if the form has no validation errors.
 
-    if Gate.is_valid(form) do persist(form) else render_errors(form) end
+    if Gate.is_valid(form) then persist(form) else render_errors(form) end
 """
 fn is_valid(form) do
   form_valid(form)
@@ -436,11 +440,11 @@ Validates that all listed fields have non-empty values.
 fn validate_required(form, fields) do
   fn go(fs, f) do
     match fs do
-    Nil -> f
-    Cons(field, rest) ->
+    | Nil -> f
+    | Cons(field, rest) ->
       go(rest, match get_field(f, field) do
-      None    -> add_error(f, field, "can't be blank")
-      Some(v) -> if is_blank(v) do add_error(f, field, "can't be blank") else f end
+      | None    -> add_error(f, field, "can't be blank")
+      | Some(v) -> if is_blank(v) then add_error(f, field, "can't be blank") else f
       end)
     end
   end
@@ -450,13 +454,13 @@ end
 pfn apply_length_opts(form, field, len, opts) do
   fn go(os, f) do
     match os do
-    Nil -> f
-    Cons(opt, rest) ->
+    | Nil -> f
+    | Cons(opt, rest) ->
       go(rest, match opt do
-      LenMin(n)   -> if len < n do add_error(f, field, "should be at least " ++ int_to_string(n) ++ " character(s)") else f end
-      LenMax(n)   -> if len > n do add_error(f, field, "should be at most " ++ int_to_string(n) ++ " character(s)") else f end
-      LenExact(n) -> if len != n do add_error(f, field, "should be exactly " ++ int_to_string(n) ++ " character(s)") else f end
-      LenMessage(_) -> f
+      | LenMin(n)   -> if len < n then add_error(f, field, "should be at least " ++ int_to_string(n) ++ " character(s)") else f
+      | LenMax(n)   -> if len > n then add_error(f, field, "should be at most " ++ int_to_string(n) ++ " character(s)") else f
+      | LenExact(n) -> if len != n then add_error(f, field, "should be exactly " ++ int_to_string(n) ++ " character(s)") else f
+      | LenMessage(_) -> f
       end)
     end
   end
@@ -473,8 +477,8 @@ Absent fields are silently skipped — use validate_required first.
 """
 fn validate_length(form, field, opts) do
   match get_field(form, field) do
-  None    -> form
-  Some(v) -> apply_length_opts(form, field, String.byte_size(v), opts)
+  | None    -> form
+  | Some(v) -> apply_length_opts(form, field, String.byte_size(v), opts)
   end
 end
 
@@ -487,9 +491,9 @@ Absent fields are silently skipped.
 """
 fn validate_format(form, field, pattern) do
   match get_field(form, field) do
-  None    -> form
-  Some(v) ->
-    if Regex.matches(pattern, v) do form else add_error(form, field, "has invalid format") end
+  | None    -> form
+  | Some(v) ->
+    if Regex.matches(pattern, v) then form else add_error(form, field, "has invalid format")
   end
 end
 
@@ -500,9 +504,9 @@ Validates that a field value is in the allowed set.
 """
 fn validate_inclusion(form, field, values) do
   match get_field(form, field) do
-  None    -> form
-  Some(v) ->
-    if List.member(values, v) do form else add_error(form, field, "is not a valid value") end
+  | None    -> form
+  | Some(v) ->
+    if List.member(values, v) then form else add_error(form, field, "is not a valid value")
   end
 end
 
@@ -513,9 +517,9 @@ Validates that a field value is NOT in the excluded set.
 """
 fn validate_exclusion(form, field, values) do
   match get_field(form, field) do
-  None    -> form
-  Some(v) ->
-    if List.member(values, v) do add_error(form, field, "is reserved") else form end
+  | None    -> form
+  | Some(v) ->
+    if List.member(values, v) then add_error(form, field, "is reserved") else form
   end
 end
 
@@ -529,14 +533,14 @@ NumLessThan(n), NumEqualTo(n).
 """
 fn validate_number(form, field, opts) do
   match get_field(form, field) do
-  None    -> form
-  Some(v) ->
+  | None    -> form
+  | Some(v) ->
     match string_to_int(v) do
-    Some(n) -> apply_number_opts(form, field, n, opts)
-    None    ->
+    | Some(n) -> apply_number_opts(form, field, n, opts)
+    | None    ->
       match string_to_float(v) do
-      Some(fv) -> apply_number_opts(form, field, float_to_int(fv), opts)
-      None     -> add_error(form, field, "is not a number")
+      | Some(fv) -> apply_number_opts(form, field, float_to_int(fv), opts)
+      | None     -> add_error(form, field, "is not a number")
       end
     end
   end
@@ -549,9 +553,9 @@ Validates that a field has been accepted (checkbox style: value "true" or "1").
 """
 fn validate_acceptance(form, field) do
   match get_field(form, field) do
-  None    -> add_error(form, field, "must be accepted")
-  Some(v) ->
-    if v == "true" || v == "1" do form else add_error(form, field, "must be accepted") end
+  | None    -> add_error(form, field, "must be accepted")
+  | Some(v) ->
+    if v == "true" || v == "1" then form else add_error(form, field, "must be accepted")
   end
 end
 
@@ -564,13 +568,13 @@ For field "password", checks that "password_confirmation" has the same value.
 fn validate_confirmation(form, field) do
   let conf_field = field ++ "_confirmation"
   match get_field(form, field) do
-  None -> form
-  Some(v) ->
+  | None -> form
+  | Some(v) ->
     match get_field(form, conf_field) do
-    None ->
+    | None ->
       add_error(form, conf_field, "can't be blank")
-    Some(cv) ->
-      if v == cv do form else add_error(form, conf_field, "does not match " ++ field) end
+    | Some(cv) ->
+      if v == cv then form else add_error(form, conf_field, "does not match " ++ field)
     end
   end
 end
@@ -583,16 +587,16 @@ The validator receives the field value and returns:
   Some(msg)   -- invalid, add this error message
 
     form |> Gate.validate_change("username", fn v ->
-      if String.byte_size(v) < 3 do Some("too short") else None end
+      if String.byte_size(v) < 3 then Some("too short") else None
     )
 """
 fn validate_change(form, field, validator) do
   match get_field(form, field) do
-  None    -> form
-  Some(v) ->
+  | None    -> form
+  | Some(v) ->
     match validator(v) do
-    None      -> form
-    Some(msg) -> add_error(form, field, msg)
+    | None      -> form
+    | Some(msg) -> add_error(form, field, msg)
     end
   end
 end
@@ -667,9 +671,9 @@ Called by Depot insert/update when a DB error occurs.
 fn apply_constraint_error(form, constraint_name) do
   fn go(cs) do
     match cs do
-    Nil -> form
-    Cons(DbConstraint(_, field, name, msg), rest) ->
-      if name == constraint_name do add_error(form, field, msg) else go(rest) end
+    | Nil -> form
+    | Cons(DbConstraint(_, field, name, msg), rest) ->
+      if name == constraint_name then add_error(form, field, msg) else go(rest)
     end
   end
   go(form_constraints(form))

@@ -42,35 +42,34 @@ type PoolStats = {
 
 pfn list_len(lst) do
   match lst do
-  Nil -> 0
-  Cons(_, rest) -> 1 + list_len(rest)
+  | Nil -> 0
+  | Cons(_, rest) -> 1 + list_len(rest)
   end
 end
 
 pfn rev_conns_acc(lst, acc) do
   match lst do
-  Nil -> acc
-  Cons(x, rest) -> rev_conns_acc(rest, Cons(x, acc))
+  | Nil -> acc
+  | Cons(x, rest) -> rev_conns_acc(rest, Cons(x, acc))
   end
 end
 
 pfn warm_up(conn_cfg, target, acc, count) do
-  if count >= target do acc
+  if count >= target then acc
   else
     match connect(conn_cfg) do
-    Ok(conn) -> warm_up(conn_cfg, target, Cons(conn, acc), count + 1)
-    Err(_)   -> warm_up(conn_cfg, target, acc, count + 1)
+    | Ok(conn) -> warm_up(conn_cfg, target, Cons(conn, acc), count + 1)
+    | Err(_)   -> warm_up(conn_cfg, target, acc, count + 1)
     end
-  end
 end
 
 pfn ping_conns(conns, acc) do
   match conns do
-  Nil -> rev_conns_acc(acc, Nil)
-  Cons(conn, rest) ->
+  | Nil -> rev_conns_acc(acc, Nil)
+  | Cons(conn, rest) ->
     match simple_query(conn, "SELECT 1") do
-    Ok(_)  -> ping_conns(rest, Cons(conn, acc))
-    Err(_) -> do
+    | Ok(_)  -> ping_conns(rest, Cons(conn, acc))
+    | Err(_) -> do
       let _ = close(conn)
       ping_conns(rest, acc)
     end
@@ -80,8 +79,8 @@ end
 
 pfn close_all(conns) do
   match conns do
-  Nil -> ()
-  Cons(conn, rest) -> do
+  | Nil -> ()
+  | Cons(conn, rest) -> do
     let _ = close(conn)
     close_all(rest)
   end
@@ -90,15 +89,12 @@ end
 
 pfn replenish_idle(cfg_opt, healthy) do
   match cfg_opt do
-  None -> healthy
-  Some(cfg) -> do
+  | None -> healthy
+  | Some(cfg) -> do
     let n = list_len(healthy)
     let deficit = cfg.min_size - n
-    if deficit > 0 do
-      warm_up(cfg.conn_config, deficit, healthy, 0)
-    else
-      healthy
-    end
+    if deficit > 0 then warm_up(cfg.conn_config, deficit, healthy, 0)
+    else healthy
   end
   end
 end
@@ -130,8 +126,8 @@ actor Pool do
   -- Initialises the pool with a config and pre-connects min_size connections.
   on PoolInit(cfg : PoolConfig) do
     match state.config do
-    Some(_) -> state
-    None -> do
+    | Some(_) -> state
+    | None -> do
       let conns = warm_up(cfg.conn_config, cfg.min_size, Nil, 0)
       let n = list_len(conns)
       { state with config = Some(cfg), idle = conns, idle_count = n, last_conn = None }
@@ -142,23 +138,22 @@ actor Pool do
   -- Checks out a connection; result is readable via get_actor_field(pool, "last_conn").
   on Checkout() do
     match state.config do
-    None -> { state with last_conn = None }
-    Some(cfg) ->
+    | None -> { state with last_conn = None }
+    | Some(cfg) ->
       match state.idle do
-      Cons(conn, rest) ->
+      | Cons(conn, rest) ->
         { state with idle = rest, idle_count = state.idle_count - 1,
                      checked_out = state.checked_out + 1, last_conn = Some(conn) }
-      Nil ->
-        if state.checked_out < cfg.max_size do
+      | Nil ->
+        if state.checked_out < cfg.max_size then
           match connect(cfg.conn_config) do
-          Ok(new_conn) ->
+          | Ok(new_conn) ->
             { state with checked_out = state.checked_out + 1, last_conn = Some(new_conn) }
-          Err(_) ->
+          | Err(_) ->
             { state with last_conn = None }
           end
         else
           { state with last_conn = None }
-        end
       end
     end
   end
@@ -205,14 +200,14 @@ end
 --- Returns `Ok(ConnState)` or `Err(String)` if no connection is available.
 fn checkout(pool) do
   match send(pool, Checkout()) do
-  None -> Err("pool actor is dead")
-  Some(_) ->
+  | None -> Err("pool actor is dead")
+  | Some(_) ->
     match get_actor_field(pool, "last_conn") do
-    None -> Err("no connection available")
-    Some(maybe_conn) ->
+    | None -> Err("no connection available")
+    | Some(maybe_conn) ->
       match maybe_conn do
-      None      -> Err("no connection available")
-      Some(conn) -> Ok(conn)
+      | None      -> Err("no connection available")
+      | Some(conn) -> Ok(conn)
       end
     end
   end
@@ -230,12 +225,12 @@ end
 --- Returns `Ok(result)` on success or `Err(reason)` if checkout fails.
 fn with_conn(pool, callback) do
   match checkout(pool) do
-  Ok(conn) -> do
+  | Ok(conn) -> do
     let result = callback(conn)
     let _ = checkin(pool, conn)
     Ok(result)
   end
-  Err(reason) -> Err(reason)
+  | Err(reason) -> Err(reason)
   end
 end
 

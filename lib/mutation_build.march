@@ -15,38 +15,44 @@ end
 
 --- Sets the column list for the INSERT.
 fn insert_cols(i, cols) do
-  let Insert(f) = i
-  Insert({ f with columns = cols })
+  match i do
+  Insert(f) -> Insert({ f with columns = cols })
+  end
 end
 
 --- Appends one row of values to the INSERT.
 fn insert_row(i, vals) do
-  let Insert(f) = i
-  Insert({ f with rows = append_row(f.rows, vals) })
+  match i do
+  Insert(f) -> Insert({ f with rows = append_row(f.rows, vals) })
+  end
 end
 
 --- Adds ON CONFLICT DO NOTHING.
 fn on_conflict_do_nothing(i) do
-  let Insert(f) = i
-  Insert({ f with on_conflict = Some(DoNothing) })
+  match i do
+  Insert(f) -> Insert({ f with on_conflict = Some(DoNothing) })
+  end
 end
 
 --- Adds ON CONFLICT DO UPDATE SET for the given column/expr pairs.
 fn on_conflict_do_update(i, sets) do
-  let Insert(f) = i
-  Insert({ f with on_conflict = Some(DoUpdate(sets)) })
+  match i do
+  Insert(f) -> Insert({ f with on_conflict = Some(DoUpdate(sets)) })
+  end
 end
 
 --- Sets RETURNING * on the INSERT.
 fn insert_returning_all(i) do
-  let Insert(f) = i
-  Insert({ f with returning_ = [SelectAll] })
+  match i do
+  Insert(f) -> Insert({ f with returning_ = [SelectAll] })
+  end
 end
 
 --- Sets RETURNING with specific expressions.
 fn insert_returning(i, exprs) do
-  let Insert(f) = i
-  Insert({ f with returning_ = exprs })
+  match i do
+  Insert(f) -> Insert({ f with returning_ = exprs })
+  end
 end
 
 --- Builds a batch INSERT for multiple rows in one call.
@@ -63,26 +69,30 @@ end
 
 --- Appends a SET col = expr clause.
 fn set_(u, col, expr) do
-  let Update(f) = u
-  Update({ f with sets = append_set(f.sets, (col, expr)) })
+  match u do
+  Update(f) -> Update({ f with sets = append_set(f.sets, (col, expr)) })
+  end
 end
 
 --- Appends an AND WHERE predicate.
 fn update_where(u, expr) do
-  let Update(f) = u
-  Update({ f with wheres = append_where(f.wheres, Where(expr)) })
+  match u do
+  Update(f) -> Update({ f with wheres = append_where(f.wheres, Where(expr)) })
+  end
 end
 
 --- Sets RETURNING * on the UPDATE.
 fn update_returning_all(u) do
-  let Update(f) = u
-  Update({ f with returning_ = [SelectAll] })
+  match u do
+  Update(f) -> Update({ f with returning_ = [SelectAll] })
+  end
 end
 
 --- Sets RETURNING with specific expressions.
 fn update_returning(u, exprs) do
-  let Update(f) = u
-  Update({ f with returning_ = exprs })
+  match u do
+  Update(f) -> Update({ f with returning_ = exprs })
+  end
 end
 
 -- ---- DELETE builders ----
@@ -94,36 +104,38 @@ end
 
 --- Appends an AND WHERE predicate.
 fn delete_where(d, expr) do
-  let Delete(f) = d
-  Delete({ f with wheres = append_where(f.wheres, Where(expr)) })
+  match d do
+  Delete(f) -> Delete({ f with wheres = append_where(f.wheres, Where(expr)) })
+  end
 end
 
 --- Sets RETURNING * on the DELETE.
 fn delete_returning_all(d) do
-  let Delete(f) = d
-  Delete({ f with returning_ = [SelectAll] })
+  match d do
+  Delete(f) -> Delete({ f with returning_ = [SelectAll] })
+  end
 end
 
 -- ---- Private list helpers ----
 
 pfn append_row(rows, row) do
   match rows do
-  Nil -> Cons(row, Nil)
-  Cons(x, rest) -> Cons(x, append_row(rest, row))
+  | Nil -> Cons(row, Nil)
+  | Cons(x, rest) -> Cons(x, append_row(rest, row))
   end
 end
 
 pfn append_set(sets, pair) do
   match sets do
-  Nil -> Cons(pair, Nil)
-  Cons(x, rest) -> Cons(x, append_set(rest, pair))
+  | Nil -> Cons(pair, Nil)
+  | Cons(x, rest) -> Cons(x, append_set(rest, pair))
   end
 end
 
 pfn append_where(wheres, w) do
   match wheres do
-  Nil -> Cons(w, Nil)
-  Cons(x, rest) -> Cons(x, append_where(rest, w))
+  | Nil -> Cons(w, Nil)
+  | Cons(x, rest) -> Cons(x, append_where(rest, w))
   end
 end
 
