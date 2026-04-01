@@ -209,19 +209,19 @@ pfn run_migration(m, fn_name) do
       Err(_) ->
         Err("cannot write runner file: " ++ tmp)
       Ok(_) ->
-        let result = System.cmd("march", [tmp])
+        let result = Process.run("march", [tmp])
         let _ = File.delete(tmp)
         match result do
         Err(msg) ->
           Err("migration " ++ int_to_string(m.version) ++ " (" ++ m.name ++ ") " ++ fn_name ++ "() failed: " ++ msg)
         Ok(proc) -> do
-          let out = System.stdout(proc)
-          let err = System.stderr(proc)
+          let out = Process.stdout(proc)
+          let err = Process.stderr(proc)
           if !String.is_empty(out) do print(out) else () end
           if !String.is_empty(err) do print(err) else () end
-          if System.ok(proc) do Ok(())
+          if Process.ok(proc) do Ok(())
           else
-            Err("migration " ++ int_to_string(m.version) ++ " (" ++ m.name ++ ") " ++ fn_name ++ "() failed with exit code " ++ int_to_string(System.exit_code(proc)))
+            Err("migration " ++ int_to_string(m.version) ++ " (" ++ m.name ++ ") " ++ fn_name ++ "() failed with exit code " ++ int_to_string(Process.exit_code(proc)))
           end
         end
         end
