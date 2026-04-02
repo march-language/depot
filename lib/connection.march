@@ -97,11 +97,11 @@ pfn scram_parse_server_first(server_first) do
   -- Parse "r=combined-nonce,s=base64-salt,i=iterations"
   fn parse_fields(s, acc) do
     match String.split_first(s, ",") do
-    | None -> do
+    None -> do
       let (k, v) = parse_kv(s)
       Cons((k, v), acc)
     end
-    | Some((field, rest)) -> do
+    Some((field, rest)) -> do
       let (k, v) = parse_kv(field)
       parse_fields(rest, Cons((k, v), acc))
     end
@@ -112,15 +112,15 @@ end
 
 pfn parse_kv(field) do
   match String.split_first(field, "=") do
-  | None     -> (field, "")
-  | Some(kv) -> kv
+  None     -> (field, "")
+  Some(kv) -> kv
   end
 end
 
 pfn lookup_field(fields, key) do
   match fields do
-  | Nil -> ""
-  | Cons((k, v), rest) ->
+  Nil -> ""
+  Cons((k, v), rest) ->
     if k == key then v
     else lookup_field(rest, key)
   end
@@ -129,9 +129,9 @@ end
 pfn scram_xor_bytes(a, b) do
   fn zip_xor(xs, ys, acc) do
     match (xs, ys) do
-    | (Nil, _) -> List.reverse(acc)
-    | (_, Nil) -> List.reverse(acc)
-    | (Cons(x, xr), Cons(y, yr)) -> zip_xor(xr, yr, Cons(int_xor(x, y), acc))
+    (Nil, _) -> List.reverse(acc)
+    (_, Nil) -> List.reverse(acc)
+    (Cons(x, xr), Cons(y, yr)) -> zip_xor(xr, yr, Cons(int_xor(x, y), acc))
     end
   end
   Bytes.from_list(zip_xor(Bytes.to_list(a), Bytes.to_list(b), Nil))
@@ -160,8 +160,8 @@ pfn authenticate_scram(fd, cfg, mechanisms) do
   -- Verify SCRAM-SHA-256 is offered
   fn has_scram(mechs) do
     match mechs do
-    | Nil -> false
-    | Cons(m, rest) -> if m == "SCRAM-SHA-256" then true else has_scram(rest)
+    Nil -> false
+    Cons(m, rest) -> if m == "SCRAM-SHA-256" then true else has_scram(rest)
     end
   end
   if has_scram(mechanisms) then do
@@ -170,11 +170,11 @@ pfn authenticate_scram(fd, cfg, mechanisms) do
     let client_first   = scram_client_first_msg(user, nonce)
     let client_first_bare = scram_client_first_bare(user, nonce)
     match send_msg(fd, SASLInitialResponse("SCRAM-SHA-256", Bytes.from_string(client_first))) do
-    | Err(e) -> Err("scram send initial: " ++ e)
-    | Ok(_)  ->
+    Err(e) -> Err("scram send initial: " ++ e)
+    Ok(_)  ->
       match recv_msg(fd) do
-      | Err(e) -> Err(e)
-      | Ok(AuthSASLContinue(server_bytes)) -> do
+      Err(e) -> Err(e)
+      Ok(AuthSASLContinue(server_bytes)) -> do
         let server_first  = Bytes.to_string(server_bytes)
         let fields        = scram_parse_server_first(server_first)
         let combined_nonce = lookup_field(fields, "r")
@@ -190,31 +190,31 @@ pfn authenticate_scram(fd, cfg, mechanisms) do
                               server_first, client_final_no_proof)
         let client_final = client_final_no_proof ++ ",p=" ++ proof
         match send_msg(fd, SASLResponse(Bytes.from_string(client_final))) do
-        | Err(e) -> Err("scram send response: " ++ e)
-        | Ok(_)  ->
+        Err(e) -> Err("scram send response: " ++ e)
+        Ok(_)  ->
           match recv_msg(fd) do
-          | Err(e)                -> Err(e)
-          | Ok(AuthSASLFinal(server_final_bytes)) -> do
+          Err(e)                -> Err(e)
+          Ok(AuthSASLFinal(server_final_bytes)) -> do
             let server_final = Bytes.to_string(server_final_bytes)
             let sfinal_fields = scram_parse_server_first(server_final)
             let server_sig_b64 = lookup_field(sfinal_fields, "v")
             if server_sig_b64 == expected_server_sig then
               match recv_msg(fd) do
-              | Ok(AuthOk) -> Ok(())
-              | Ok(ErrorResponse(fields)) -> Err("auth failed: " ++ fields.message)
-              | Ok(_)  -> Err("unexpected message after SASL final")
-              | Err(e) -> Err(e)
+              Ok(AuthOk) -> Ok(())
+              Ok(ErrorResponse(fields)) -> Err("auth failed: " ++ fields.message)
+              Ok(_)  -> Err("unexpected message after SASL final")
+              Err(e) -> Err(e)
               end
             else
               Err("SCRAM server signature verification failed")
           end
-          | Ok(ErrorResponse(fields)) -> Err("auth failed: " ++ fields.message)
-          | Ok(_) -> Err("unexpected reply after SASL response")
+          Ok(ErrorResponse(fields)) -> Err("auth failed: " ++ fields.message)
+          Ok(_) -> Err("unexpected reply after SASL response")
           end
         end
       end
-      | Ok(ErrorResponse(fields)) -> Err("server rejected connection: " ++ fields.message)
-      | Ok(_) -> Err("unexpected reply after SASL initial")
+      Ok(ErrorResponse(fields)) -> Err("server rejected connection: " ++ fields.message)
+      Ok(_) -> Err("unexpected reply after SASL initial")
       end
     end
   end else
@@ -225,25 +225,25 @@ end
 
 pfn authenticate(fd, cfg, auth_msg) do
   match auth_msg do
-  | AuthOk -> Ok(())
-  | AuthMD5(salt) -> do
+  AuthOk -> Ok(())
+  AuthMD5(salt) -> do
     let pw = unwrap_or(cfg.password, "")
     match send_msg(fd, PasswordMessage(md5_password(pw, cfg.user, salt))) do
-    | Err(e) -> Err("send password: " ++ e)
-    | Ok(_)  ->
+    Err(e) -> Err("send password: " ++ e)
+    Ok(_)  ->
       match recv_msg(fd) do
-      | Err(e)                    -> Err(e)
-      | Ok(AuthOk)                -> Ok(())
-      | Ok(ErrorResponse(fields)) -> Err("auth failed: " ++ fields.message)
-      | Ok(_)                     -> Err("unexpected reply after password")
+      Err(e)                    -> Err(e)
+      Ok(AuthOk)                -> Ok(())
+      Ok(ErrorResponse(fields)) -> Err("auth failed: " ++ fields.message)
+      Ok(_)                     -> Err("unexpected reply after password")
       end
     end
   end
-  | AuthSASL(mechanisms) ->
+  AuthSASL(mechanisms) ->
     authenticate_scram(fd, cfg, mechanisms)
-  | ErrorResponse(fields) ->
+  ErrorResponse(fields) ->
     Err("server rejected connection: " ++ fields.message)
-  | _ ->
+  _ ->
     Err("unsupported authentication method")
   end
 end
@@ -252,18 +252,18 @@ end
 
 pfn drain_startup(fd, params, pid, secret) do
   match recv_msg(fd) do
-  | Err(e) -> Err(e)
-  | Ok(ParameterStatus(name, value)) ->
+  Err(e) -> Err(e)
+  Ok(ParameterStatus(name, value)) ->
     drain_startup(fd, Map.insert(params, name, value, str_lt), pid, secret)
-  | Ok(BackendKeyData(p, s)) ->
+  Ok(BackendKeyData(p, s)) ->
     drain_startup(fd, params, p, s)
-  | Ok(NoticeResponse(_)) ->
+  Ok(NoticeResponse(_)) ->
     drain_startup(fd, params, pid, secret)
-  | Ok(ReadyForQuery(_)) ->
+  Ok(ReadyForQuery(_)) ->
     Ok({ fd = fd, pid = pid, secret_key = secret, parameters = params })
-  | Ok(ErrorResponse(fields)) ->
+  Ok(ErrorResponse(fields)) ->
     Err("startup error: " ++ fields.message)
-  | Ok(_) ->
+  Ok(_) ->
     Err("unexpected message during startup")
   end
 end
@@ -272,34 +272,34 @@ end
 
 pfn connect_finish(fd, cfg, auth_msg) do
   match authenticate(fd, cfg, auth_msg) do
-  | Err(e) -> do
+  Err(e) -> do
     tcp_close(fd)
     Err(e)
   end
-  | Ok(_) ->
+  Ok(_) ->
     match drain_startup(fd, Map.empty(), 0, 0) do
-    | Err(e) -> do
+    Err(e) -> do
       tcp_close(fd)
       Err(e)
     end
-    | Ok(conn) -> Ok(conn)
+    Ok(conn) -> Ok(conn)
     end
   end
 end
 
 pfn connect_after_tcp(fd, cfg) do
   match send_msg(fd, Startup(startup_params(cfg))) do
-  | Err(e) -> do
+  Err(e) -> do
     tcp_close(fd)
     Err("send startup: " ++ e)
   end
-  | Ok(_) ->
+  Ok(_) ->
     match recv_msg(fd) do
-    | Err(e) -> do
+    Err(e) -> do
       tcp_close(fd)
       Err(e)
     end
-    | Ok(auth_msg) ->
+    Ok(auth_msg) ->
       connect_finish(fd, cfg, auth_msg)
     end
   end
@@ -310,8 +310,8 @@ end
 --- Returns `Ok(ConnState)` on success or `Err(String)` on failure.
 fn connect(cfg) do
   match tcp_connect(cfg.host, cfg.port) do
-  | Err(e) -> Err("tcp_connect " ++ cfg.host ++ ": " ++ e)
-  | Ok(fd) -> connect_after_tcp(fd, cfg)
+  Err(e) -> Err("tcp_connect " ++ cfg.host ++ ": " ++ e)
+  Ok(fd) -> connect_after_tcp(fd, cfg)
   end
 end
 

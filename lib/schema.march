@@ -19,43 +19,43 @@ type MarchType =
 --- TText
 fn from_oid(oid) do
   match oid do
-  | 16 -> TBool
-  | 17 -> TBytea
-  | 18 -> TChar
-  | 20 -> TInt64
-  | 21 -> TInt16
-  | 23 -> TInt32
-  | 25 -> TText
-  | 26 -> TInt32
-  | 114 -> TJson
-  | 199 -> TArray(TJson)
-  | 700 -> TFloat32
-  | 701 -> TFloat64
-  | 1000 -> TArray(TBool)
-  | 1001 -> TArray(TBytea)
-  | 1005 -> TArray(TInt16)
-  | 1007 -> TArray(TInt32)
-  | 1009 -> TArray(TText)
-  | 1015 -> TArray(TVarchar)
-  | 1016 -> TArray(TInt64)
-  | 1021 -> TArray(TFloat32)
-  | 1022 -> TArray(TFloat64)
-  | 1043 -> TVarchar
-  | 1082 -> TDate
-  | 1083 -> TTime
-  | 1114 -> TTimestamp
-  | 1115 -> TArray(TTimestamp)
-  | 1182 -> TArray(TDate)
-  | 1184 -> TTimestampTz
-  | 1185 -> TArray(TTimestampTz)
-  | 1186 -> TInterval
-  | 1231 -> TArray(TNumeric)
-  | 1700 -> TNumeric
-  | 2950 -> TUuid
-  | 2951 -> TArray(TUuid)
-  | 3802 -> TJsonb
-  | 3807 -> TArray(TJsonb)
-  | _ -> TUnknown(oid)
+  16 -> TBool
+  17 -> TBytea
+  18 -> TChar
+  20 -> TInt64
+  21 -> TInt16
+  23 -> TInt32
+  25 -> TText
+  26 -> TInt32
+  114 -> TJson
+  199 -> TArray(TJson)
+  700 -> TFloat32
+  701 -> TFloat64
+  1000 -> TArray(TBool)
+  1001 -> TArray(TBytea)
+  1005 -> TArray(TInt16)
+  1007 -> TArray(TInt32)
+  1009 -> TArray(TText)
+  1015 -> TArray(TVarchar)
+  1016 -> TArray(TInt64)
+  1021 -> TArray(TFloat32)
+  1022 -> TArray(TFloat64)
+  1043 -> TVarchar
+  1082 -> TDate
+  1083 -> TTime
+  1114 -> TTimestamp
+  1115 -> TArray(TTimestamp)
+  1182 -> TArray(TDate)
+  1184 -> TTimestampTz
+  1185 -> TArray(TTimestampTz)
+  1186 -> TInterval
+  1231 -> TArray(TNumeric)
+  1700 -> TNumeric
+  2950 -> TUuid
+  2951 -> TArray(TUuid)
+  3802 -> TJsonb
+  3807 -> TArray(TJsonb)
+  _ -> TUnknown(oid)
   end
 end
 
@@ -65,27 +65,27 @@ end
 --- 25
 fn to_oid(t) do
   match t do
-  | TBool -> 16
-  | TBytea -> 17
-  | TChar -> 18
-  | TInt64 -> 20
-  | TInt16 -> 21
-  | TInt32 -> 23
-  | TText -> 25
-  | TJson -> 114
-  | TFloat32 -> 700
-  | TFloat64 -> 701
-  | TVarchar -> 1043
-  | TDate -> 1082
-  | TTime -> 1083
-  | TTimestamp -> 1114
-  | TTimestampTz -> 1184
-  | TInterval -> 1186
-  | TNumeric -> 1700
-  | TUuid -> 2950
-  | TJsonb -> 3802
-  | TArray(_) -> 0
-  | TUnknown(oid) -> oid
+  TBool -> 16
+  TBytea -> 17
+  TChar -> 18
+  TInt64 -> 20
+  TInt16 -> 21
+  TInt32 -> 23
+  TText -> 25
+  TJson -> 114
+  TFloat32 -> 700
+  TFloat64 -> 701
+  TVarchar -> 1043
+  TDate -> 1082
+  TTime -> 1083
+  TTimestamp -> 1114
+  TTimestampTz -> 1184
+  TInterval -> 1186
+  TNumeric -> 1700
+  TUuid -> 2950
+  TJsonb -> 3802
+  TArray(_) -> 0
+  TUnknown(oid) -> oid
   end
 end
 
@@ -98,27 +98,27 @@ end
 --- "text[]"
 fn type_name(t) do
   match t do
-  | TBool -> "bool"
-  | TBytea -> "bytea"
-  | TChar -> "char"
-  | TInt16 -> "int2"
-  | TInt32 -> "int4"
-  | TInt64 -> "int8"
-  | TFloat32 -> "float4"
-  | TFloat64 -> "float8"
-  | TNumeric -> "numeric"
-  | TText -> "text"
-  | TVarchar -> "varchar"
-  | TDate -> "date"
-  | TTime -> "time"
-  | TTimestamp -> "timestamp"
-  | TTimestampTz -> "timestamptz"
-  | TInterval -> "interval"
-  | TJson -> "json"
-  | TJsonb -> "jsonb"
-  | TUuid -> "uuid"
-  | TArray(inner) -> type_name(inner) ++ "[]"
-  | TUnknown(oid) -> "unknown(" ++ int_to_string(oid) ++ ")"
+  TBool -> "bool"
+  TBytea -> "bytea"
+  TChar -> "char"
+  TInt16 -> "int2"
+  TInt32 -> "int4"
+  TInt64 -> "int8"
+  TFloat32 -> "float4"
+  TFloat64 -> "float8"
+  TNumeric -> "numeric"
+  TText -> "text"
+  TVarchar -> "varchar"
+  TDate -> "date"
+  TTime -> "time"
+  TTimestamp -> "timestamp"
+  TTimestampTz -> "timestamptz"
+  TInterval -> "interval"
+  TJson -> "json"
+  TJsonb -> "jsonb"
+  TUuid -> "uuid"
+  TArray(inner) -> type_name(inner) ++ "[]"
+  TUnknown(oid) -> "unknown(" ++ int_to_string(oid) ++ ")"
   end
 end
 
@@ -131,13 +131,13 @@ end
 --- false
 fn is_numeric(t) do
   match t do
-  | TInt16 -> true
-  | TInt32 -> true
-  | TInt64 -> true
-  | TFloat32 -> true
-  | TFloat64 -> true
-  | TNumeric -> true
-  | _ -> false
+  TInt16 -> true
+  TInt32 -> true
+  TInt64 -> true
+  TFloat32 -> true
+  TFloat64 -> true
+  TNumeric -> true
+  _ -> false
   end
 end
 
@@ -150,10 +150,10 @@ end
 --- false
 fn is_text(t) do
   match t do
-  | TText -> true
-  | TVarchar -> true
-  | TChar -> true
-  | _ -> false
+  TText -> true
+  TVarchar -> true
+  TChar -> true
+  _ -> false
   end
 end
 
@@ -166,12 +166,12 @@ end
 --- false
 fn is_temporal(t) do
   match t do
-  | TDate -> true
-  | TTime -> true
-  | TTimestamp -> true
-  | TTimestampTz -> true
-  | TInterval -> true
-  | _ -> false
+  TDate -> true
+  TTime -> true
+  TTimestamp -> true
+  TTimestampTz -> true
+  TInterval -> true
+  _ -> false
   end
 end
 
@@ -189,27 +189,27 @@ type TypedValue =
 --- VString("hello")
 fn parse_text_value(t, text) do
   match t do
-  | TBool -> VBool(text == "t" || text == "true")
-  | TInt16 -> VInt(unwrap_or(string_to_int(text), 0))
-  | TInt32 -> VInt(unwrap_or(string_to_int(text), 0))
-  | TInt64 -> VInt(unwrap_or(string_to_int(text), 0))
-  | TFloat32 -> VFloat(unwrap_or(string_to_float(text), 0.0))
-  | TFloat64 -> VFloat(unwrap_or(string_to_float(text), 0.0))
-  | TNumeric -> VFloat(unwrap_or(string_to_float(text), 0.0))
-  | TText -> VString(text)
-  | TVarchar -> VString(text)
-  | TChar -> VString(text)
-  | TDate -> VString(text)
-  | TTime -> VString(text)
-  | TTimestamp -> VString(text)
-  | TTimestampTz -> VString(text)
-  | TInterval -> VString(text)
-  | TJson -> VString(text)
-  | TJsonb -> VString(text)
-  | TUuid -> VString(text)
-  | TBytea -> VString(text)
-  | TArray(_) -> VString(text)
-  | TUnknown(_) -> VUnparsed(text)
+  TBool -> VBool(text == "t" || text == "true")
+  TInt16 -> VInt(unwrap_or(string_to_int(text), 0))
+  TInt32 -> VInt(unwrap_or(string_to_int(text), 0))
+  TInt64 -> VInt(unwrap_or(string_to_int(text), 0))
+  TFloat32 -> VFloat(unwrap_or(string_to_float(text), 0.0))
+  TFloat64 -> VFloat(unwrap_or(string_to_float(text), 0.0))
+  TNumeric -> VFloat(unwrap_or(string_to_float(text), 0.0))
+  TText -> VString(text)
+  TVarchar -> VString(text)
+  TChar -> VString(text)
+  TDate -> VString(text)
+  TTime -> VString(text)
+  TTimestamp -> VString(text)
+  TTimestampTz -> VString(text)
+  TInterval -> VString(text)
+  TJson -> VString(text)
+  TJsonb -> VString(text)
+  TUuid -> VString(text)
+  TBytea -> VString(text)
+  TArray(_) -> VString(text)
+  TUnknown(_) -> VUnparsed(text)
   end
 end
 

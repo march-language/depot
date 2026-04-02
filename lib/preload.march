@@ -34,20 +34,20 @@ end
 
 pfn find_col_idx(cols, name_, idx) do
   match cols do
-  | Nil -> -1
-  | Cons(c, rest) -> if c == name_ then idx else find_col_idx(rest, name_, idx + 1)
+  Nil -> -1
+  Cons(c, rest) -> if c == name_ then idx else find_col_idx(rest, name_, idx + 1)
   end
 end
 
 pfn extract_values_at(rows, idx, acc) do
   match rows do
-  | Nil -> list_rev(acc)
-  | Cons(row, rest) -> do
+  Nil -> list_rev(acc)
+  Cons(row, rest) -> do
     let cell = nth_opt(row, idx)
     match cell do
-    | None       -> extract_values_at(rest, idx, acc)
-    | Some(None) -> extract_values_at(rest, idx, acc)
-    | Some(Some(v)) -> extract_values_at(rest, idx, Cons(v, acc))
+    None       -> extract_values_at(rest, idx, acc)
+    Some(None) -> extract_values_at(rest, idx, acc)
+    Some(Some(v)) -> extract_values_at(rest, idx, Cons(v, acc))
     end
   end
   end
@@ -55,8 +55,8 @@ end
 
 pfn nth_opt(lst, idx) do
   match lst do
-  | Nil -> None
-  | Cons(x, rest) -> if idx == 0 then Some(x) else nth_opt(rest, idx - 1)
+  Nil -> None
+  Cons(x, rest) -> if idx == 0 then Some(x) else nth_opt(rest, idx - 1)
   end
 end
 
@@ -67,9 +67,9 @@ end
 --- an empty IN () which is a PostgreSQL syntax error.
 fn build_preload_query(child_table, fk_col, vals) do
   match vals do
-  | Nil ->
+  Nil ->
     from(child_table) |> where_(Raw("FALSE"))
-  | _ -> do
+  _ -> do
     let exprs = map_strings_to_lit(dedup_strings(vals))
     from(child_table) |> where_(In(Col(fk_col), exprs))
   end
@@ -97,39 +97,39 @@ fn dedup_strings(strs) do dedup_acc(strs, Nil) end
 
 pfn dedup_acc(strs, seen) do
   match strs do
-  | Nil -> list_rev(seen)
-  | Cons(s, rest) ->
+  Nil -> list_rev(seen)
+  Cons(s, rest) ->
     if str_list_contains(seen, s) then dedup_acc(rest, seen) else dedup_acc(rest, Cons(s, seen))
   end
 end
 
 pfn str_list_contains(lst, s) do
   match lst do
-  | Nil -> false
-  | Cons(x, rest) -> if x == s then true else str_list_contains(rest, s)
+  Nil -> false
+  Cons(x, rest) -> if x == s then true else str_list_contains(rest, s)
   end
 end
 
 pfn map_strings_to_lit(strs) do
   match strs do
-  | Nil -> Nil
-  | Cons(s, rest) -> Cons(Lit(PString(s)), map_strings_to_lit(rest))
+  Nil -> Nil
+  Cons(s, rest) -> Cons(Lit(PString(s)), map_strings_to_lit(rest))
   end
 end
 
 pfn list_rev(lst) do list_rev_acc(lst, Nil) end
 pfn list_rev_acc(lst, acc) do
   match lst do
-  | Nil -> acc
-  | Cons(x, rest) -> list_rev_acc(rest, Cons(x, acc))
+  Nil -> acc
+  Cons(x, rest) -> list_rev_acc(rest, Cons(x, acc))
   end
 end
 
 pfn flatten_result(r) do
   match r do
-  | Ok(Ok(v)) -> Ok(v)
-  | Ok(Err(e)) -> Err(e)
-  | Err(e) -> Err(e)
+  Ok(Ok(v)) -> Ok(v)
+  Ok(Err(e)) -> Err(e)
+  Err(e) -> Err(e)
   end
 end
 

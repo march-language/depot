@@ -135,8 +135,8 @@ end
 -- Find the first value for a key.
 pfn alist_get(pairs, key) do
   match pairs do
-  | Nil -> None
-  | Cons((k, v), rest) ->
+  Nil -> None
+  Cons((k, v), rest) ->
     if k == key then Some(v) else alist_get(rest, key)
   end
 end
@@ -145,9 +145,9 @@ end
 pfn alist_set(pairs, key, value) do
   fn go(ps, acc) do
     match ps do
-    | Nil ->
+    Nil ->
       List.append(reverse(acc), Cons((key, value), Nil))
-    | Cons((k, v), rest) ->
+    Cons((k, v), rest) ->
       if k == key then List.append(reverse(acc), Cons((key, value), rest)) else go(rest, Cons((k, v), acc))
     end
   end
@@ -167,8 +167,8 @@ end
 pfn alist_get_all(pairs, key) do
   fn go(ps, acc) do
     match ps do
-    | Nil -> reverse(acc)
-    | Cons((k, v), rest) ->
+    Nil -> reverse(acc)
+    Cons((k, v), rest) ->
       if k == key then go(rest, Cons(v, acc)) else go(rest, acc)
     end
   end
@@ -193,9 +193,9 @@ end
 pfn extract_constraint_name(opts, default) do
   fn go(os) do
     match os do
-    | Nil -> default
-    | Cons(ConstraintName(n), _) -> n
-    | Cons(_, rest) -> go(rest)
+    Nil -> default
+    Cons(ConstraintName(n), _) -> n
+    Cons(_, rest) -> go(rest)
     end
   end
   go(opts)
@@ -204,9 +204,9 @@ end
 pfn extract_constraint_message(opts, default) do
   fn go(os) do
     match os do
-    | Nil -> default
-    | Cons(ConstraintMessage(m), _) -> m
-    | Cons(_, rest) -> go(rest)
+    Nil -> default
+    Cons(ConstraintMessage(m), _) -> m
+    Cons(_, rest) -> go(rest)
     end
   end
   go(opts)
@@ -219,15 +219,15 @@ end
 pfn apply_number_opts(form, field, n, opts) do
   fn go(os, f) do
     match os do
-    | Nil -> f
-    | Cons(opt, rest) ->
+    Nil -> f
+    Cons(opt, rest) ->
       go(rest, match opt do
-      | NumMin(m) -> if n < m then add_error(f, field, "must be greater than or equal to " ++ int_to_string(m)) else f
-      | NumMax(m) -> if n > m then add_error(f, field, "must be less than or equal to " ++ int_to_string(m)) else f
-      | NumGreaterThan(m) -> if n <= m then add_error(f, field, "must be greater than " ++ int_to_string(m)) else f
-      | NumLessThan(m) -> if n >= m then add_error(f, field, "must be less than " ++ int_to_string(m)) else f
-      | NumEqualTo(m) -> if n != m then add_error(f, field, "must be equal to " ++ int_to_string(m)) else f
-      | NumMessage(_) -> f
+      NumMin(m) -> if n < m then add_error(f, field, "must be greater than or equal to " ++ int_to_string(m)) else f
+      NumMax(m) -> if n > m then add_error(f, field, "must be less than or equal to " ++ int_to_string(m)) else f
+      NumGreaterThan(m) -> if n <= m then add_error(f, field, "must be greater than " ++ int_to_string(m)) else f
+      NumLessThan(m) -> if n >= m then add_error(f, field, "must be less than " ++ int_to_string(m)) else f
+      NumEqualTo(m) -> if n != m then add_error(f, field, "must be equal to " ++ int_to_string(m)) else f
+      NumMessage(_) -> f
       end)
     end
   end
@@ -247,8 +247,8 @@ pfn cast_diff_entry(base_entries, k, v, rest, fields, acc) do
   if str_member(fields, k) then do
     let base_val = alist_get(base_entries, k)
     let is_changed = match base_val do
-      | Some(bv) -> bv != v
-      | None     -> true
+      Some(bv) -> bv != v
+      None     -> true
     end
     if is_changed then cast_diff(base_entries, rest, fields, Cons((k, v), acc))
     else cast_diff(base_entries, rest, fields, acc)
@@ -258,8 +258,8 @@ end
 
 pfn cast_diff(base_entries, param_entries, fields, acc) do
   match param_entries do
-  | Nil -> reverse(acc)
-  | Cons((k, v), rest) -> cast_diff_entry(base_entries, k, v, rest, fields, acc)
+  Nil -> reverse(acc)
+  Cons((k, v), rest) -> cast_diff_entry(base_entries, k, v, rest, fields, acc)
   end
 end
 
@@ -311,8 +311,8 @@ Returns the current value of a field, checking changes first then base/params.
 """
 fn get_field(form, field) do
   match get_change(form, field) do
-  | Some(v) -> Some(v)
-  | None    -> alist_get(form_base(form), field)
+  Some(v) -> Some(v)
+  None    -> alist_get(form_base(form), field)
   end
 end
 
@@ -368,15 +368,15 @@ Returns true if the given field has a change recorded.
 """
 fn changed(form, field) do
   match get_change(form, field) do
-  | Some(_) -> true
-  | None    -> false
+  Some(_) -> true
+  None    -> false
   end
 end
 
 pfn merge_changes(base_entries, changes) do
   match changes do
-  | Nil -> base_entries
-  | Cons((k, v), rest) -> merge_changes(alist_set(base_entries, k, v), rest)
+  Nil -> base_entries
+  Cons((k, v), rest) -> merge_changes(alist_set(base_entries, k, v), rest)
   end
 end
 
@@ -440,11 +440,11 @@ Validates that all listed fields have non-empty values.
 fn validate_required(form, fields) do
   fn go(fs, f) do
     match fs do
-    | Nil -> f
-    | Cons(field, rest) ->
+    Nil -> f
+    Cons(field, rest) ->
       go(rest, match get_field(f, field) do
-      | None    -> add_error(f, field, "can't be blank")
-      | Some(v) -> if is_blank(v) then add_error(f, field, "can't be blank") else f
+      None    -> add_error(f, field, "can't be blank")
+      Some(v) -> if is_blank(v) then add_error(f, field, "can't be blank") else f
       end)
     end
   end
@@ -454,13 +454,13 @@ end
 pfn apply_length_opts(form, field, len, opts) do
   fn go(os, f) do
     match os do
-    | Nil -> f
-    | Cons(opt, rest) ->
+    Nil -> f
+    Cons(opt, rest) ->
       go(rest, match opt do
-      | LenMin(n)   -> if len < n then add_error(f, field, "should be at least " ++ int_to_string(n) ++ " character(s)") else f
-      | LenMax(n)   -> if len > n then add_error(f, field, "should be at most " ++ int_to_string(n) ++ " character(s)") else f
-      | LenExact(n) -> if len != n then add_error(f, field, "should be exactly " ++ int_to_string(n) ++ " character(s)") else f
-      | LenMessage(_) -> f
+      LenMin(n)   -> if len < n then add_error(f, field, "should be at least " ++ int_to_string(n) ++ " character(s)") else f
+      LenMax(n)   -> if len > n then add_error(f, field, "should be at most " ++ int_to_string(n) ++ " character(s)") else f
+      LenExact(n) -> if len != n then add_error(f, field, "should be exactly " ++ int_to_string(n) ++ " character(s)") else f
+      LenMessage(_) -> f
       end)
     end
   end
@@ -477,8 +477,8 @@ Absent fields are silently skipped — use validate_required first.
 """
 fn validate_length(form, field, opts) do
   match get_field(form, field) do
-  | None    -> form
-  | Some(v) -> apply_length_opts(form, field, String.byte_size(v), opts)
+  None    -> form
+  Some(v) -> apply_length_opts(form, field, String.byte_size(v), opts)
   end
 end
 
@@ -491,8 +491,8 @@ Absent fields are silently skipped.
 """
 fn validate_format(form, field, pattern) do
   match get_field(form, field) do
-  | None    -> form
-  | Some(v) ->
+  None    -> form
+  Some(v) ->
     if Regex.matches(pattern, v) then form else add_error(form, field, "has invalid format")
   end
 end
@@ -504,8 +504,8 @@ Validates that a field value is in the allowed set.
 """
 fn validate_inclusion(form, field, values) do
   match get_field(form, field) do
-  | None    -> form
-  | Some(v) ->
+  None    -> form
+  Some(v) ->
     if List.member(values, v) then form else add_error(form, field, "is not a valid value")
   end
 end
@@ -517,8 +517,8 @@ Validates that a field value is NOT in the excluded set.
 """
 fn validate_exclusion(form, field, values) do
   match get_field(form, field) do
-  | None    -> form
-  | Some(v) ->
+  None    -> form
+  Some(v) ->
     if List.member(values, v) then add_error(form, field, "is reserved") else form
   end
 end
@@ -533,14 +533,14 @@ NumLessThan(n), NumEqualTo(n).
 """
 fn validate_number(form, field, opts) do
   match get_field(form, field) do
-  | None    -> form
-  | Some(v) ->
+  None    -> form
+  Some(v) ->
     match string_to_int(v) do
-    | Some(n) -> apply_number_opts(form, field, n, opts)
-    | None    ->
+    Some(n) -> apply_number_opts(form, field, n, opts)
+    None    ->
       match string_to_float(v) do
-      | Some(fv) -> apply_number_opts(form, field, float_to_int(fv), opts)
-      | None     -> add_error(form, field, "is not a number")
+      Some(fv) -> apply_number_opts(form, field, float_to_int(fv), opts)
+      None     -> add_error(form, field, "is not a number")
       end
     end
   end
@@ -553,8 +553,8 @@ Validates that a field has been accepted (checkbox style: value "true" or "1").
 """
 fn validate_acceptance(form, field) do
   match get_field(form, field) do
-  | None    -> add_error(form, field, "must be accepted")
-  | Some(v) ->
+  None    -> add_error(form, field, "must be accepted")
+  Some(v) ->
     if v == "true" || v == "1" then form else add_error(form, field, "must be accepted")
   end
 end
@@ -568,12 +568,12 @@ For field "password", checks that "password_confirmation" has the same value.
 fn validate_confirmation(form, field) do
   let conf_field = field ++ "_confirmation"
   match get_field(form, field) do
-  | None -> form
-  | Some(v) ->
+  None -> form
+  Some(v) ->
     match get_field(form, conf_field) do
-    | None ->
+    None ->
       add_error(form, conf_field, "can't be blank")
-    | Some(cv) ->
+    Some(cv) ->
       if v == cv then form else add_error(form, conf_field, "does not match " ++ field)
     end
   end
@@ -592,11 +592,11 @@ The validator receives the field value and returns:
 """
 fn validate_change(form, field, validator) do
   match get_field(form, field) do
-  | None    -> form
-  | Some(v) ->
+  None    -> form
+  Some(v) ->
     match validator(v) do
-    | None      -> form
-    | Some(msg) -> add_error(form, field, msg)
+    None      -> form
+    Some(msg) -> add_error(form, field, msg)
     end
   end
 end
@@ -671,8 +671,8 @@ Called by Depot insert/update when a DB error occurs.
 fn apply_constraint_error(form, constraint_name) do
   fn go(cs) do
     match cs do
-    | Nil -> form
-    | Cons(DbConstraint(_, field, name, msg), rest) ->
+    Nil -> form
+    Cons(DbConstraint(_, field, name, msg), rest) ->
       if name == constraint_name then add_error(form, field, msg) else go(rest)
     end
   end

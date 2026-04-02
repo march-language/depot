@@ -56,8 +56,8 @@ end
 
 pfn cp_b(f, sel, s1) do
   let from_sql = match f.from_ do
-    | FromTable(name) -> quote_ident(name)
-    | FromSubquery(_, _) -> panic("compile_parameterized: subquery in FROM not yet supported")
+    FromTable(name) -> quote_ident(name)
+    FromSubquery(_, _) -> panic("compile_parameterized: subquery in FROM not yet supported")
   end
   cp_c(f, sel, from_sql, s1)
 end
@@ -104,8 +104,8 @@ end
 
 pfn ci_from(f, dp) do
   let from_sql = match f.from_ do
-    | FromTable(name) -> quote_ident(name)
-    | FromSubquery(_, _) -> panic("compile_inline: subquery in FROM not yet supported")
+    FromTable(name) -> quote_ident(name)
+    FromSubquery(_, _) -> panic("compile_inline: subquery in FROM not yet supported")
   end
   ci_assemble(f, dp, from_sql)
 end
@@ -124,23 +124,23 @@ end
 
 pfn compile_select(f, st) do
   match f.selects do
-  | Nil -> ("*", st)
-  | items -> compile_select_exprs(items, st, Nil)
+  Nil -> ("*", st)
+  items -> compile_select_exprs(items, st, Nil)
   end
 end
 
 pfn compile_select_exprs(items, st, acc) do
   match items do
-  | Nil -> (join_strs(rev_strs(acc), ", "), st)
-  | Cons(item, rest) ->
+  Nil -> (join_strs(rev_strs(acc), ", "), st)
+  Cons(item, rest) ->
     match item do
-    | SelectAll ->
+    SelectAll ->
       compile_select_exprs(rest, st, Cons("*", acc))
-    | SelectField(e) -> do
+    SelectField(e) -> do
       let (s, st2) = compile_expr(e, st)
       compile_select_exprs(rest, st2, Cons(s, acc))
     end
-    | SelectAs(e, a) -> do
+    SelectAs(e, a) -> do
       let (s, st2) = compile_expr(e, st)
       compile_select_exprs(rest, st2, Cons(s ++ " AS " ++ quote_ident(a), acc))
     end
@@ -150,19 +150,19 @@ end
 
 pfn compile_select_inline(f) do
   match f.selects do
-  | Nil -> "*"
-  | items -> join_strs(compile_select_items_inline(items), ", ")
+  Nil -> "*"
+  items -> join_strs(compile_select_items_inline(items), ", ")
   end
 end
 
 pfn compile_select_items_inline(items) do
   match items do
-  | Nil -> Nil
-  | Cons(item, rest) -> do
+  Nil -> Nil
+  Cons(item, rest) -> do
     let s = match item do
-      | SelectAll -> "*"
-      | SelectField(e) -> compile_expr_inline(e)
-      | SelectAs(e, a) -> compile_expr_inline(e) ++ " AS " ++ quote_ident(a)
+      SelectAll -> "*"
+      SelectField(e) -> compile_expr_inline(e)
+      SelectAs(e, a) -> compile_expr_inline(e) ++ " AS " ++ quote_ident(a)
     end
     Cons(s, compile_select_items_inline(rest))
   end
@@ -173,21 +173,21 @@ end
 
 pfn compile_joins(joins, st) do
   match joins do
-  | Nil -> ("", st)
-  | _ -> compile_joins_acc(joins, st, "")
+  Nil -> ("", st)
+  _ -> compile_joins_acc(joins, st, "")
   end
 end
 
 pfn compile_joins_acc(joins, st, acc) do
   match joins do
-  | Nil -> (acc, st)
-  | Cons(JoinClause(kind, table, on_expr), rest) -> do
+  Nil -> (acc, st)
+  Cons(JoinClause(kind, table, on_expr), rest) -> do
     let k = match kind do
-      | Inner    -> " INNER JOIN "
-      | Left     -> " LEFT JOIN "
-      | Right    -> " RIGHT JOIN "
-      | FullOuter -> " FULL OUTER JOIN "
-      | Cross    -> " CROSS JOIN "
+      Inner    -> " INNER JOIN "
+      Left     -> " LEFT JOIN "
+      Right    -> " RIGHT JOIN "
+      FullOuter -> " FULL OUTER JOIN "
+      Cross    -> " CROSS JOIN "
     end
     let (on_sql, st2) = compile_expr(on_expr, st)
     compile_joins_acc(rest, st2, acc ++ k ++ quote_ident(table) ++ " ON " ++ on_sql)
@@ -197,14 +197,14 @@ end
 
 pfn compile_joins_inline(joins) do
   match joins do
-  | Nil -> ""
-  | Cons(JoinClause(kind, table, on_expr), rest) -> do
+  Nil -> ""
+  Cons(JoinClause(kind, table, on_expr), rest) -> do
     let k = match kind do
-      | Inner    -> " INNER JOIN "
-      | Left     -> " LEFT JOIN "
-      | Right    -> " RIGHT JOIN "
-      | FullOuter -> " FULL OUTER JOIN "
-      | Cross    -> " CROSS JOIN "
+      Inner    -> " INNER JOIN "
+      Left     -> " LEFT JOIN "
+      Right    -> " RIGHT JOIN "
+      FullOuter -> " FULL OUTER JOIN "
+      Cross    -> " CROSS JOIN "
     end
     k ++ quote_ident(table) ++ " ON " ++ compile_expr_inline(on_expr)
     ++ compile_joins_inline(rest)
@@ -216,8 +216,8 @@ end
 
 pfn compile_wheres(wheres, st) do
   match wheres do
-  | Nil -> ("", st)
-  | _ -> do
+  Nil -> ("", st)
+  _ -> do
     let (parts, st2) = compile_where_parts(wheres, st, Nil)
     (" WHERE " ++ join_where_parts(rev_where_parts(parts)), st2)
   end
@@ -226,14 +226,14 @@ end
 
 pfn compile_where_parts(wheres, st, acc) do
   match wheres do
-  | Nil -> (acc, st)
-  | Cons(w, rest) ->
+  Nil -> (acc, st)
+  Cons(w, rest) ->
     match w do
-    | Where(e) -> do
+    Where(e) -> do
       let (s, st2) = compile_expr(e, st)
       compile_where_parts(rest, st2, Cons(("AND", s), acc))
     end
-    | OrWhere(e) -> do
+    OrWhere(e) -> do
       let (s, st2) = compile_expr(e, st)
       compile_where_parts(rest, st2, Cons(("OR", s), acc))
     end
@@ -243,22 +243,22 @@ end
 
 pfn join_where_parts(parts) do
   match parts do
-  | Nil -> "TRUE"
-  | Cons((_, first), rest) -> join_where_rest(first, rest)
+  Nil -> "TRUE"
+  Cons((_, first), rest) -> join_where_rest(first, rest)
   end
 end
 
 pfn join_where_rest(acc, parts) do
   match parts do
-  | Nil -> acc
-  | Cons((op, expr), rest) -> join_where_rest(acc ++ " " ++ op ++ " " ++ expr, rest)
+  Nil -> acc
+  Cons((op, expr), rest) -> join_where_rest(acc ++ " " ++ op ++ " " ++ expr, rest)
   end
 end
 
 pfn compile_wheres_inline(wheres) do
   match wheres do
-  | Nil -> ""
-  | _ -> do
+  Nil -> ""
+  _ -> do
     let parts = compile_where_parts_inline(wheres)
     " WHERE " ++ join_where_parts(parts)
   end
@@ -267,11 +267,11 @@ end
 
 pfn compile_where_parts_inline(wheres) do
   match wheres do
-  | Nil -> Nil
-  | Cons(w, rest) -> do
+  Nil -> Nil
+  Cons(w, rest) -> do
     let pair = match w do
-      | Where(e)   -> ("AND", compile_expr_inline(e))
-      | OrWhere(e) -> ("OR",  compile_expr_inline(e))
+      Where(e)   -> ("AND", compile_expr_inline(e))
+      OrWhere(e) -> ("OR",  compile_expr_inline(e))
     end
     Cons(pair, compile_where_parts_inline(rest))
   end
@@ -282,8 +282,8 @@ end
 
 pfn compile_group_bys(exprs, st) do
   match exprs do
-  | Nil -> ("", st)
-  | _ -> do
+  Nil -> ("", st)
+  _ -> do
     let (parts, st2) = compile_expr_list(exprs, st, Nil)
     (" GROUP BY " ++ join_strs(rev_strs(parts), ", "), st2)
   end
@@ -292,8 +292,8 @@ end
 
 pfn compile_group_bys_inline(exprs) do
   match exprs do
-  | Nil -> ""
-  | _ -> " GROUP BY " ++ join_strs(compile_exprs_inline(exprs), ", ")
+  Nil -> ""
+  _ -> " GROUP BY " ++ join_strs(compile_exprs_inline(exprs), ", ")
   end
 end
 
@@ -301,8 +301,8 @@ end
 
 pfn compile_havings(havings, st) do
   match havings do
-  | Nil -> ("", st)
-  | _ -> do
+  Nil -> ("", st)
+  _ -> do
     let (parts, st2) = compile_where_parts(havings, st, Nil)
     (" HAVING " ++ join_where_parts(rev_where_parts(parts)), st2)
   end
@@ -311,8 +311,8 @@ end
 
 pfn compile_havings_inline(havings) do
   match havings do
-  | Nil -> ""
-  | _ -> do
+  Nil -> ""
+  _ -> do
     let parts = compile_where_parts_inline(havings)
     " HAVING " ++ join_where_parts(parts)
   end
@@ -323,8 +323,8 @@ end
 
 pfn compile_orders(orders, st) do
   match orders do
-  | Nil -> ("", st)
-  | _ -> do
+  Nil -> ("", st)
+  _ -> do
     let (parts, st2) = compile_order_parts(orders, st, Nil)
     (" ORDER BY " ++ join_strs(rev_strs(parts), ", "), st2)
   end
@@ -333,14 +333,14 @@ end
 
 pfn compile_order_parts(orders, st, acc) do
   match orders do
-  | Nil -> (acc, st)
-  | Cons(OrderExpr(e, dir), rest) -> do
+  Nil -> (acc, st)
+  Cons(OrderExpr(e, dir), rest) -> do
     let (s, st2) = compile_expr(e, st)
     let d = match dir do
-      | Asc            -> " ASC"
-      | Desc           -> " DESC"
-      | AscNullsFirst  -> " ASC NULLS FIRST"
-      | DescNullsLast  -> " DESC NULLS LAST"
+      Asc            -> " ASC"
+      Desc           -> " DESC"
+      AscNullsFirst  -> " ASC NULLS FIRST"
+      DescNullsLast  -> " DESC NULLS LAST"
     end
     compile_order_parts(rest, st2, Cons(s ++ d, acc))
   end
@@ -349,20 +349,20 @@ end
 
 pfn compile_orders_inline(orders) do
   match orders do
-  | Nil -> ""
-  | _ -> " ORDER BY " ++ join_strs(compile_order_items_inline(orders), ", ")
+  Nil -> ""
+  _ -> " ORDER BY " ++ join_strs(compile_order_items_inline(orders), ", ")
   end
 end
 
 pfn compile_order_items_inline(orders) do
   match orders do
-  | Nil -> Nil
-  | Cons(OrderExpr(e, dir), rest) -> do
+  Nil -> Nil
+  Cons(OrderExpr(e, dir), rest) -> do
     let d = match dir do
-      | Asc            -> " ASC"
-      | Desc           -> " DESC"
-      | AscNullsFirst  -> " ASC NULLS FIRST"
-      | DescNullsLast  -> " DESC NULLS LAST"
+      Asc            -> " ASC"
+      Desc           -> " DESC"
+      AscNullsFirst  -> " ASC NULLS FIRST"
+      DescNullsLast  -> " DESC NULLS LAST"
     end
     Cons(compile_expr_inline(e) ++ d, compile_order_items_inline(rest))
   end
@@ -373,15 +373,15 @@ end
 
 pfn compile_limit(lim) do
   match lim do
-  | None -> ""
-  | Some(n) -> " LIMIT " ++ int_to_string(n)
+  None -> ""
+  Some(n) -> " LIMIT " ++ int_to_string(n)
   end
 end
 
 pfn compile_offset(off) do
   match off do
-  | None -> ""
-  | Some(n) -> " OFFSET " ++ int_to_string(n)
+  None -> ""
+  Some(n) -> " OFFSET " ++ int_to_string(n)
   end
 end
 
@@ -391,134 +391,134 @@ end
 
 pfn compile_expr(e, st) do
   match e do
-  | Lit(v) -> do
+  Lit(v) -> do
     let nc = st.param_count + 1
     let param = match v do
-      | PInt(n)    -> ParamText(int_to_string(n))
-      | PFloat(f_) -> ParamText(float_to_string(f_))
-      | PString(s) -> ParamText(s)
-      | PBool(b)   -> ParamText(if b then "t" else "f")
-      | PNull      -> ParamNull
+      PInt(n)    -> ParamText(int_to_string(n))
+      PFloat(f_) -> ParamText(float_to_string(f_))
+      PString(s) -> ParamText(s)
+      PBool(b)   -> ParamText(if b then "t" else "f")
+      PNull      -> ParamNull
     end
     ("$" ++ int_to_string(nc), { param_count = nc, params = Cons(param, st.params) })
   end
-  | Col(name)     -> (quote_ident(name), st)
-  | QCol(t, name) -> (quote_ident(t) ++ "." ++ quote_ident(name), st)
-  | Eq(l, r) -> do
+  Col(name)     -> (quote_ident(name), st)
+  QCol(t, name) -> (quote_ident(t) ++ "." ++ quote_ident(name), st)
+  Eq(l, r) -> do
     let (ls, s1) = compile_expr(l, st)
     let (rs, s2) = compile_expr(r, s1)
     (ls ++ " = " ++ rs, s2)
   end
-  | Neq(l, r) -> do
+  Neq(l, r) -> do
     let (ls, s1) = compile_expr(l, st)
     let (rs, s2) = compile_expr(r, s1)
     (ls ++ " <> " ++ rs, s2)
   end
-  | Lt(l, r) -> do
+  Lt(l, r) -> do
     let (ls, s1) = compile_expr(l, st)
     let (rs, s2) = compile_expr(r, s1)
     (ls ++ " < " ++ rs, s2)
   end
-  | Gt(l, r) -> do
+  Gt(l, r) -> do
     let (ls, s1) = compile_expr(l, st)
     let (rs, s2) = compile_expr(r, s1)
     (ls ++ " > " ++ rs, s2)
   end
-  | Lte(l, r) -> do
+  Lte(l, r) -> do
     let (ls, s1) = compile_expr(l, st)
     let (rs, s2) = compile_expr(r, s1)
     (ls ++ " <= " ++ rs, s2)
   end
-  | Gte(l, r) -> do
+  Gte(l, r) -> do
     let (ls, s1) = compile_expr(l, st)
     let (rs, s2) = compile_expr(r, s1)
     (ls ++ " >= " ++ rs, s2)
   end
-  | And(l, r) -> do
+  And(l, r) -> do
     let (ls, s1) = compile_expr(l, st)
     let (rs, s2) = compile_expr(r, s1)
     ("(" ++ ls ++ " AND " ++ rs ++ ")", s2)
   end
-  | Or(l, r) -> do
+  Or(l, r) -> do
     let (ls, s1) = compile_expr(l, st)
     let (rs, s2) = compile_expr(r, s1)
     ("(" ++ ls ++ " OR " ++ rs ++ ")", s2)
   end
-  | Not(inner) -> do
+  Not(inner) -> do
     let (s, st2) = compile_expr(inner, st)
     ("NOT (" ++ s ++ ")", st2)
   end
-  | Add(l, r) -> do
+  Add(l, r) -> do
     let (ls, s1) = compile_expr(l, st)
     let (rs, s2) = compile_expr(r, s1)
     (ls ++ " + " ++ rs, s2)
   end
-  | Sub(l, r) -> do
+  Sub(l, r) -> do
     let (ls, s1) = compile_expr(l, st)
     let (rs, s2) = compile_expr(r, s1)
     (ls ++ " - " ++ rs, s2)
   end
-  | Mul(l, r) -> do
+  Mul(l, r) -> do
     let (ls, s1) = compile_expr(l, st)
     let (rs, s2) = compile_expr(r, s1)
     (ls ++ " * " ++ rs, s2)
   end
-  | Div(l, r) -> do
+  Div(l, r) -> do
     let (ls, s1) = compile_expr(l, st)
     let (rs, s2) = compile_expr(r, s1)
     (ls ++ " / " ++ rs, s2)
   end
-  | IsNull(inner) -> do
+  IsNull(inner) -> do
     let (s, st2) = compile_expr(inner, st)
     (s ++ " IS NULL", st2)
   end
-  | IsNotNull(inner) -> do
+  IsNotNull(inner) -> do
     let (s, st2) = compile_expr(inner, st)
     (s ++ " IS NOT NULL", st2)
   end
-  | Like(inner, pat) -> do
+  Like(inner, pat) -> do
     let (s, st2) = compile_expr(inner, st)
     (s ++ " LIKE $" ++ int_to_string(st2.param_count + 1),
      { param_count = st2.param_count + 1,
        params = Cons(ParamText(pat), st2.params) })
   end
-  | ILike(inner, pat) -> do
+  ILike(inner, pat) -> do
     let (s, st2) = compile_expr(inner, st)
     (s ++ " ILIKE $" ++ int_to_string(st2.param_count + 1),
      { param_count = st2.param_count + 1,
        params = Cons(ParamText(pat), st2.params) })
   end
-  | Count(inner) -> do
+  Count(inner) -> do
     let (s, st2) = compile_expr(inner, st)
     ("COUNT(" ++ s ++ ")", st2)
   end
-  | Sum(inner) -> do
+  Sum(inner) -> do
     let (s, st2) = compile_expr(inner, st)
     ("SUM(" ++ s ++ ")", st2)
   end
-  | Avg(inner) -> do
+  Avg(inner) -> do
     let (s, st2) = compile_expr(inner, st)
     ("AVG(" ++ s ++ ")", st2)
   end
-  | Min(inner) -> do
+  Min(inner) -> do
     let (s, st2) = compile_expr(inner, st)
     ("MIN(" ++ s ++ ")", st2)
   end
-  | Max(inner) -> do
+  Max(inner) -> do
     let (s, st2) = compile_expr(inner, st)
     ("MAX(" ++ s ++ ")", st2)
   end
-  | CountAll     -> ("COUNT(*)", st)
-  | ExprParam(n) -> ("$" ++ int_to_string(n), st)
-  | Raw(sql)     -> (sql, st)
-  | _         -> ("/* unsupported expr */", st)
+  CountAll     -> ("COUNT(*)", st)
+  ExprParam(n) -> ("$" ++ int_to_string(n), st)
+  Raw(sql)     -> (sql, st)
+  _         -> ("/* unsupported expr */", st)
   end
 end
 
 pfn compile_expr_list(exprs, st, acc) do
   match exprs do
-  | Nil -> (acc, st)
-  | Cons(e, rest) ->
+  Nil -> (acc, st)
+  Cons(e, rest) ->
     let (s, st2) = compile_expr(e, st)
     compile_expr_list(rest, st2, Cons(s, acc))
   end
@@ -528,42 +528,42 @@ end
 
 pfn compile_expr_inline(e) do
   match e do
-  | Lit(v)         -> sql_value_to_string(v)
-  | Col(name)      -> quote_ident(name)
-  | QCol(t, name)  -> quote_ident(t) ++ "." ++ quote_ident(name)
-  | Eq(l, r)       -> compile_expr_inline(l) ++ " = "   ++ compile_expr_inline(r)
-  | Neq(l, r)      -> compile_expr_inline(l) ++ " <> "  ++ compile_expr_inline(r)
-  | Lt(l, r)       -> compile_expr_inline(l) ++ " < "   ++ compile_expr_inline(r)
-  | Gt(l, r)       -> compile_expr_inline(l) ++ " > "   ++ compile_expr_inline(r)
-  | Lte(l, r)      -> compile_expr_inline(l) ++ " <= "  ++ compile_expr_inline(r)
-  | Gte(l, r)      -> compile_expr_inline(l) ++ " >= "  ++ compile_expr_inline(r)
-  | And(l, r)      -> "(" ++ compile_expr_inline(l) ++ " AND " ++ compile_expr_inline(r) ++ ")"
-  | Or(l, r)       -> "(" ++ compile_expr_inline(l) ++ " OR "  ++ compile_expr_inline(r) ++ ")"
-  | Not(inner)     -> "NOT (" ++ compile_expr_inline(inner) ++ ")"
-  | Add(l, r)      -> compile_expr_inline(l) ++ " + " ++ compile_expr_inline(r)
-  | Sub(l, r)      -> compile_expr_inline(l) ++ " - " ++ compile_expr_inline(r)
-  | Mul(l, r)      -> compile_expr_inline(l) ++ " * " ++ compile_expr_inline(r)
-  | Div(l, r)      -> compile_expr_inline(l) ++ " / " ++ compile_expr_inline(r)
-  | IsNull(inner)  -> compile_expr_inline(inner) ++ " IS NULL"
-  | IsNotNull(inner) -> compile_expr_inline(inner) ++ " IS NOT NULL"
-  | Like(inner, pat)  -> compile_expr_inline(inner) ++ " LIKE "  ++ quote_string(pat)
-  | ILike(inner, pat) -> compile_expr_inline(inner) ++ " ILIKE " ++ quote_string(pat)
-  | Count(inner)   -> "COUNT(" ++ compile_expr_inline(inner) ++ ")"
-  | Sum(inner)     -> "SUM("   ++ compile_expr_inline(inner) ++ ")"
-  | Avg(inner)     -> "AVG("   ++ compile_expr_inline(inner) ++ ")"
-  | Min(inner)     -> "MIN("   ++ compile_expr_inline(inner) ++ ")"
-  | Max(inner)     -> "MAX("   ++ compile_expr_inline(inner) ++ ")"
-  | CountAll       -> "COUNT(*)"
-  | ExprParam(n)   -> "$" ++ int_to_string(n)
-  | Raw(sql)       -> sql
-  | _              -> "/* unsupported */"
+  Lit(v)         -> sql_value_to_string(v)
+  Col(name)      -> quote_ident(name)
+  QCol(t, name)  -> quote_ident(t) ++ "." ++ quote_ident(name)
+  Eq(l, r)       -> compile_expr_inline(l) ++ " = "   ++ compile_expr_inline(r)
+  Neq(l, r)      -> compile_expr_inline(l) ++ " <> "  ++ compile_expr_inline(r)
+  Lt(l, r)       -> compile_expr_inline(l) ++ " < "   ++ compile_expr_inline(r)
+  Gt(l, r)       -> compile_expr_inline(l) ++ " > "   ++ compile_expr_inline(r)
+  Lte(l, r)      -> compile_expr_inline(l) ++ " <= "  ++ compile_expr_inline(r)
+  Gte(l, r)      -> compile_expr_inline(l) ++ " >= "  ++ compile_expr_inline(r)
+  And(l, r)      -> "(" ++ compile_expr_inline(l) ++ " AND " ++ compile_expr_inline(r) ++ ")"
+  Or(l, r)       -> "(" ++ compile_expr_inline(l) ++ " OR "  ++ compile_expr_inline(r) ++ ")"
+  Not(inner)     -> "NOT (" ++ compile_expr_inline(inner) ++ ")"
+  Add(l, r)      -> compile_expr_inline(l) ++ " + " ++ compile_expr_inline(r)
+  Sub(l, r)      -> compile_expr_inline(l) ++ " - " ++ compile_expr_inline(r)
+  Mul(l, r)      -> compile_expr_inline(l) ++ " * " ++ compile_expr_inline(r)
+  Div(l, r)      -> compile_expr_inline(l) ++ " / " ++ compile_expr_inline(r)
+  IsNull(inner)  -> compile_expr_inline(inner) ++ " IS NULL"
+  IsNotNull(inner) -> compile_expr_inline(inner) ++ " IS NOT NULL"
+  Like(inner, pat)  -> compile_expr_inline(inner) ++ " LIKE "  ++ quote_string(pat)
+  ILike(inner, pat) -> compile_expr_inline(inner) ++ " ILIKE " ++ quote_string(pat)
+  Count(inner)   -> "COUNT(" ++ compile_expr_inline(inner) ++ ")"
+  Sum(inner)     -> "SUM("   ++ compile_expr_inline(inner) ++ ")"
+  Avg(inner)     -> "AVG("   ++ compile_expr_inline(inner) ++ ")"
+  Min(inner)     -> "MIN("   ++ compile_expr_inline(inner) ++ ")"
+  Max(inner)     -> "MAX("   ++ compile_expr_inline(inner) ++ ")"
+  CountAll       -> "COUNT(*)"
+  ExprParam(n)   -> "$" ++ int_to_string(n)
+  Raw(sql)       -> sql
+  _              -> "/* unsupported */"
   end
 end
 
 pfn compile_exprs_inline(exprs) do
   match exprs do
-  | Nil -> Nil
-  | Cons(e, rest) -> Cons(compile_expr_inline(e), compile_exprs_inline(rest))
+  Nil -> Nil
+  Cons(e, rest) -> Cons(compile_expr_inline(e), compile_exprs_inline(rest))
   end
 end
 
@@ -571,11 +571,11 @@ end
 
 pfn sql_value_to_string(v) do
   match v do
-  | PInt(n)    -> int_to_string(n)
-  | PFloat(f_) -> float_to_string(f_)
-  | PString(s) -> quote_string(s)
-  | PBool(b)   -> if b then "TRUE" else "FALSE"
-  | PNull      -> "NULL"
+  PInt(n)    -> int_to_string(n)
+  PFloat(f_) -> float_to_string(f_)
+  PString(s) -> quote_string(s)
+  PBool(b)   -> if b then "TRUE" else "FALSE"
+  PNull      -> "NULL"
   end
 end
 
@@ -584,9 +584,9 @@ pfn quote_string(s) do "'" ++ s ++ "'" end
 
 pfn join_strs(parts, sep) do
   match parts do
-  | Nil -> ""
-  | Cons(first, Nil) -> first
-  | Cons(first, rest) -> first ++ sep ++ join_strs(rest, sep)
+  Nil -> ""
+  Cons(first, Nil) -> first
+  Cons(first, rest) -> first ++ sep ++ join_strs(rest, sep)
   end
 end
 
@@ -595,24 +595,24 @@ end
 pfn rev_strs(xs) do rev_strs_acc(xs, Nil) end
 pfn rev_strs_acc(xs, acc) do
   match xs do
-  | Nil -> acc
-  | Cons(x, rest) -> rev_strs_acc(rest, Cons(x, acc))
+  Nil -> acc
+  Cons(x, rest) -> rev_strs_acc(rest, Cons(x, acc))
   end
 end
 
 pfn rev_params(xs) do rev_params_acc(xs, Nil) end
 pfn rev_params_acc(xs, acc) do
   match xs do
-  | Nil -> acc
-  | Cons(x, rest) -> rev_params_acc(rest, Cons(x, acc))
+  Nil -> acc
+  Cons(x, rest) -> rev_params_acc(rest, Cons(x, acc))
   end
 end
 
 pfn rev_where_parts(xs) do rev_wp2_acc(xs, Nil) end
 pfn rev_wp2_acc(xs, acc) do
   match xs do
-  | Nil -> acc
-  | Cons(x, rest) -> rev_wp2_acc(rest, Cons(x, acc))
+  Nil -> acc
+  Cons(x, rest) -> rev_wp2_acc(rest, Cons(x, acc))
   end
 end
 
