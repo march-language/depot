@@ -1,0 +1,14 @@
+mod Depot.Form do
+
+  doc """
+  Returns all error messages for a specific field.
+
+  This module provides a thin wrapper around Depot.Gate for form error access.
+
+      Depot.Form.get_errors(form, "email")  -- ["has invalid format", ...]
+  """
+  fn get_errors(form, field) do
+    Depot.Gate.get_errors(form, field)
+  end
+
+end

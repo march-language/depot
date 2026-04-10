@@ -1,5 +1,4 @@
--- depot/lib/test_helpers.march
--- Test-scoped transaction isolation for Depot.
+-- Depot.Test: test-scoped transaction isolation for Depot.
 --
 -- Wraps Depot.Repo operations in a sandbox that snapshots Vault tables
 -- before each test and restores them after, providing clean rollback
@@ -7,26 +6,26 @@
 --
 -- Usage:
 --
---   TestHelpers.start_sandbox()
+--   Depot.Test.start_sandbox()
 --
 --   -- Before each test:
---   TestHelpers.checkout(["users", "posts"])
+--   Depot.Test.checkout(["users", "posts"])
 --
---   -- ... run test, insert/update/delete via Repo ...
+--   -- ... run test, insert/update/delete via Depot.Repo ...
 --
 --   -- After each test:
---   TestHelpers.checkin()
+--   Depot.Test.checkin()
 --
---   TestHelpers.stop_sandbox()
+--   Depot.Test.stop_sandbox()
 --
 -- Or use the convenience wrapper:
 --
---   TestHelpers.sandboxed(["users"], fn () ->
---     Repo.insert(schema, gate)
+--   Depot.Test.sandboxed(["users"], fn () ->
+--     Depot.Repo.insert(schema, gate)
 --     -- assertions ...
 --   )
 
-mod TestHelpers do
+mod Depot.Test do
 
 -- ---------------------------------------------------------------------------
 -- Private helpers
@@ -35,90 +34,85 @@ mod TestHelpers do
 -- Get or create the sandbox state Vault table.
 pfn sandbox_vault() do
   match Vault.whereis("__depot_test_sandbox__") do
-  Some(t) -> t
-  None -> do
-    let t = Vault.new("__depot_test_sandbox__")
-    Vault.set(t, "active", false)
-    Vault.set(t, "snapshots", Nil)
-    t
-  end
+    Some(t) -> t
+    None ->
+      let t = Vault.new("__depot_test_sandbox__")
+      Vault.set(t, "active", false)
+      Vault.set(t, "snapshots", Nil)
+      t
   end
 end
 
 pfn is_active() do
   let t = sandbox_vault()
   match Vault.get(t, "active") do
-  Some(true) -> true
-  _ -> false
+    Some(true) -> true
+    _ -> false
   end
 end
 
--- Snapshot a single key from a Vault table.
+-- Snapshot a single Vault table: returns list of (key, value) pairs.
 pfn snapshot_one(tbl, k) do
   match Vault.get(tbl, k) do
-  Some(v) -> (k, v)
-  None -> (k, None)
+    Some(v) -> (k, v)
+    None -> (k, None)
   end
 end
 
 pfn snapshot_table(table_name) do
   match Vault.whereis(table_name) do
-  None -> Nil
-  Some(tbl) ->
-    let ks = Vault.keys(tbl)
-    map(ks, fn k -> snapshot_one(tbl, k))
+    None -> Nil
+    Some(tbl) ->
+      let ks = Vault.keys(tbl)
+      List.map(ks, fn k -> snapshot_one(tbl, k))
   end
 end
 
 -- Drop all keys from a Vault table.
 pfn drop_keys(tbl, ks) do
   match ks do
-  Nil -> ()
-  Cons(k, rest) -> do
-    Vault.drop(tbl, k)
-    drop_keys(tbl, rest)
-  end
+    Nil -> ()
+    Cons(k, rest) ->
+      Vault.drop(tbl, k)
+      drop_keys(tbl, rest)
   end
 end
 
 -- Restore a Vault table from a snapshot.
 pfn restore_entries(tbl, snapshot) do
   match snapshot do
-  Nil -> ()
-  Cons((k, v), rest) -> do
-    Vault.set(tbl, k, v)
-    restore_entries(tbl, rest)
-  end
+    Nil -> ()
+    Cons((k, v), rest) ->
+      Vault.set(tbl, k, v)
+      restore_entries(tbl, rest)
   end
 end
 
 pfn restore_table(table_name, snapshot) do
   match Vault.whereis(table_name) do
-  None -> do
-    match snapshot do
-    Nil -> ()
-    _ -> do
-      let tbl = Vault.new(table_name)
+    None -> do
+      match snapshot do
+        Nil -> ()
+        _ ->
+          let tbl = Vault.new(table_name)
+          restore_entries(tbl, snapshot)
+      end
+    end
+    Some(tbl) -> do
+      let ks = Vault.keys(tbl)
+      drop_keys(tbl, ks)
       restore_entries(tbl, snapshot)
     end
-    end
-  end
-  Some(tbl) -> do
-    let ks = Vault.keys(tbl)
-    drop_keys(tbl, ks)
-    restore_entries(tbl, snapshot)
-  end
   end
 end
 
 -- Apply rollback to each (table_name, snapshot) pair.
 pfn rollback_all(snaps) do
   match snaps do
-  Nil -> ()
-  Cons((tbl_name, snap), rest) -> do
-    restore_table(tbl_name, snap)
-    rollback_all(rest)
-  end
+    Nil -> ()
+    Cons((tbl_name, snap), rest) ->
+      restore_table(tbl_name, snap)
+      rollback_all(rest)
   end
 end
 
@@ -130,7 +124,7 @@ doc """
 Start the test sandbox. Call once at the beginning of a test suite.
 Enables checkout/checkin lifecycle for test isolation.
 
-    TestHelpers.start_sandbox()
+    Depot.Test.start_sandbox()
 """
 fn start_sandbox() do
   let t = sandbox_vault()
@@ -145,27 +139,28 @@ Call before each test to save state for later rollback.
 
 tables is a list of table name strings matching your schemas.
 
-    TestHelpers.checkout(["users", "posts"])
+    Depot.Test.checkout(["users", "posts"])
 """
 fn checkout(tables) do
   let t = sandbox_vault()
-  if is_active() then do
-    let snaps = map(tables, fn tbl_name -> (tbl_name, snapshot_table(tbl_name)))
+  if is_active() do
+    let snaps = List.map(tables, fn tbl_name -> (tbl_name, snapshot_table(tbl_name)))
     Vault.set(t, "snapshots", snaps)
     ()
-  end else
-    panic("TestHelpers.checkout called but sandbox is not active. Call start_sandbox() first.")
+  else
+    panic("Depot.Test.checkout called but sandbox is not active. Call start_sandbox() first.")
+  end
 end
 
 doc """
 Roll back all sandboxed tables to their checkout snapshot.
 Call after each test to undo any writes.
 
-    TestHelpers.checkin()
+    Depot.Test.checkin()
 """
 fn checkin() do
   let t = sandbox_vault()
-  if is_active() then do
+  if is_active() do
     let snaps = match Vault.get(t, "snapshots") do
       Some(s) -> s
       None -> Nil
@@ -173,14 +168,15 @@ fn checkin() do
     rollback_all(snaps)
     Vault.set(t, "snapshots", Nil)
     ()
-  end else
-    panic("TestHelpers.checkin called but sandbox is not active. Call start_sandbox() first.")
+  else
+    panic("Depot.Test.checkin called but sandbox is not active. Call start_sandbox() first.")
+  end
 end
 
 doc """
 Stop the sandbox. Call at the end of a test suite.
 
-    TestHelpers.stop_sandbox()
+    Depot.Test.stop_sandbox()
 """
 fn stop_sandbox() do
   let t = sandbox_vault()
@@ -194,8 +190,8 @@ Run a function inside a sandbox transaction.
 Automatically checkpoints the given tables, runs the function,
 then rolls back regardless of success or failure.
 
-    TestHelpers.sandboxed(["users"], fn () ->
-      Repo.insert(schema, gate)
+    Depot.Test.sandboxed(["users"], fn () ->
+      Depot.Repo.insert(schema, gate)
       -- ... test assertions ...
     )
 """
@@ -209,10 +205,10 @@ end
 doc """
 Check if the sandbox is currently active.
 
-    TestHelpers.active()
+    Depot.Test.active()
 """
 fn active() do
   is_active()
 end
 
-end -- mod TestHelpers
+end
