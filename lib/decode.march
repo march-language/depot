@@ -132,7 +132,6 @@ pfn parse_sasl_mechanisms(b, pos, acc) do
       match read_cstring(b, pos) do
       (mech, next) -> parse_sasl_mechanisms(b, next, Cons(mech, acc))
       end
-  end
 end
 
 -- ---- Sub-decoders ----
