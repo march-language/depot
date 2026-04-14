@@ -278,9 +278,27 @@ pfn compile_expr_m(e, st) do
     let (parts, s2) = compile_expr_list_m(vals, s1, Nil)
     (s ++ " NOT IN (" ++ join_strs(rev_strs(parts), ", ") ++ ")", s2)
   end
+  Between(e, lo, hi) -> do
+    let (es, s1) = compile_expr_m(e, st)
+    let (los, s2) = compile_expr_m(lo, s1)
+    let (his, s3) = compile_expr_m(hi, s2)
+    (es ++ " BETWEEN " ++ los ++ " AND " ++ his, s3)
+  end
+  FnCall(name, args) -> do
+    let (parts, s2) = compile_expr_list_m(args, st, Nil)
+    (name ++ "(" ++ join_strs(rev_strs(parts), ", ") ++ ")", s2)
+  end
+  Like(inner, pat) -> do
+    let (s, st2) = compile_expr_m(inner, st)
+    (s ++ " LIKE " ++ quote_str(pat), st2)
+  end
+  ILike(inner, pat) -> do
+    let (s, st2) = compile_expr_m(inner, st)
+    (s ++ " ILIKE " ++ quote_str(pat), st2)
+  end
   Raw(sql) -> (sql, st)
   ExprParam(n) -> ("$" ++ int_to_string(n), st)
-  _            -> (quote_ident("unsupported"), st)
+  _            -> ("/* unsupported */", st)
   end
 end
 
@@ -306,6 +324,21 @@ end
 
 -- ---- String helpers ----
 
+-- Escape single quotes in a string for SQL literal embedding ('' per SQL standard).
+pfn escape_sql_str(s) do
+  fn go(bytes, acc) do
+    match bytes do
+    Nil -> Bytes.to_string(Bytes.from_list(List.reverse(acc)))
+    Cons(b, rest) ->
+      if b == 39 then go(rest, Cons(39, Cons(39, acc)))
+      else go(rest, Cons(b, acc))
+    end
+  end
+  go(Bytes.to_list(Bytes.from_string(s)), Nil)
+end
+
+pfn quote_str(s) do "'" ++ escape_sql_str(s) ++ "'" end
+
 pfn sqlval_to_param(v) do
   match v do
   PInt(n)    -> ParamText(int_to_string(n))
@@ -320,13 +353,26 @@ pfn sql_val_str(v) do
   match v do
   PInt(n)    -> int_to_string(n)
   PFloat(f_) -> float_to_string(f_)
-  PString(s) -> "'" ++ s ++ "'"
+  PString(s) -> quote_str(s)
   PBool(b)   -> if b then "TRUE" else "FALSE"
   PNull      -> "NULL"
   end
 end
 
-pfn quote_ident(name) do "\"" ++ name ++ "\"" end
+-- Escape double quotes in an identifier by doubling them (SQL standard).
+pfn escape_ident(s) do
+  fn go(bytes, acc) do
+    match bytes do
+    Nil -> Bytes.to_string(Bytes.from_list(List.reverse(acc)))
+    Cons(b, rest) ->
+      if b == 34 then go(rest, Cons(34, Cons(34, acc)))
+      else go(rest, Cons(b, acc))
+    end
+  end
+  go(Bytes.to_list(Bytes.from_string(s)), Nil)
+end
+
+pfn quote_ident(name) do "\"" ++ escape_ident(name) ++ "\"" end
 
 pfn map_quoted(strs) do
   match strs do

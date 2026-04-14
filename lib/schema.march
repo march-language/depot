@@ -84,7 +84,25 @@ fn to_oid(t) do
   TNumeric -> 1700
   TUuid -> 2950
   TJsonb -> 3802
-  TArray(_) -> 0
+  TArray(inner) -> match inner do
+    TBool     -> 1000
+    TBytea    -> 1001
+    TInt16    -> 1005
+    TInt32    -> 1007
+    TText     -> 1009
+    TVarchar  -> 1015
+    TInt64    -> 1016
+    TFloat32  -> 1021
+    TFloat64  -> 1022
+    TTimestamp   -> 1115
+    TDate        -> 1182
+    TTimestampTz -> 1185
+    TNumeric     -> 1231
+    TJson        -> 199
+    TUuid        -> 2951
+    TJsonb       -> 3807
+    _         -> 0
+  end
   TUnknown(oid) -> oid
   end
 end

@@ -145,12 +145,21 @@ end
 doc """
 Delete a record by its primary key value.
 
-    Depot.Repo.delete(schema, "some-uuid")
+Returns Ok(id) if the record existed and was deleted, Err("not found") otherwise.
+
+    match Depot.Repo.delete(schema, "some-uuid") do
+      Ok(id)  -> id
+      Err(e)  -> e
+    end
 """
 fn delete(schema, id) do
   let table = ensure_table(schema)
-  Vault.drop(table, id)
-  Ok(id)
+  match Vault.get(table, id) do
+    None    -> Err("not found")
+    Some(_) ->
+      Vault.drop(table, id)
+      Ok(id)
+  end
 end
 
 -- ---------------------------------------------------------------------------
@@ -208,10 +217,10 @@ fn get_by(schema, clauses) do
 end
 
 doc """
-Return exactly one record matching all rows (useful after filtering).
-Returns Some(record) if exactly one match, None otherwise.
+Returns the single record in the table if exactly one row exists, otherwise None.
+Useful for tables expected to hold at most one row (e.g. site settings, feature flags).
 
-    Depot.Repo.one(schema)
+    Depot.Repo.one(schema)  -- Some(record) | None
 """
 fn one(schema) do
   let rows = all(schema)

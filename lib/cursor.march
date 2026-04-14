@@ -6,10 +6,14 @@
 --
 -- IMPORTANT: declare_sql uses compile_inline (literal values embedded in SQL)
 -- because PostgreSQL DECLARE ... CURSOR FOR does not support $N parameters
--- in this form. Only use cursor queries where you control the filter values
--- (not arbitrary user input). For user-supplied filters, build the query
--- carefully using the ADT (values go through Lit(SqlValue)) so that even
--- the inline path quotes strings safely.
+-- in this form.
+--
+-- SECURITY: Only use cursor queries with values you control. Do NOT pass
+-- arbitrary user input as filter values. Although string literals are
+-- single-quote-escaped, the inline path does not use $N bind parameters, so
+-- it offers weaker protection than compile_parameterized. Prefer building
+-- queries with parameterized execution (simple_query + compiled params) for
+-- any data that originates from user input.
 --
 -- Usage:
 --   match simple_query(conn, "BEGIN") do

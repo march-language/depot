@@ -85,6 +85,7 @@ pfn parse_error_fields(b, pos) do
         77 -> go(next, severity, code,    value,   detail,        hint,        position)
         68 -> go(next, severity, code,    message, Some(value),   hint,        position)
         72 -> go(next, severity, code,    message, detail,        Some(value), position)
+        80 -> go(next, severity, code,    message, detail,        hint,        string_to_int(value))
         _  -> go(next, severity, code,    message, detail,        hint,        position)
         end
       end
@@ -131,6 +132,7 @@ pfn parse_sasl_mechanisms(b, pos, acc) do
       match read_cstring(b, pos) do
       (mech, next) -> parse_sasl_mechanisms(b, next, Cons(mech, acc))
       end
+  end
 end
 
 -- ---- Sub-decoders ----

@@ -116,6 +116,13 @@ fn delete_returning_all(d) do
   end
 end
 
+--- Sets RETURNING with specific expressions on the DELETE.
+fn delete_returning(d, exprs) do
+  match d do
+  Delete(f) -> Delete({ f with returning_ = exprs })
+  end
+end
+
 -- ---- Private list helpers ----
 
 pfn append_row(rows, row) do

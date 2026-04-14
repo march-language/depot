@@ -340,6 +340,8 @@ pfn compile_order_parts(orders, st, acc) do
       Asc            -> " ASC"
       Desc           -> " DESC"
       AscNullsFirst  -> " ASC NULLS FIRST"
+      AscNullsLast   -> " ASC NULLS LAST"
+      DescNullsFirst -> " DESC NULLS FIRST"
       DescNullsLast  -> " DESC NULLS LAST"
     end
     compile_order_parts(rest, st2, Cons(s ++ d, acc))
@@ -362,6 +364,8 @@ pfn compile_order_items_inline(orders) do
       Asc            -> " ASC"
       Desc           -> " DESC"
       AscNullsFirst  -> " ASC NULLS FIRST"
+      AscNullsLast   -> " ASC NULLS LAST"
+      DescNullsFirst -> " DESC NULLS FIRST"
       DescNullsLast  -> " DESC NULLS LAST"
     end
     Cons(compile_expr_inline(e) ++ d, compile_order_items_inline(rest))
@@ -476,6 +480,34 @@ pfn compile_expr(e, st) do
     let (s, st2) = compile_expr(inner, st)
     (s ++ " IS NOT NULL", st2)
   end
+  In(inner, vals) -> do
+    let (s, s1) = compile_expr(inner, st)
+    let (parts, s2) = compile_expr_list(vals, s1, Nil)
+    (s ++ " IN (" ++ join_strs(rev_strs(parts), ", ") ++ ")", s2)
+  end
+  NotIn(inner, vals) -> do
+    let (s, s1) = compile_expr(inner, st)
+    let (parts, s2) = compile_expr_list(vals, s1, Nil)
+    (s ++ " NOT IN (" ++ join_strs(rev_strs(parts), ", ") ++ ")", s2)
+  end
+  Between(e, lo, hi) -> do
+    let (es, s1) = compile_expr(e, st)
+    let (los, s2) = compile_expr(lo, s1)
+    let (his, s3) = compile_expr(hi, s2)
+    (es ++ " BETWEEN " ++ los ++ " AND " ++ his, s3)
+  end
+  FnCall(name, args) -> do
+    let (parts, s2) = compile_expr_list(args, st, Nil)
+    (name ++ "(" ++ join_strs(rev_strs(parts), ", ") ++ ")", s2)
+  end
+  Exists(subq) -> do
+    let sub = compile_inline(subq)
+    ("EXISTS (" ++ sub.sql ++ ")", st)
+  end
+  SubqueryExpr(subq) -> do
+    let sub = compile_inline(subq)
+    ("(" ++ sub.sql ++ ")", st)
+  end
   Like(inner, pat) -> do
     let (s, st2) = compile_expr(inner, st)
     (s ++ " LIKE $" ++ int_to_string(st2.param_count + 1),
@@ -546,6 +578,22 @@ pfn compile_expr_inline(e) do
   Div(l, r)      -> compile_expr_inline(l) ++ " / " ++ compile_expr_inline(r)
   IsNull(inner)  -> compile_expr_inline(inner) ++ " IS NULL"
   IsNotNull(inner) -> compile_expr_inline(inner) ++ " IS NOT NULL"
+  In(inner, vals) ->
+    compile_expr_inline(inner) ++ " IN (" ++ join_strs(compile_exprs_inline(vals), ", ") ++ ")"
+  NotIn(inner, vals) ->
+    compile_expr_inline(inner) ++ " NOT IN (" ++ join_strs(compile_exprs_inline(vals), ", ") ++ ")"
+  Between(e, lo, hi) ->
+    compile_expr_inline(e) ++ " BETWEEN " ++ compile_expr_inline(lo) ++ " AND " ++ compile_expr_inline(hi)
+  FnCall(name, args) ->
+    name ++ "(" ++ join_strs(compile_exprs_inline(args), ", ") ++ ")"
+  Exists(subq) -> do
+    let sub = compile_inline(subq)
+    "EXISTS (" ++ sub.sql ++ ")"
+  end
+  SubqueryExpr(subq) -> do
+    let sub = compile_inline(subq)
+    "(" ++ sub.sql ++ ")"
+  end
   Like(inner, pat)  -> compile_expr_inline(inner) ++ " LIKE "  ++ quote_string(pat)
   ILike(inner, pat) -> compile_expr_inline(inner) ++ " ILIKE " ++ quote_string(pat)
   Count(inner)   -> "COUNT(" ++ compile_expr_inline(inner) ++ ")"
@@ -569,6 +617,19 @@ end
 
 -- ---- String helpers ----
 
+-- Escape single quotes in a string for SQL literal embedding ('' per SQL standard).
+pfn escape_sql_str(s) do
+  fn go(bytes, acc) do
+    match bytes do
+    Nil -> Bytes.to_string(Bytes.from_list(List.reverse(acc)))
+    Cons(b, rest) ->
+      if b == 39 then go(rest, Cons(39, Cons(39, acc)))
+      else go(rest, Cons(b, acc))
+    end
+  end
+  go(Bytes.to_list(Bytes.from_string(s)), Nil)
+end
+
 pfn sql_value_to_string(v) do
   match v do
   PInt(n)    -> int_to_string(n)
@@ -579,8 +640,21 @@ pfn sql_value_to_string(v) do
   end
 end
 
-pfn quote_ident(name) do "\"" ++ name ++ "\"" end
-pfn quote_string(s) do "'" ++ s ++ "'" end
+-- Escape double quotes in an identifier by doubling them (SQL standard).
+pfn escape_ident(s) do
+  fn go(bytes, acc) do
+    match bytes do
+    Nil -> Bytes.to_string(Bytes.from_list(List.reverse(acc)))
+    Cons(b, rest) ->
+      if b == 34 then go(rest, Cons(34, Cons(34, acc)))
+      else go(rest, Cons(b, acc))
+    end
+  end
+  go(Bytes.to_list(Bytes.from_string(s)), Nil)
+end
+
+pfn quote_ident(name) do "\"" ++ escape_ident(name) ++ "\"" end
+pfn quote_string(s) do "'" ++ escape_sql_str(s) ++ "'" end
 
 pfn join_strs(parts, sep) do
   match parts do

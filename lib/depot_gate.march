@@ -80,10 +80,6 @@ type ConstraintOpt =
 -- Private: Gate field accessors / updaters
 -- ---------------------------------------------------------------------------
 
-pfn form_params(f) do
-  match f do Gate(p, _, _, _, _) -> p end
-end
-
 pfn form_base(f) do
   match f do Gate(b, _, _, _, _) -> b end
 end
@@ -464,9 +460,9 @@ pfn apply_length_opts(form, field, len, opts) do
     Nil -> f
     Cons(opt, rest) ->
       go(rest, match opt do
-      LenMin(n) -> if len < n then add_error(f, field, "should be at least " ++ int_to_string(n) ++ " character(s)") else f
-      LenMax(n) -> if len > n then add_error(f, field, "should be at most " ++ int_to_string(n) ++ " character(s)") else f
-      LenExact(n) -> if len != n then add_error(f, field, "should be exactly " ++ int_to_string(n) ++ " character(s)") else f
+      LenMin(n) -> if len < n then add_error(f, field, "should be at least " ++ int_to_string(n) ++ " byte(s)") else f
+      LenMax(n) -> if len > n then add_error(f, field, "should be at most " ++ int_to_string(n) ++ " byte(s)") else f
+      LenExact(n) -> if len != n then add_error(f, field, "should be exactly " ++ int_to_string(n) ++ " byte(s)") else f
       LenMessage(_) -> f
       end)
     end
@@ -475,7 +471,12 @@ pfn apply_length_opts(form, field, len, opts) do
 end
 
 doc """
-Validates string length constraints on a field.
+Validates byte-length constraints on a field value.
+
+Counts UTF-8 bytes, not Unicode characters. A 5-character Japanese string
+has 15 bytes, so LenMax(5) would reject it. Use this for binary-safe
+length limits; for character counts you must implement your own validator
+via validate_change.
 
 Opts may be any combination of:
   LenMin(n)     -- must have at least n bytes
@@ -555,11 +556,7 @@ fn validate_number(form, field, opts) do
   Some(v) ->
     match string_to_int(v) do
     Some(n) -> apply_number_opts(form, field, n, opts)
-    None    ->
-      match string_to_float(v) do
-      Some(fv) -> apply_number_opts(form, field, float_to_int(fv), opts)
-      None     -> add_error(form, field, "is not a number")
-      end
+    None    -> add_error(form, field, "is not a number")
     end
   end
 end

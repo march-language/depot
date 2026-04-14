@@ -1,14 +1,294 @@
+-- Depot.Form: form parameter casting and rendering helpers.
+--
+-- A focused API for web form handling built on top of Depot.Gate.
+-- Typical usage:
+--
+--   fn user_form(params) do
+--     Depot.Form.cast(params, ["name", "email", "age"])
+--     |> Depot.Form.validate_required(["name", "email"])
+--     |> Depot.Form.validate_format("email", "@")
+--     |> Depot.Form.validate_number("age", [NumMin(13)])
+--   end
+--
+--   let form = user_form(conn_params)
+--   if Depot.Form.is_valid(form) then
+--     Depot.Repo.insert(schema, form)
+--   else
+--     render_errors(Depot.Form.errors(form))
+--   end
+
 mod Depot.Form do
 
-  doc """
-  Returns all error messages for a specific field.
+-- ---------------------------------------------------------------------------
+-- Construction
+-- ---------------------------------------------------------------------------
 
-  This module provides a thin wrapper around Depot.Gate for form error access.
+doc """
+Create a Form from raw HTTP params, keeping only the allow-listed fields.
 
-      Depot.Form.get_errors(form, "email")  -- ["has invalid format", ...]
-  """
-  fn get_errors(form, field) do
-    Depot.Gate.get_errors(form, field)
-  end
-
+    let form = Depot.Form.cast(params, ["name", "email"])
+"""
+fn cast(params, fields) do
+  Depot.Gate.cast(params, fields)
 end
+
+doc """
+Create a record-based Form from a base record, incoming params, and an
+allow-list. Only fields that differ from base are recorded as changes.
+
+    let form = Depot.Form.cast_record(blank, params, ["name", "email"])
+"""
+fn cast_record(base, params, fields) do
+  Depot.Gate.cast_record(base, params, fields)
+end
+
+-- ---------------------------------------------------------------------------
+-- Accessors
+-- ---------------------------------------------------------------------------
+
+doc """
+Returns true if the form has no validation errors.
+
+    if Depot.Form.is_valid(form) then persist(form) else render(form) end
+"""
+fn is_valid(form) do
+  Depot.Gate.is_valid(form)
+end
+
+doc """
+Returns all errors as a list of (field, message) pairs.
+
+    Depot.Form.errors(form)
+"""
+fn errors(form) do
+  Depot.Gate.errors(form)
+end
+
+doc """
+Returns all error messages for a specific field.
+
+    Depot.Form.get_errors(form, "email")  -- ["has invalid format", ...]
+"""
+fn get_errors(form, field) do
+  Depot.Gate.get_errors(form, field)
+end
+
+doc """
+Returns the current value of a field (change takes priority over base).
+
+    Depot.Form.get_field(form, "name")  -- Some("Alice") or None
+"""
+fn get_field(form, field) do
+  Depot.Gate.get_field(form, field)
+end
+
+doc """
+Returns the change value for a field, or None if not changed.
+
+    Depot.Form.get_change(form, "email")
+"""
+fn get_change(form, field) do
+  Depot.Gate.get_change(form, field)
+end
+
+doc """
+Sets a change value on the form.
+
+    form |> Depot.Form.put_change("role", "admin")
+"""
+fn put_change(form, field, value) do
+  Depot.Gate.put_change(form, field, value)
+end
+
+doc """
+Removes a change from the form (e.g. after hashing a password).
+
+    form |> Depot.Form.delete_change("password")
+"""
+fn delete_change(form, field) do
+  Depot.Gate.delete_change(form, field)
+end
+
+doc """
+Returns the list of field names that have changes.
+
+    Depot.Form.changed_fields(form)  -- ["name", "email"]
+"""
+fn changed_fields(form) do
+  Depot.Gate.changed_fields(form)
+end
+
+doc """
+Returns true if the given field has a change recorded.
+
+    Depot.Form.changed(form, "name")  -- true or false
+"""
+fn changed(form, field) do
+  Depot.Gate.changed(form, field)
+end
+
+doc """
+Merges base + changes into a single assoc list.
+
+    Depot.Form.apply_changes(form)
+"""
+fn apply_changes(form) do
+  Depot.Gate.apply_changes(form)
+end
+
+doc """
+Adds an error for a field and marks the form invalid.
+
+    form |> Depot.Form.add_error("email", "has already been taken")
+"""
+fn add_error(form, field, message) do
+  Depot.Gate.add_error(form, field, message)
+end
+
+-- ---------------------------------------------------------------------------
+-- Validators
+-- ---------------------------------------------------------------------------
+
+doc """
+Validates that all listed fields have non-empty values.
+
+    form |> Depot.Form.validate_required(["name", "email"])
+"""
+fn validate_required(form, fields) do
+  Depot.Gate.validate_required(form, fields)
+end
+
+doc """
+Validates byte-length constraints on a field value.
+
+    form |> Depot.Form.validate_length("name", [LenMin(2), LenMax(100)])
+"""
+fn validate_length(form, field, opts) do
+  Depot.Gate.validate_length(form, field, opts)
+end
+
+doc """
+Validates that a field value matches a regex pattern.
+
+    form |> Depot.Form.validate_format("email", "@")
+"""
+fn validate_format(form, field, pattern) do
+  Depot.Gate.validate_format(form, field, pattern)
+end
+
+doc """
+Validates that a field value is in the allowed set.
+
+    form |> Depot.Form.validate_inclusion("role", ["user", "admin"])
+"""
+fn validate_inclusion(form, field, values) do
+  Depot.Gate.validate_inclusion(form, field, values)
+end
+
+doc """
+Validates that a field value is NOT in the excluded set.
+
+    form |> Depot.Form.validate_exclusion("username", ["root", "admin"])
+"""
+fn validate_exclusion(form, field, values) do
+  Depot.Gate.validate_exclusion(form, field, values)
+end
+
+doc """
+Validates numeric constraints on a field (value must parse as an integer).
+
+    form |> Depot.Form.validate_number("age", [NumMin(13), NumMax(150)])
+"""
+fn validate_number(form, field, opts) do
+  Depot.Gate.validate_number(form, field, opts)
+end
+
+doc """
+Validates that a field has been accepted (checkbox: value "true" or "1").
+
+    form |> Depot.Form.validate_acceptance("terms_of_service")
+"""
+fn validate_acceptance(form, field) do
+  Depot.Gate.validate_acceptance(form, field)
+end
+
+doc """
+Validates that a field matches its _confirmation counterpart.
+
+    form |> Depot.Form.validate_confirmation("password")
+"""
+fn validate_confirmation(form, field) do
+  Depot.Gate.validate_confirmation(form, field)
+end
+
+doc """
+Applies a custom validator function to a field.
+
+The validator receives the field value and returns None (valid) or
+Some(msg) (error message).
+
+    form |> Depot.Form.validate_change("slug", fn v ->
+      if Regex.matches("^[a-z0-9-]+$", v) then None else Some("invalid slug") end
+    )
+"""
+fn validate_change(form, field, validator) do
+  Depot.Gate.validate_change(form, field, validator)
+end
+
+-- ---------------------------------------------------------------------------
+-- Database constraint hints
+-- ---------------------------------------------------------------------------
+
+doc """
+Registers a unique constraint hint for Depot.Repo.insert/update.
+
+    form |> Depot.Form.unique_constraint("email",
+             [ConstraintName("users_email_index"),
+              ConstraintMessage("has already been taken")])
+"""
+fn unique_constraint(form, field, opts) do
+  Depot.Gate.unique_constraint(form, field, opts)
+end
+
+doc """
+Registers a foreign key constraint hint.
+
+    form |> Depot.Form.foreign_key_constraint("user_id",
+             [ConstraintName("posts_user_id_fkey")])
+"""
+fn foreign_key_constraint(form, field, opts) do
+  Depot.Gate.foreign_key_constraint(form, field, opts)
+end
+
+doc """
+Registers a no-association constraint hint.
+
+    form |> Depot.Form.no_assoc_constraint("posts",
+             [ConstraintName("posts_user_id_fkey")])
+"""
+fn no_assoc_constraint(form, field, opts) do
+  Depot.Gate.no_assoc_constraint(form, field, opts)
+end
+
+doc """
+Registers a check constraint hint.
+
+    form |> Depot.Form.check_constraint("age",
+             [ConstraintName("users_age_check"),
+              ConstraintMessage("must be 13 or older")])
+"""
+fn check_constraint(form, field, opts) do
+  Depot.Gate.check_constraint(form, field, opts)
+end
+
+doc """
+Maps a database constraint name back to a field error.
+Called by Depot.Repo when a DB error occurs.
+
+    Depot.Form.apply_constraint_error(form, "users_email_index")
+"""
+fn apply_constraint_error(form, constraint_name) do
+  Depot.Gate.apply_constraint_error(form, constraint_name)
+end
+
+end -- mod Depot.Form

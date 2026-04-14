@@ -43,7 +43,7 @@ type JoinKind = Inner | Left | Right | FullOuter | Cross
 type JoinClause = JoinClause(JoinKind, String, Expr)
 
 --- Sort direction for ORDER BY.
-type SortDir = Asc | Desc | AscNullsFirst | DescNullsLast
+type SortDir = Asc | Desc | AscNullsFirst | AscNullsLast | DescNullsFirst | DescNullsLast
 
 --- An ORDER BY expression with direction.
 type OrderExpr = OrderExpr(Expr, SortDir)
@@ -83,7 +83,9 @@ type Expr =
   | SubqueryExpr(Query)
   | FnCall(String, List(Expr))
   | ExprParam(Int)
-  | Raw(String)
+  | Raw(String)    -- SECURITY: Raw embeds a string verbatim into SQL with NO escaping.
+                   -- Never pass user input as a Raw value. Only use for trusted,
+                   -- hard-coded SQL fragments (e.g. function calls, casts).
 
 --- A literal SQL value.
 type SqlValue =
