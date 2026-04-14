@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, ubuntu-24.04]
+
+    runs-on: ${{ matrix.os }}
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: depot_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: depot_test
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/depot_test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up March
+        uses: march-language/setup-march@main
+
+      - name: Build
+        run: forge build
+
+      - name: Test
+        run: forge test
