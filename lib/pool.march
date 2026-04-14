@@ -5,7 +5,7 @@ mod Pool do
 
 import Message
 import Connection
-import Query
+import Depot.Query
 
 -- ---- Pool types ----
 
