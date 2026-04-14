@@ -1,0 +1,144 @@
+-- test/test_depot_form.march
+-- Smoke tests for Depot.Form — thin delegation layer over Depot.Gate.
+-- Comprehensive validation tests live in test_depot_gate.march.
+
+mod TestDepotForm do
+
+-- ---------------------------------------------------------------------------
+-- cast / is_valid / errors
+-- ---------------------------------------------------------------------------
+
+test "cast filters params to allow-list" do
+  let form = Depot.Form.cast([("name", "Alice"), ("secret", "pw")], ["name"])
+  assert Depot.Form.get_change(form, "name") == Some("Alice")
+  assert Depot.Form.get_change(form, "secret") == None
+end
+
+test "fresh cast is valid" do
+  let form = Depot.Form.cast([("name", "Alice")], ["name"])
+  assert Depot.Form.is_valid(form) == true
+  assert Depot.Form.errors(form) == Nil
+end
+
+-- ---------------------------------------------------------------------------
+-- validate_required / validate_format / validate_number
+-- ---------------------------------------------------------------------------
+
+test "validate_required marks invalid when field absent" do
+  let form = Depot.Form.cast([], ["name"])
+    |> Depot.Form.validate_required(["name"])
+  assert Depot.Form.is_valid(form) == false
+  assert Depot.Form.get_errors(form, "name") != Nil
+end
+
+test "validate_format produces error on mismatch" do
+  let form = Depot.Form.cast([("email", "notvalid")], ["email"])
+    |> Depot.Form.validate_format("email", "@")
+  assert Depot.Form.is_valid(form) == false
+  assert Depot.Form.get_errors(form, "email") == ["has invalid format"]
+end
+
+test "validate_number passes valid integer" do
+  let form = Depot.Form.cast([("age", "25")], ["age"])
+    |> Depot.Form.validate_number("age", [NumMin(18), NumMax(99)])
+  assert Depot.Form.is_valid(form) == true
+end
+
+test "validate_number rejects non-integer string" do
+  let form = Depot.Form.cast([("age", "1.5")], ["age"])
+    |> Depot.Form.validate_number("age", [NumMin(1)])
+  assert Depot.Form.is_valid(form) == false
+  assert Depot.Form.get_errors(form, "age") == ["is not a number"]
+end
+
+-- ---------------------------------------------------------------------------
+-- put_change / delete_change / get_field
+-- ---------------------------------------------------------------------------
+
+test "put_change adds a change" do
+  let form = Depot.Form.cast([], [])
+    |> Depot.Form.put_change("role", "admin")
+  assert Depot.Form.get_change(form, "role") == Some("admin")
+end
+
+test "delete_change removes a change" do
+  let form = Depot.Form.cast([("pw", "secret")], ["pw"])
+    |> Depot.Form.delete_change("pw")
+  assert Depot.Form.get_change(form, "pw") == None
+end
+
+test "get_field falls back to base when no change" do
+  let form = Depot.Form.cast([("name", "Alice")], ["name"])
+  assert Depot.Form.get_field(form, "name") == Some("Alice")
+end
+
+-- ---------------------------------------------------------------------------
+-- cast_record / changed_fields / changed / apply_changes
+-- ---------------------------------------------------------------------------
+
+test "cast_record tracks only changed fields" do
+  let base   = { name = "Alice", role = "user" }
+  let params = { name = "Alice", role = "admin" }
+  let form = Depot.Form.cast_record(base, params, ["name", "role"])
+  assert Depot.Form.get_change(form, "role") == Some("admin")
+  assert Depot.Form.get_change(form, "name") == None
+end
+
+test "changed returns true for changed field" do
+  let base   = { score = 0 }
+  let params = { score = 42 }
+  let form = Depot.Form.cast_record(base, params, ["score"])
+  assert Depot.Form.changed(form, "score") == true
+end
+
+test "changed_fields lists changed fields" do
+  let base   = { a = "x", b = "y" }
+  let params = { a = "X", b = "y" }
+  let form = Depot.Form.cast_record(base, params, ["a", "b"])
+  assert List.member(Depot.Form.changed_fields(form), "a") == true
+  assert List.member(Depot.Form.changed_fields(form), "b") == false
+end
+
+test "apply_changes merges base with changes" do
+  let base   = { name = "Alice", email = "old@test.com" }
+  let params = { name = "Alicia", email = "old@test.com" }
+  let form = Depot.Form.cast_record(base, params, ["name", "email"])
+  let merged = Depot.Form.apply_changes(form)
+  assert List.member(merged, ("name", "Alicia")) == true
+  assert List.member(merged, ("email", "old@test.com")) == true
+end
+
+-- ---------------------------------------------------------------------------
+-- add_error / get_errors
+-- ---------------------------------------------------------------------------
+
+test "add_error marks form invalid" do
+  let form = Depot.Form.cast([], [])
+    |> Depot.Form.add_error("field", "something wrong")
+  assert Depot.Form.is_valid(form) == false
+  assert Depot.Form.get_errors(form, "field") == ["something wrong"]
+end
+
+-- ---------------------------------------------------------------------------
+-- Constraint hints
+-- ---------------------------------------------------------------------------
+
+test "unique_constraint registers and resolves" do
+  let form = Depot.Form.cast([("email", "a@b.com")], ["email"])
+    |> Depot.Form.unique_constraint("email",
+         [ConstraintName("users_email_index"),
+          ConstraintMessage("has already been taken")])
+  assert Depot.Form.is_valid(form) == true
+  let form2 = Depot.Form.apply_constraint_error(form, "users_email_index")
+  assert Depot.Form.is_valid(form2) == false
+  assert Depot.Form.get_errors(form2, "email") == ["has already been taken"]
+end
+
+test "unknown constraint name is a no-op" do
+  let form = Depot.Form.cast([], [])
+    |> Depot.Form.unique_constraint("email", [ConstraintName("some_index")])
+  let form2 = Depot.Form.apply_constraint_error(form, "other_index")
+  assert Depot.Form.is_valid(form2) == true
+end
+
+end -- mod TestDepotForm

@@ -219,20 +219,30 @@ pfn compare_rows(row_a, row_b, order_bys) do
   end
 end
 
--- Insertion sort for rows using order_by clauses.
-pfn insert_row(row, sorted, order_bys) do
-  match sorted do
-    Nil -> Cons(row, Nil)
-    Cons(h, t) ->
-      if compare_rows(row, h, order_bys) then Cons(row, sorted)
-      else Cons(h, insert_row(row, t, order_bys))
+-- Merge sort for rows using order_by clauses. O(n log n).
+pfn merge_sorted_rows(left, right, order_bys) do
+  match left do
+    Nil -> right
+    Cons(a, as_) ->
+      match right do
+        Nil -> left
+        Cons(b, bs) ->
+          if compare_rows(a, b, order_bys) then
+            Cons(a, merge_sorted_rows(as_, right, order_bys))
+          else
+            Cons(b, merge_sorted_rows(left, bs, order_bys))
+      end
   end
 end
 
 pfn sort_rows(rows, order_bys) do
-  match rows do
-    Nil -> Nil
-    Cons(h, t) -> insert_row(h, sort_rows(t, order_bys), order_bys)
+  let n = List.length(rows)
+  if n <= 1 then rows
+  else do
+    let mid   = n / 2
+    let left  = take(rows, mid)
+    let right = drop_rows(rows, mid)
+    merge_sorted_rows(sort_rows(left, order_bys), sort_rows(right, order_bys), order_bys)
   end
 end
 
@@ -245,7 +255,7 @@ Execute a query against a list of rows (records).
 
 Applies operations in order:
   1. where predicates (AND-combined filter)
-  2. order_by (stable insertion sort)
+  2. order_by (merge sort)
   3. offset (drop N rows)
   4. limit (take N rows)
   5. select projection (map)

@@ -208,6 +208,150 @@ fn test_between_inline() do
   assert(r.sql == "SELECT * FROM \"t\" WHERE \"score\" BETWEEN 0 AND 100")
 end
 
+fn test_is_not_null() do
+  let q = Query({
+    from_ = FromTable("users"), selects = Nil,
+    wheres = [Where(IsNotNull(Col("confirmed_at")))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false
+  })
+  let r = compile(q)
+  assert(r.sql == "SELECT * FROM \"users\" WHERE \"confirmed_at\" IS NOT NULL")
+end
+
+fn test_qualified_col() do
+  let q = Query({
+    from_ = FromTable("users"),
+    selects = [SelectField(QCol("users", "id")), SelectField(QCol("orders", "total"))],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false
+  })
+  let r = compile(q)
+  assert(r.sql == "SELECT \"users\".\"id\", \"orders\".\"total\" FROM \"users\"")
+end
+
+fn test_boolean_operators() do
+  let q = Query({
+    from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(And(
+      Eq(Col("a"), Lit(PInt(1))),
+      Or(Eq(Col("b"), Lit(PInt(2))), Not(IsNull(Col("c"))))
+    ))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false
+  })
+  let r = compile(q)
+  assert(r.sql == "SELECT * FROM \"t\" WHERE (\"a\" = $1 AND (\"b\" = $2 OR NOT (\"c\" IS NULL)))")
+end
+
+fn test_or_where() do
+  let q = Query({
+    from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Eq(Col("a"), Lit(PInt(1)))), OrWhere(Eq(Col("b"), Lit(PInt(2))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false
+  })
+  let r = compile(q)
+  assert(r.sql == "SELECT * FROM \"t\" WHERE \"a\" = $1 OR \"b\" = $2")
+  assert(list_len(r.params) == 2)
+end
+
+fn test_join_inner() do
+  let q = Query({
+    from_ = FromTable("orders"), selects = Nil, wheres = Nil,
+    joins = [JoinClause(Inner, "users", Eq(QCol("orders", "user_id"), QCol("users", "id")))],
+    orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false
+  })
+  let r = compile(q)
+  assert(r.sql == "SELECT * FROM \"orders\" INNER JOIN \"users\" ON \"orders\".\"user_id\" = \"users\".\"id\"")
+end
+
+fn test_join_left() do
+  let q = Query({
+    from_ = FromTable("users"), selects = Nil, wheres = Nil,
+    joins = [JoinClause(Left, "posts", Eq(QCol("posts", "user_id"), QCol("users", "id")))],
+    orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false
+  })
+  let r = compile(q)
+  assert(r.sql == "SELECT * FROM \"users\" LEFT JOIN \"posts\" ON \"posts\".\"user_id\" = \"users\".\"id\"")
+end
+
+fn test_group_by() do
+  let q = Query({
+    from_ = FromTable("orders"),
+    selects = [SelectField(Col("status")), SelectAs(CountAll, "n")],
+    wheres = Nil, joins = Nil, orders = Nil,
+    group_bys = [Col("status")],
+    havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false
+  })
+  let r = compile(q)
+  assert(r.sql == "SELECT \"status\", COUNT(*) AS \"n\" FROM \"orders\" GROUP BY \"status\"")
+end
+
+fn test_order_nulls() do
+  let q = Query({
+    from_ = FromTable("t"), selects = Nil, wheres = Nil, joins = Nil,
+    orders = [
+      OrderExpr(Col("a"), AscNullsFirst),
+      OrderExpr(Col("b"), AscNullsLast),
+      OrderExpr(Col("c"), DescNullsFirst),
+      OrderExpr(Col("d"), DescNullsLast)
+    ],
+    group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false
+  })
+  let r = compile(q)
+  assert(r.sql == "SELECT * FROM \"t\" ORDER BY \"a\" ASC NULLS FIRST, \"b\" ASC NULLS LAST, \"c\" DESC NULLS FIRST, \"d\" DESC NULLS LAST")
+end
+
+fn test_fncall() do
+  let q = Query({
+    from_ = FromTable("t"),
+    selects = [SelectField(FnCall("LOWER", [Col("email")]))],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false
+  })
+  let r = compile(q)
+  assert(r.sql == "SELECT LOWER(\"email\") FROM \"t\"")
+end
+
+fn test_like_param() do
+  let q = Query({
+    from_ = FromTable("users"), selects = Nil,
+    wheres = [Where(Like(Col("name"), "%alice%"))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false
+  })
+  let r = compile(q)
+  assert(r.sql == "SELECT * FROM \"users\" WHERE \"name\" LIKE $1")
+  assert(list_len(r.params) == 1)
+end
+
+fn test_string_escaping_inline() do
+  let q = Query({
+    from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Eq(Col("name"), Lit(PString("O'Reilly"))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false
+  })
+  let r = compile_inline(q)
+  assert(r.sql == "SELECT * FROM \"t\" WHERE \"name\" = 'O''Reilly'")
+end
+
+fn test_ilike_inline() do
+  let q = Query({
+    from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(ILike(Col("bio"), "%engineer%"))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false
+  })
+  let r = compile_inline(q)
+  assert(r.sql == "SELECT * FROM \"t\" WHERE \"bio\" ILIKE '%engineer%'")
+end
+
 fn main() : Unit do
   test_simple_select_star()
   test_select_with_columns()
@@ -219,12 +363,24 @@ fn main() : Unit do
   test_order_by()
   test_select_as()
   test_is_null()
+  test_is_not_null()
   test_raw_expr()
   test_in_expr()
   test_not_in_expr()
   test_between_expr()
   test_in_inline()
   test_between_inline()
+  test_qualified_col()
+  test_boolean_operators()
+  test_or_where()
+  test_join_inner()
+  test_join_left()
+  test_group_by()
+  test_order_nulls()
+  test_fncall()
+  test_like_param()
+  test_string_escaping_inline()
+  test_ilike_inline()
   println("test_compile: all tests passed")
 end
 

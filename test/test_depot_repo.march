@@ -255,18 +255,24 @@ end
 -- delete tests
 -- =========================================================================
 
-test "delete removes a record by id" do
+test "delete removes a record by id and returns Ok" do
   clear_users()
   let record = insert_user("Alice", "alice@test.com", 30, "admin")
   assert Depot.Repo.count(user_schema()) == 1
-  Depot.Repo.delete(user_schema(), record.id)
+  match Depot.Repo.delete(user_schema(), record.id) do
+    Ok(id) -> assert id == record.id
+    Err(_) -> assert false
+  end
   assert Depot.Repo.count(user_schema()) == 0
 end
 
-test "delete is a no-op for missing id" do
+test "delete returns Err for missing id" do
   clear_users()
   insert_user("Alice", "alice@test.com", 30, "admin")
-  Depot.Repo.delete(user_schema(), "nonexistent")
+  match Depot.Repo.delete(user_schema(), "nonexistent") do
+    Err(msg) -> assert msg == "not found"
+    Ok(_)    -> assert false
+  end
   assert Depot.Repo.count(user_schema()) == 1
 end
 

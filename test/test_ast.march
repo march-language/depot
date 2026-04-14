@@ -104,10 +104,12 @@ fn test_expr_like() do
 end
 
 fn test_sort_dirs() do
-  match Asc do | Asc -> () | _ -> assert(false) end
-  match Desc do | Desc -> () | _ -> assert(false) end
-  match AscNullsFirst do | AscNullsFirst -> () | _ -> assert(false) end
-  match DescNullsLast do | DescNullsLast -> () | _ -> assert(false) end
+  match Asc           do | Asc           -> () | _ -> assert(false) end
+  match Desc          do | Desc          -> () | _ -> assert(false) end
+  match AscNullsFirst  do | AscNullsFirst  -> () | _ -> assert(false) end
+  match AscNullsLast   do | AscNullsLast   -> () | _ -> assert(false) end
+  match DescNullsFirst do | DescNullsFirst -> () | _ -> assert(false) end
+  match DescNullsLast  do | DescNullsLast  -> () | _ -> assert(false) end
 end
 
 fn test_join_kinds() do

@@ -135,6 +135,37 @@ fn test_delete_builder() do
   end
 end
 
+fn test_delete_returning_builder() do
+  let d = delete_from("tokens")
+         |> delete_where(Eq(Col("user_id"), Lit(PInt(7))))
+         |> delete_returning([SelectField(Col("id"))])
+  match d do
+  Delete(f) ->
+    match f.returning_ do
+    Cons(SelectField(Col("id")), Nil) -> ()
+    _ -> assert(false)
+    end
+  end
+end
+
+fn test_on_conflict_do_update_builder() do
+  let i = insert_into("tags")
+         |> insert_cols(["name", "slug"])
+         |> insert_row([PString("Rust"), PString("rust")])
+         |> on_conflict_do_update([("slug", Lit(PString("rust")))])
+  match i do
+  Insert(f) ->
+    match f.on_conflict do
+    Some(DoUpdate(sets)) ->
+      match sets do
+      Cons(("slug", _), Nil) -> ()
+      _ -> assert(false)
+      end
+    _ -> assert(false)
+    end
+  end
+end
+
 fn test_insert_many_builder() do
   let rows = [
     [PInt(1), PString("Alice")],
@@ -237,6 +268,8 @@ fn main() : Unit do
   test_compile_update_multi_set()
   test_compile_delete()
   test_compile_delete_no_returning()
+  test_delete_returning_builder()
+  test_on_conflict_do_update_builder()
   println("test_mutation: all tests passed")
 end
 
