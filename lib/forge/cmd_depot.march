@@ -79,7 +79,7 @@ end
 type MigFile = { version: Int, name: String, path: String }
 
 --- Discover all migration files, sorted by version ascending.
-pfn discover_migrations() do
+pfn discover_migrations() : List(MigFile) do
   if !Dir.exists(migration_dir()) then []
   else
     match Dir.list(migration_dir()) do
@@ -98,7 +98,7 @@ pfn prepend_dir(names, dir) do
   end
 end
 
-pfn collect_migrations(paths, acc) do
+pfn collect_migrations(paths : List(String), acc : List(MigFile)) : List(MigFile) do
   match paths do
   Nil              -> acc
   Cons(path, rest) ->
@@ -127,18 +127,18 @@ pfn parse_migration_file(path) do
   end
 end
 
-pfn sort_migrations(migrations) do
+pfn sort_migrations(migrations : List(MigFile)) : List(MigFile) do
   sort_mig_acc(migrations, [])
 end
 
-pfn sort_mig_acc(lst, acc) do
+pfn sort_mig_acc(lst : List(MigFile), acc : List(MigFile)) : List(MigFile) do
   match lst do
   Nil           -> acc
   Cons(m, rest) -> sort_mig_acc(rest, insert_sorted_mig(acc, m))
   end
 end
 
-pfn insert_sorted_mig(sorted, m) do
+pfn insert_sorted_mig(sorted : List(MigFile), m : MigFile) : List(MigFile) do
   match sorted do
   Nil           -> [m]
   Cons(h, rest) ->
@@ -184,7 +184,7 @@ pfn build_runner_source(mig_content, mod_name, fn_name) do
 end
 
 --- Run a migration's up() or down() function by shelling out to march.
-pfn run_migration(m, fn_name) do
+pfn run_migration(m : MigFile, fn_name : String) : Result((), String) do
   match extract_module_name(m.path) do
   None ->
     Err("cannot find module declaration in " ++ m.path)
@@ -243,7 +243,7 @@ fn migrate() do
   end
 end
 
-pfn filter_pending(all, applied) do
+pfn filter_pending(all : List(MigFile), applied : List(Int)) : List(MigFile) do
   match all do
   Nil           -> Nil
   Cons(m, rest) ->
@@ -252,7 +252,7 @@ pfn filter_pending(all, applied) do
   end
 end
 
-pfn run_pending_up(pending) do
+pfn run_pending_up(pending : List(MigFile)) : Result((), String) do
   match pending do
   Nil           -> Ok(())
   Cons(m, rest) -> do
@@ -293,7 +293,7 @@ fn rollback(step) do
   end
 end
 
-pfn run_rollback_list(versions, all) do
+pfn run_rollback_list(versions : List(Int), all : List(MigFile)) : Result((), String) do
   match versions do
   Nil                -> Ok(())
   Cons(version, rest) ->
@@ -321,7 +321,7 @@ pfn run_rollback_list(versions, all) do
   end
 end
 
-pfn find_migration(all, version) do
+pfn find_migration(all : List(MigFile), version : Int) : Option(MigFile) do
   match all do
   Nil           -> None
   Cons(m, rest) ->

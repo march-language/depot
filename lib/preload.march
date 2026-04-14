@@ -21,7 +21,7 @@ mod Preload do
 import Ast
 import Build
 import Compile
-import Query
+import Depot.Query
 import Pool
 
 --- Extracts all non-null values of `col_name` from a QueryResult.

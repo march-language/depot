@@ -1,0 +1,17 @@
+-- Depot — database library for March.
+--
+-- Depot provides a composable query builder, schema definitions,
+-- changeset-based validation (Gate), migrations, and a pool-backed
+-- PostgreSQL connection manager.
+--
+-- Public API:
+--   Depot.Query     — composable in-memory query builder
+--   Depot.Schema    — table schema definitions
+--   Depot.Gate      — changeset validation (cast + validate)
+--   Depot.Migration — schema migration helpers
+--   Depot.Repo      — in-memory repository backed by Vault
+--   Depot.Form      — form parameter casting helpers
+--   Depot.Test      — test helpers (sandboxed transactions, fixtures)
+
+mod Depot do
+end

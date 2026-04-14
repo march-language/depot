@@ -44,8 +44,8 @@ Wrap a Depot.Schema into a fresh query with no operations.
 
     let q = Depot.Query.from(schema())
 """
-fn from(schema) do
-  Query(schema, Nil, None, Nil, None, None)
+fn from(s) do
+  Query(s, Nil, None, Nil, None, None)
 end
 
 -- ---------------------------------------------------------------------------
