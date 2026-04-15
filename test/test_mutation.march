@@ -8,6 +8,8 @@ import Message
 import Mutation
 import MutationBuild
 import MutationCompile
+import Build
+import Compile
 
 -- ---- Helpers ----
 
@@ -17,7 +19,7 @@ end
 
 -- ---- ADT type tests ----
 
-fn test_insert_type() do
+test "Insert ADT type" do
   let i = Insert({
     table_      = "users",
     columns     = ["name", "email"],
@@ -27,17 +29,14 @@ fn test_insert_type() do
   })
   match i do
   Insert(f) -> do
-    assert(f.table_ == "users")
-    match f.columns do
-    Cons("name", Cons("email", Nil)) -> ()
-    _ -> assert(false)
-    end
-    match f.on_conflict do None -> () | Some(_) -> assert(false) end
+    assert f.table_ == "users"
+    assert f.columns == ["name", "email"]
+    assert f.on_conflict == None
   end
   end
 end
 
-fn test_update_type() do
+test "Update ADT type" do
   let u = Update({
     table_     = "users",
     sets       = [("name", Lit(PString("Bob")))],
@@ -46,14 +45,14 @@ fn test_update_type() do
   })
   match u do
   Update(f) -> do
-    assert(f.table_ == "users")
-    match f.sets do Cons(("name", _), Nil) -> () | _ -> assert(false) end
-    match f.returning_ do Cons(SelectAll, Nil) -> () | _ -> assert(false) end
+    assert f.table_ == "users"
+    assert List.length(f.sets) == 1
+    assert f.returning_ == [SelectAll]
   end
   end
 end
 
-fn test_delete_type() do
+test "Delete ADT type" do
   let d = Delete({
     table_     = "posts",
     wheres     = [Where(Eq(Col("id"), Lit(PInt(99))))],
@@ -61,27 +60,26 @@ fn test_delete_type() do
   })
   match d do
   Delete(f) -> do
-    assert(f.table_ == "posts")
-    match f.wheres do Cons(Where(_), Nil) -> () | _ -> assert(false) end
+    assert f.table_ == "posts"
+    assert List.length(f.wheres) == 1
   end
   end
 end
 
-fn test_conflict_do_nothing() do
-  match DoNothing do | DoNothing -> () | _ -> assert(false) end
+test "DoNothing conflict variant" do
+  assert DoNothing == DoNothing
 end
 
-fn test_conflict_do_update() do
+test "DoUpdate conflict variant" do
   match DoUpdate([("name", Lit(PString("new")))]) do
   DoUpdate(sets) ->
-    match sets do | Cons(("name", _), Nil) -> () | _ -> assert(false) end
-  _ -> assert(false)
+    match sets do | Cons(("name", _), Nil) -> () end
   end
 end
 
 -- ---- Builder tests ----
 
-fn test_insert_builder() do
+test "insert builder" do
   let i = insert_into("users")
          |> insert_cols(["id", "name"])
          |> insert_row([PInt(1), PString("Alice")])
@@ -89,26 +87,26 @@ fn test_insert_builder() do
          |> insert_returning_all()
   match i do
   Insert(f) -> do
-    assert(f.table_ == "users")
-    match f.columns do Cons("id", Cons("name", Nil)) -> () | _ -> assert(false) end
-    match f.rows do Cons(_, Cons(_, Nil)) -> () | _ -> assert(false) end
-    match f.returning_ do Cons(SelectAll, Nil) -> () | _ -> assert(false) end
+    assert f.table_ == "users"
+    assert f.columns == ["id", "name"]
+    assert List.length(f.rows) == 2
+    assert f.returning_ == [SelectAll]
   end
   end
 end
 
-fn test_insert_on_conflict_do_nothing() do
+test "insert ON CONFLICT DO NOTHING builder" do
   let i = insert_into("t")
          |> insert_cols(["x"])
          |> insert_row([PInt(1)])
          |> on_conflict_do_nothing()
   match i do
   Insert(f) ->
-    match f.on_conflict do | Some(DoNothing) -> () | _ -> assert(false) end
+    assert f.on_conflict == Some(DoNothing)
   end
 end
 
-fn test_update_builder() do
+test "update builder" do
   let u = update("users")
          |> set_("name", Lit(PString("Carol")))
          |> set_("active", Lit(PBool(true)))
@@ -116,39 +114,36 @@ fn test_update_builder() do
          |> update_returning_all()
   match u do
   Update(f) -> do
-    assert(f.table_ == "users")
-    match f.sets do Cons(_, Cons(_, Nil)) -> () | _ -> assert(false) end
-    match f.wheres do Cons(Where(_), Nil) -> () | _ -> assert(false) end
-    match f.returning_ do Cons(SelectAll, Nil) -> () | _ -> assert(false) end
+    assert f.table_ == "users"
+    assert List.length(f.sets) == 2
+    assert List.length(f.wheres) == 1
+    assert f.returning_ == [SelectAll]
   end
   end
 end
 
-fn test_delete_builder() do
+test "delete builder" do
   let d = delete_from("sessions")
          |> delete_where(Eq(Col("user_id"), Lit(PInt(42))))
   match d do
   Delete(f) -> do
-    assert(f.table_ == "sessions")
-    match f.wheres do Cons(Where(_), Nil) -> () | _ -> assert(false) end
+    assert f.table_ == "sessions"
+    assert List.length(f.wheres) == 1
   end
   end
 end
 
-fn test_delete_returning_builder() do
+test "delete with RETURNING builder" do
   let d = delete_from("tokens")
          |> delete_where(Eq(Col("user_id"), Lit(PInt(7))))
          |> delete_returning([SelectField(Col("id"))])
   match d do
   Delete(f) ->
-    match f.returning_ do
-    Cons(SelectField(Col("id")), Nil) -> ()
-    _ -> assert(false)
-    end
+    assert f.returning_ == [SelectField(Col("id"))]
   end
 end
 
-fn test_on_conflict_do_update_builder() do
+test "ON CONFLICT DO UPDATE builder" do
   let i = insert_into("tags")
          |> insert_cols(["name", "slug"])
          |> insert_row([PString("Rust"), PString("rust")])
@@ -159,14 +154,12 @@ fn test_on_conflict_do_update_builder() do
     Some(DoUpdate(sets)) ->
       match sets do
       Cons(("slug", _), Nil) -> ()
-      _ -> assert(false)
       end
-    _ -> assert(false)
     end
   end
 end
 
-fn test_insert_many_builder() do
+test "insert_many builder" do
   let rows = [
     [PInt(1), PString("Alice")],
     [PInt(2), PString("Bob")],
@@ -175,102 +168,981 @@ fn test_insert_many_builder() do
   let i = insert_many("users", ["id", "name"], rows)
   match i do
   Insert(f) -> do
-    assert(f.table_ == "users")
-    match f.rows do Cons(_, Cons(_, Cons(_, Nil))) -> () | _ -> assert(false) end
+    assert f.table_ == "users"
+    assert List.length(f.rows) == 3
   end
   end
 end
 
 -- ---- Compiler tests ----
 
-fn test_compile_insert() do
+test "compile INSERT" do
   let i = insert_into("users")
          |> insert_cols(["name", "email"])
          |> insert_row([PString("Alice"), PString("alice@example.com")])
          |> insert_returning_all()
   let r = compile_insert(i)
-  assert(r.sql == "INSERT INTO \"users\" (\"name\", \"email\") VALUES ($1, $2) RETURNING *")
-  assert(list_len(r.params) == 2)
-  match r.params do
-  Cons(ParamText("Alice"), Cons(ParamText("alice@example.com"), Nil)) -> ()
-  _ -> assert(false)
-  end
+  assert r.sql == "INSERT INTO \"users\" (\"name\", \"email\") VALUES ($1, $2) RETURNING *"
+  assert list_len(r.params) == 2
+  assert r.params == [ParamText("Alice"), ParamText("alice@example.com")]
 end
 
-fn test_compile_insert_many() do
+test "compile INSERT many rows" do
   let i = insert_many("t", ["x", "y"], [[PInt(1), PInt(2)], [PInt(3), PInt(4)]])
   let r = compile_insert(i)
-  assert(r.sql == "INSERT INTO \"t\" (\"x\", \"y\") VALUES ($1, $2), ($3, $4)")
-  assert(list_len(r.params) == 4)
+  assert r.sql == "INSERT INTO \"t\" (\"x\", \"y\") VALUES ($1, $2), ($3, $4)"
+  assert list_len(r.params) == 4
 end
 
-fn test_compile_insert_on_conflict_do_nothing() do
+test "compile INSERT ON CONFLICT DO NOTHING" do
   let i = insert_into("t")
          |> insert_cols(["id"])
          |> insert_row([PInt(1)])
          |> on_conflict_do_nothing()
   let r = compile_insert(i)
-  assert(r.sql == "INSERT INTO \"t\" (\"id\") VALUES ($1) ON CONFLICT DO NOTHING")
+  assert r.sql == "INSERT INTO \"t\" (\"id\") VALUES ($1) ON CONFLICT DO NOTHING"
 end
 
-fn test_compile_update() do
+test "compile UPDATE" do
   let u = update("users")
          |> set_("active", Lit(PBool(false)))
          |> update_where(Eq(Col("id"), Lit(PInt(42))))
          |> update_returning_all()
   let r = compile_update(u)
-  assert(r.sql == "UPDATE \"users\" SET \"active\" = $1 WHERE \"id\" = $2 RETURNING *")
-  assert(list_len(r.params) == 2)
+  assert r.sql == "UPDATE \"users\" SET \"active\" = $1 WHERE \"id\" = $2 RETURNING *"
+  assert list_len(r.params) == 2
 end
 
-fn test_compile_update_multi_set() do
+test "compile UPDATE multiple SET" do
   let u = update("orders")
          |> set_("status", Lit(PString("shipped")))
          |> set_("shipped_at", Lit(PString("2026-01-01")))
          |> update_where(Eq(Col("id"), Lit(PInt(7))))
   let r = compile_update(u)
-  assert(r.sql == "UPDATE \"orders\" SET \"status\" = $1, \"shipped_at\" = $2 WHERE \"id\" = $3")
-  assert(list_len(r.params) == 3)
+  assert r.sql == "UPDATE \"orders\" SET \"status\" = $1, \"shipped_at\" = $2 WHERE \"id\" = $3"
+  assert list_len(r.params) == 3
 end
 
-fn test_compile_delete() do
+test "compile DELETE with RETURNING" do
   let d = delete_from("sessions")
          |> delete_where(Eq(Col("user_id"), Lit(PInt(5))))
          |> delete_returning_all()
   let r = compile_delete(d)
-  assert(r.sql == "DELETE FROM \"sessions\" WHERE \"user_id\" = $1 RETURNING *")
-  assert(list_len(r.params) == 1)
+  assert r.sql == "DELETE FROM \"sessions\" WHERE \"user_id\" = $1 RETURNING *"
+  assert list_len(r.params) == 1
 end
 
-fn test_compile_delete_no_returning() do
+test "compile DELETE without RETURNING" do
   let d = delete_from("logs")
          |> delete_where(Lt(Col("created_at"), Lit(PString("2025-01-01"))))
   let r = compile_delete(d)
-  assert(r.sql == "DELETE FROM \"logs\" WHERE \"created_at\" < $1")
-  assert(list_len(r.params) == 1)
+  assert r.sql == "DELETE FROM \"logs\" WHERE \"created_at\" < $1"
+  assert list_len(r.params) == 1
 end
 
-fn main() : Unit do
-  test_insert_type()
-  test_update_type()
-  test_delete_type()
-  test_conflict_do_nothing()
-  test_conflict_do_update()
-  test_insert_builder()
-  test_insert_on_conflict_do_nothing()
-  test_update_builder()
-  test_delete_builder()
-  test_insert_many_builder()
-  test_compile_insert()
-  test_compile_insert_many()
-  test_compile_insert_on_conflict_do_nothing()
-  test_compile_update()
-  test_compile_update_multi_set()
-  test_compile_delete()
-  test_compile_delete_no_returning()
-  test_delete_returning_builder()
-  test_on_conflict_do_update_builder()
-  println("test_mutation: all tests passed")
+-- ---- WHERE expression operator tests ----
+
+test "compile UPDATE WHERE Neq" do
+  let u = update("t")
+         |> set_("v", Lit(PInt(1)))
+         |> update_where(Neq(Col("id"), Lit(PInt(99))))
+  let r = compile_update(u)
+  assert r.sql == "UPDATE \"t\" SET \"v\" = $1 WHERE \"id\" <> $2"
 end
 
+test "compile UPDATE WHERE Lt" do
+  let u = update("orders")
+         |> set_("flagged", Lit(PBool(true)))
+         |> update_where(Lt(Col("total"), Lit(PInt(10))))
+  let r = compile_update(u)
+  assert r.sql == "UPDATE \"orders\" SET \"flagged\" = $1 WHERE \"total\" < $2"
 end
+
+test "compile UPDATE WHERE Gt" do
+  let u = update("users")
+         |> set_("senior", Lit(PBool(true)))
+         |> update_where(Gt(Col("age"), Lit(PInt(60))))
+  let r = compile_update(u)
+  assert r.sql == "UPDATE \"users\" SET \"senior\" = $1 WHERE \"age\" > $2"
+end
+
+test "compile UPDATE WHERE Lte" do
+  let u = update("items")
+         |> set_("active", Lit(PBool(false)))
+         |> update_where(Lte(Col("stock"), Lit(PInt(0))))
+  let r = compile_update(u)
+  assert r.sql == "UPDATE \"items\" SET \"active\" = $1 WHERE \"stock\" <= $2"
+end
+
+test "compile UPDATE WHERE Gte" do
+  let u = update("tasks")
+         |> set_("priority", Lit(PString("high")))
+         |> update_where(Gte(Col("score"), Lit(PInt(90))))
+  let r = compile_update(u)
+  assert r.sql == "UPDATE \"tasks\" SET \"priority\" = $1 WHERE \"score\" >= $2"
+end
+
+test "compile DELETE WHERE And" do
+  let d = delete_from("sessions")
+         |> delete_where(And(
+              Eq(Col("user_id"), Lit(PInt(1))),
+              Eq(Col("active"), Lit(PBool(false)))))
+  let r = compile_delete(d)
+  assert r.sql == "DELETE FROM \"sessions\" WHERE (\"user_id\" = $1 AND \"active\" = $2)"
+  assert list_len(r.params) == 2
+end
+
+test "compile DELETE WHERE Or" do
+  let d = delete_from("logs")
+         |> delete_where(Or(
+              Eq(Col("level"), Lit(PString("debug"))),
+              Eq(Col("level"), Lit(PString("trace")))))
+  let r = compile_delete(d)
+  assert r.sql == "DELETE FROM \"logs\" WHERE (\"level\" = $1 OR \"level\" = $2)"
+end
+
+test "compile DELETE WHERE Not" do
+  let d = delete_from("bans")
+         |> delete_where(Not(Eq(Col("active"), Lit(PBool(true)))))
+  let r = compile_delete(d)
+  assert r.sql == "DELETE FROM \"bans\" WHERE NOT (\"active\" = $1)"
+end
+
+test "compile DELETE WHERE IsNull" do
+  let d = delete_from("drafts")
+         |> delete_where(IsNull(Col("published_at")))
+  let r = compile_delete(d)
+  assert r.sql == "DELETE FROM \"drafts\" WHERE \"published_at\" IS NULL"
+  assert list_len(r.params) == 0
+end
+
+test "compile DELETE WHERE IsNotNull" do
+  let d = delete_from("queue")
+         |> delete_where(IsNotNull(Col("completed_at")))
+  let r = compile_delete(d)
+  assert r.sql == "DELETE FROM \"queue\" WHERE \"completed_at\" IS NOT NULL"
+end
+
+test "compile UPDATE WHERE In" do
+  let u = update("users")
+         |> set_("notified", Lit(PBool(true)))
+         |> update_where(In(Col("id"), [Lit(PInt(1)), Lit(PInt(2)), Lit(PInt(3))]))
+  let r = compile_update(u)
+  assert r.sql == "UPDATE \"users\" SET \"notified\" = $1 WHERE \"id\" IN ($2, $3, $4)"
+  assert list_len(r.params) == 4
+end
+
+test "compile UPDATE WHERE NotIn" do
+  let u = update("posts")
+         |> set_("visible", Lit(PBool(false)))
+         |> update_where(NotIn(Col("status"), [Lit(PString("published")), Lit(PString("featured"))]))
+  let r = compile_update(u)
+  assert r.sql == "UPDATE \"posts\" SET \"visible\" = $1 WHERE \"status\" NOT IN ($2, $3)"
+end
+
+test "compile UPDATE WHERE Between" do
+  let u = update("products")
+         |> set_("on_sale", Lit(PBool(true)))
+         |> update_where(Between(Col("price"), Lit(PInt(10)), Lit(PInt(50))))
+  let r = compile_update(u)
+  assert r.sql == "UPDATE \"products\" SET \"on_sale\" = $1 WHERE \"price\" BETWEEN $2 AND $3"
+  assert list_len(r.params) == 3
+end
+
+test "compile DELETE WHERE FnCall" do
+  let d = delete_from("users")
+         |> delete_where(Eq(FnCall("LOWER", [Col("email")]), Lit(PString("test@test.com"))))
+  let r = compile_delete(d)
+  assert r.sql == "DELETE FROM \"users\" WHERE LOWER(\"email\") = $1"
+end
+
+test "compile DELETE WHERE Like" do
+  let d = delete_from("logs")
+         |> delete_where(Like(Col("message"), "%error%"))
+  let r = compile_delete(d)
+  assert r.sql == "DELETE FROM \"logs\" WHERE \"message\" LIKE '%error%'"
+end
+
+test "compile DELETE WHERE ILike" do
+  let d = delete_from("comments")
+         |> delete_where(ILike(Col("body"), "%spam%"))
+  let r = compile_delete(d)
+  assert r.sql == "DELETE FROM \"comments\" WHERE \"body\" ILIKE '%spam%'"
+end
+
+test "compile UPDATE WHERE Raw expr" do
+  let u = update("t")
+         |> set_("v", Lit(PInt(1)))
+         |> update_where(Raw("\"x\" = NOW()"))
+  let r = compile_update(u)
+  assert r.sql == "UPDATE \"t\" SET \"v\" = $1 WHERE \"x\" = NOW()"
+end
+
+test "compile DELETE WHERE ExprParam" do
+  let d = Delete({
+    table_     = "t",
+    wheres     = [Where(ExprParam(1))],
+    returning_ = Nil
+  })
+  let r = compile_delete(d)
+  assert r.sql == "DELETE FROM \"t\" WHERE $1"
+  assert list_len(r.params) == 0
+end
+
+test "compile UPDATE OrWhere" do
+  let u = Update({
+    table_     = "users",
+    sets       = [("active", Lit(PBool(false)))],
+    wheres     = [Where(Eq(Col("role"), Lit(PString("banned")))),
+                  OrWhere(Eq(Col("status"), Lit(PString("suspended"))))],
+    returning_ = Nil
+  })
+  let r = compile_update(u)
+  assert r.sql == "UPDATE \"users\" SET \"active\" = $1 WHERE \"role\" = $2 OR \"status\" = $3"
+end
+
+test "compile DELETE WHERE QCol" do
+  let d = delete_from("order_items")
+         |> delete_where(Eq(QCol("order_items", "order_id"), Lit(PInt(5))))
+  let r = compile_delete(d)
+  assert r.sql == "DELETE FROM \"order_items\" WHERE \"order_items\".\"order_id\" = $1"
+end
+
+test "compile INSERT RETURNING SelectAs" do
+  let i = insert_into("products")
+         |> insert_cols(["name", "price"])
+         |> insert_row([PString("Widget"), PInt(10)])
+         |> insert_returning([SelectAs(Col("id"), "new_id"), SelectField(Col("name"))])
+  let r = compile_insert(i)
+  assert r.sql == "INSERT INTO \"products\" (\"name\", \"price\") VALUES ($1, $2) RETURNING \"id\" AS \"new_id\", \"name\""
+end
+
+test "compile INSERT ON CONFLICT DO UPDATE inline expr" do
+  let i = insert_into("kv")
+         |> insert_cols(["key", "val"])
+         |> insert_row([PString("x"), PInt(1)])
+         |> on_conflict_do_update([("val", Lit(PInt(99))), ("key", Col("key"))])
+  let r = compile_insert(i)
+  assert r.sql == "INSERT INTO \"kv\" (\"key\", \"val\") VALUES ($1, $2) ON CONFLICT DO UPDATE SET \"val\" = 99, \"key\" = \"key\""
+end
+
+test "compile INSERT 0-row edge case" do
+  let i = Insert({
+    table_      = "t",
+    columns     = ["x"],
+    rows        = Nil,
+    on_conflict = None,
+    returning_  = Nil
+  })
+  let r = compile_insert(i)
+  assert r.sql == "INSERT INTO \"t\" (\"x\") VALUES ()"
+end
+
+test "escape_sql_str handles single quotes" do
+  let u = update("t")
+         |> set_("name", Lit(PString("O'Brien")))
+  let r = compile_update(u)
+  -- parameterized: value becomes $1, no escaping needed in SQL
+  assert r.sql == "UPDATE \"t\" SET \"name\" = $1"
+  assert r.params == [ParamText("O'Brien")]
+end
+
+test "compile UPDATE SET with Col expr (no param)" do
+  let u = update("counters")
+         |> set_("n", Col("n"))
+         |> update_where(Eq(Col("id"), Lit(PInt(7))))
+  let r = compile_update(u)
+  assert r.sql == "UPDATE \"counters\" SET \"n\" = \"n\" WHERE \"id\" = $1"
+  assert list_len(r.params) == 1
+end
+
+test "PFloat value serialized in param" do
+  let i = insert_into("metrics")
+         |> insert_cols(["val"])
+         |> insert_row([PFloat(3.14)])
+  let r = compile_insert(i)
+  assert List.length(r.params) == 1
+end
+
+test "PNull value serialized as ParamNull" do
+  let i = insert_into("t")
+         |> insert_cols(["x"])
+         |> insert_row([PNull])
+  let r = compile_insert(i)
+  assert r.params == [ParamNull]
+end
+
+test "compile DELETE WHERE Like with single-quote pattern" do
+  let d = delete_from("docs")
+         |> delete_where(Like(Col("content"), "it's%"))
+  let r = compile_delete(d)
+  assert r.sql == "DELETE FROM \"docs\" WHERE \"content\" LIKE 'it''s%'"
+end
+
+test "compile DELETE WHERE ILike with single-quote pattern" do
+  let d = delete_from("docs")
+         |> delete_where(ILike(Col("title"), "can't%"))
+  let r = compile_delete(d)
+  assert r.sql == "DELETE FROM \"docs\" WHERE \"title\" ILIKE 'can''t%'"
+end
+
+test "compile INSERT ON CONFLICT DO UPDATE PBool(true) inline" do
+  let i = insert_into("flags")
+         |> insert_cols(["k"])
+         |> insert_row([PString("x")])
+         |> on_conflict_do_update([("active", Lit(PBool(true)))])
+  let r = compile_insert(i)
+  assert r.sql == "INSERT INTO \"flags\" (\"k\") VALUES ($1) ON CONFLICT DO UPDATE SET \"active\" = TRUE"
+end
+
+test "compile INSERT ON CONFLICT DO UPDATE PBool(false) inline" do
+  let i = insert_into("flags")
+         |> insert_cols(["k"])
+         |> insert_row([PString("x")])
+         |> on_conflict_do_update([("active", Lit(PBool(false)))])
+  let r = compile_insert(i)
+  assert r.sql == "INSERT INTO \"flags\" (\"k\") VALUES ($1) ON CONFLICT DO UPDATE SET \"active\" = FALSE"
+end
+
+test "compile INSERT ON CONFLICT DO UPDATE PNull inline" do
+  let i = insert_into("t")
+         |> insert_cols(["k"])
+         |> insert_row([PString("k1")])
+         |> on_conflict_do_update([("v", Lit(PNull))])
+  let r = compile_insert(i)
+  assert r.sql == "INSERT INTO \"t\" (\"k\") VALUES ($1) ON CONFLICT DO UPDATE SET \"v\" = NULL"
+end
+
+test "compile INSERT ON CONFLICT DO UPDATE PString inline (quotes it)" do
+  let i = insert_into("t")
+         |> insert_cols(["k"])
+         |> insert_row([PString("k1")])
+         |> on_conflict_do_update([("label", Lit(PString("ok")))])
+  let r = compile_insert(i)
+  assert r.sql == "INSERT INTO \"t\" (\"k\") VALUES ($1) ON CONFLICT DO UPDATE SET \"label\" = 'ok'"
+end
+
+test "compile INSERT ON CONFLICT DO UPDATE PFloat inline" do
+  let i = insert_into("metrics")
+         |> insert_cols(["k"])
+         |> insert_row([PString("r")])
+         |> on_conflict_do_update([("score", Lit(PFloat(0.5)))])
+  let r = compile_insert(i)
+  assert String.contains(r.sql, "ON CONFLICT DO UPDATE SET") == true
+end
+
+test "compile_expr_m unsupported expr returns /* unsupported */" do
+  let u = Update({
+    table_     = "t",
+    sets       = [("v", Add(Col("x"), Lit(PInt(1))))],
+    wheres     = Nil,
+    returning_  = Nil
+  })
+  let r = compile_update(u)
+  assert String.contains(r.sql, "/* unsupported */") == true
+end
+
+test "compile UPDATE with empty SET list (degenerate)" do
+  let u = Update({
+    table_     = "t",
+    sets       = Nil,
+    wheres     = [Where(Eq(Col("id"), Lit(PInt(1))))],
+    returning_  = Nil
+  })
+  let r = compile_update(u)
+  assert String.contains(r.sql, "WHERE") == true
+end
+
+test "compile INSERT returning SelectField" do
+  let i = insert_into("users")
+         |> insert_cols(["name"])
+         |> insert_row([PString("Alice")])
+         |> insert_returning([SelectField(Col("id")), SelectField(Col("name"))])
+  let r = compile_insert(i)
+  assert r.sql == "INSERT INTO \"users\" (\"name\") VALUES ($1) RETURNING \"id\", \"name\""
+end
+
+test "compile INSERT RETURNING SelectField(QCol)" do
+  let i = insert_into("t")
+         |> insert_cols(["x"])
+         |> insert_row([PInt(1)])
+         |> insert_returning([SelectField(QCol("t", "id"))])
+  let r = compile_insert(i)
+  assert r.sql == "INSERT INTO \"t\" (\"x\") VALUES ($1) RETURNING \"t\".\"id\""
+end
+
+test "compile INSERT RETURNING SelectField(Raw)" do
+  let i = insert_into("t")
+         |> insert_cols(["x"])
+         |> insert_row([PInt(1)])
+         |> insert_returning([SelectField(Raw("NOW()"))])
+  let r = compile_insert(i)
+  assert r.sql == "INSERT INTO \"t\" (\"x\") VALUES ($1) RETURNING NOW()"
+end
+
+test "compile INSERT RETURNING SelectField unsupported expr" do
+  let i = insert_into("t")
+         |> insert_cols(["x"])
+         |> insert_row([PInt(1)])
+         |> insert_returning([SelectField(Add(Col("x"), Lit(PInt(1))))])
+  let r = compile_insert(i)
+  assert String.contains(r.sql, "/* unsupported */") == true
+end
+
+test "compile INSERT RETURNING SelectAs with QCol" do
+  let i = insert_into("t")
+         |> insert_cols(["x"])
+         |> insert_row([PInt(1)])
+         |> insert_returning([SelectAs(QCol("t", "created_at"), "ts")])
+  let r = compile_insert(i)
+  assert r.sql == "INSERT INTO \"t\" (\"x\") VALUES ($1) RETURNING \"t\".\"created_at\" AS \"ts\""
+end
+
+test "compile INSERT ON CONFLICT DO UPDATE QCol inline" do
+  let i = insert_into("t")
+         |> insert_cols(["k"])
+         |> insert_row([PString("a")])
+         |> on_conflict_do_update([("v", QCol("excluded", "v"))])
+  let r = compile_insert(i)
+  assert r.sql == "INSERT INTO \"t\" (\"k\") VALUES ($1) ON CONFLICT DO UPDATE SET \"v\" = \"excluded\".\"v\""
+end
+
+test "compile INSERT ON CONFLICT DO UPDATE Raw inline" do
+  let i = insert_into("t")
+         |> insert_cols(["k"])
+         |> insert_row([PString("a")])
+         |> on_conflict_do_update([("updated_at", Raw("NOW()"))])
+  let r = compile_insert(i)
+  assert r.sql == "INSERT INTO \"t\" (\"k\") VALUES ($1) ON CONFLICT DO UPDATE SET \"updated_at\" = NOW()"
+end
+
+test "compile INSERT RETURNING SelectField(Lit)" do
+  let i = insert_into("t")
+         |> insert_cols(["x"])
+         |> insert_row([PInt(1)])
+         |> insert_returning([SelectField(Lit(PInt(42)))])
+  let r = compile_insert(i)
+  assert r.sql == "INSERT INTO \"t\" (\"x\") VALUES ($1) RETURNING 42"
+end
+
+-- ---- SELECT compile tests (covers Compile.march in this unit) ----
+
+test "compile SELECT basic in mutation module" do
+  let q = from("users") |> where_(Eq(Col("active"), Lit(PBool(true))))
+  let r = compile(q)
+  assert String.contains(r.sql, "WHERE") == true
+end
+
+test "compile_inline SELECT in mutation module" do
+  let q = from("products") |> where_(Gt(Col("price"), Lit(PInt(10))))
+  let r = compile_inline(q)
+  assert String.contains(r.sql, ">") == true
+  assert String.contains(r.sql, "10") == true
+end
+
+test "compile JOIN in mutation module" do
+  let q = from("orders")
+         |> join("users", Eq(QCol("orders","user_id"), QCol("users","id")))
+  let r = compile(q)
+  assert String.contains(r.sql, "INNER JOIN") == true
+end
+
+test "compile LEFT JOIN in mutation module" do
+  let q = from("orders")
+         |> left_join("users", Eq(QCol("orders","user_id"), QCol("users","id")))
+  let r = compile(q)
+  assert String.contains(r.sql, "LEFT JOIN") == true
+end
+
+test "compile_inline RIGHT JOIN in mutation module" do
+  let q = from("a") |> right_join("b", Eq(Col("a_id"), Col("id")))
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "RIGHT JOIN") == true
+end
+
+test "compile_inline FULL OUTER JOIN in mutation module" do
+  let q = from("a") |> full_join("b", Eq(Col("a_id"), Col("id")))
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "FULL OUTER JOIN") == true
+end
+
+test "compile_inline CROSS JOIN in mutation module" do
+  let q = from("a") |> cross_join("b")
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "CROSS JOIN") == true
+end
+
+test "compile GROUP BY HAVING in mutation module" do
+  let q = from("sales")
+         |> group_by([Col("region")])
+         |> having(Gt(Count(Col("id")), Lit(PInt(5))))
+  let r = compile(q)
+  assert String.contains(r.sql, "GROUP BY") == true
+  assert String.contains(r.sql, "HAVING") == true
+end
+
+test "compile_inline GROUP BY HAVING in mutation module" do
+  let q = from("orders")
+         |> group_by([Col("status")])
+         |> having(Gt(CountAll, Lit(PInt(0))))
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "GROUP BY") == true
+  assert String.contains(r.sql, "COUNT(*)") == true
+end
+
+test "compile ORDER BY NULLS in mutation module" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    orders = [OrderExpr(Col("x"), AscNullsFirst)],
+    wheres = Nil, joins = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "ASC NULLS FIRST") == true
+end
+
+test "compile_inline ORDER BY NULLS in mutation module" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    orders = [OrderExpr(Col("x"), DescNullsLast)],
+    wheres = Nil, joins = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "DESC NULLS LAST") == true
+end
+
+test "compile_inline arithmetic in mutation module" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Gt(Add(Col("a"), Col("b")), Lit(PInt(0))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "+") == true
+end
+
+test "compile_inline Sub Mul Div in mutation module" do
+  let q1 = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Gt(Sub(Col("a"), Col("b")), Lit(PInt(0))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile_inline(q1)).sql, "-") == true
+  let q2 = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Gt(Mul(Col("a"), Col("b")), Lit(PInt(0))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile_inline(q2)).sql, "*") == true
+  let q3 = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Gt(Div(Col("a"), Col("b")), Lit(PInt(0))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile_inline(q3)).sql, "/") == true
+end
+
+test "compile_inline boolean ops in mutation module" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(And(Gt(Col("x"), Lit(PInt(0))), Lt(Col("x"), Lit(PInt(10)))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "AND") == true
+end
+
+test "compile_inline Or Not in mutation module" do
+  let q1 = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Or(Eq(Col("x"), Lit(PInt(1))), Eq(Col("x"), Lit(PInt(2)))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile_inline(q1)).sql, " OR ") == true
+  let q2 = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Not(Eq(Col("x"), Lit(PInt(0)))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile_inline(q2)).sql, "NOT (") == true
+end
+
+test "compile_inline IS NULL IS NOT NULL in mutation module" do
+  let q1 = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(IsNull(Col("x")))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile_inline(q1)).sql, "IS NULL") == true
+  let q2 = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(IsNotNull(Col("x")))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile_inline(q2)).sql, "IS NOT NULL") == true
+end
+
+test "compile_inline In NotIn Between in mutation module" do
+  let qi = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(In(Col("id"), [Lit(PInt(1)), Lit(PInt(2))]))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile_inline(qi)).sql, "IN (1, 2)") == true
+  let qni = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(NotIn(Col("s"), [Lit(PString("a")), Lit(PString("b"))]))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile_inline(qni)).sql, "NOT IN") == true
+  let qb = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Between(Col("x"), Lit(PInt(1)), Lit(PInt(10))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile_inline(qb)).sql, "BETWEEN 1 AND 10") == true
+end
+
+test "compile_inline FnCall Like ILike in mutation module" do
+  let qf = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Eq(FnCall("LOWER", [Col("email")]), Lit(PString("x"))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile_inline(qf)).sql, "LOWER") == true
+  let ql = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Like(Col("n"), "%a%"))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile_inline(ql)).sql, "LIKE") == true
+  let qi = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(ILike(Col("n"), "%a%"))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile_inline(qi)).sql, "ILIKE") == true
+end
+
+test "compile_inline aggregates in mutation module" do
+  let q1 = Query({ from_ = FromTable("t"), selects = Nil, group_bys = [Col("x")],
+    havings = [Where(Gt(Sum(Col("v")), Lit(PInt(0))))],
+    wheres = Nil, joins = Nil, orders = Nil, limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile_inline(q1)).sql, "SUM") == true
+  let q2 = Query({ from_ = FromTable("t"), selects = Nil, group_bys = [Col("x")],
+    havings = [Where(Gt(Avg(Col("v")), Lit(PFloat(0.0))))],
+    wheres = Nil, joins = Nil, orders = Nil, limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile_inline(q2)).sql, "AVG") == true
+  let q3 = Query({ from_ = FromTable("t"), selects = Nil, group_bys = [Col("x")],
+    havings = [Where(Gt(Min(Col("v")), Lit(PInt(0))))],
+    wheres = Nil, joins = Nil, orders = Nil, limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile_inline(q3)).sql, "MIN") == true
+  let q4 = Query({ from_ = FromTable("t"), selects = Nil, group_bys = [Col("x")],
+    havings = [Where(Lt(Max(Col("v")), Lit(PInt(1000))))],
+    wheres = Nil, joins = Nil, orders = Nil, limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile_inline(q4)).sql, "MAX") == true
+end
+
+test "compile_inline Exists SubqueryExpr in mutation module" do
+  let sub = Query({ from_ = FromTable("orders"), selects = Nil,
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let qe = Query({ from_ = FromTable("users"), selects = Nil,
+    wheres = [Where(Exists(sub))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile_inline(qe)).sql, "EXISTS") == true
+  let qs = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Gt(Col("score"), SubqueryExpr(sub)))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile_inline(qs)).sql, "SELECT") == true
+end
+
+test "compile_inline SelectAll SelectAs in mutation module" do
+  let q1 = Query({ from_ = FromTable("t"),
+    selects = [SelectAll],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert (compile_inline(q1)).sql == "SELECT * FROM \"t\""
+  let q2 = Query({ from_ = FromTable("t"),
+    selects = [SelectAs(Col("id"), "my_id")],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile_inline(q2)).sql, "AS \"my_id\"") == true
+end
+
+test "compile_inline OrWhere in mutation module" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Eq(Col("role"), Lit(PString("a")))),
+              OrWhere(Eq(Col("role"), Lit(PString("b"))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile_inline(q)).sql, "OR") == true
+end
+
+test "compile HAVING Sum Avg Min Max in mutation module" do
+  let q = Query({ from_ = FromTable("t"),
+    selects = [SelectAs(Sum(Col("amt")), "total")],
+    group_bys = [Col("cat")],
+    havings = [Where(Gt(Sum(Col("amt")), Lit(PInt(100))))],
+    wheres = Nil, joins = Nil, orders = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile(q)).sql, "SUM") == true
+end
+
+test "compile Exists SubqueryExpr parameterized in mutation module" do
+  let sub = Query({ from_ = FromTable("orders"), selects = Nil,
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let qe = Query({ from_ = FromTable("users"), selects = Nil,
+    wheres = [Where(Exists(sub))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile(qe)).sql, "EXISTS") == true
+  let qs = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Gt(Col("score"), SubqueryExpr(sub)))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile(qs)).sql, "SELECT") == true
+end
+
+test "compile Add Sub Mul Div parameterized in mutation module" do
+  let q1 = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Gt(Add(Col("a"), Col("b")), Lit(PInt(0))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile(q1)).sql, "+") == true
+  let q2 = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Gt(Sub(Col("a"), Col("b")), Lit(PInt(0))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile(q2)).sql, "-") == true
+end
+
+-- ---- Additional compile_inline tests in mutation module ----
+
+test "compile_inline PBool false in mutation module" do
+  let q = Query({ from_ = FromTable("settings"), selects = Nil,
+    wheres = [Where(Eq(Col("enabled"), Lit(PBool(false))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "FALSE") == true
+end
+
+test "compile_inline PFloat in mutation module" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Gt(Col("score"), Lit(PFloat(0.5))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "0.") == true
+end
+
+test "compile_inline PNull in mutation module" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(IsNull(Col("x")))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "IS NULL") == true
+end
+
+test "compile Neq in mutation module" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Neq(Col("status"), Lit(PString("inactive"))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "<>") == true
+end
+
+test "compile Lte in mutation module" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Lte(Col("priority"), Lit(PInt(10))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "<=") == true
+end
+
+test "compile Gte in mutation module" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Gte(Col("age"), Lit(PInt(18))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, ">=") == true
+end
+
+test "compile And in mutation module" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(And(Eq(Col("a"), Lit(PInt(1))), Eq(Col("b"), Lit(PInt(2)))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "AND") == true
+end
+
+test "compile Or in mutation module" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Or(Eq(Col("type"), Lit(PString("a"))), Eq(Col("type"), Lit(PString("b")))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "OR") == true
+end
+
+test "compile Not in mutation module" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Not(Eq(Col("deleted"), Lit(PBool(true)))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "NOT") == true
+end
+
+test "compile Like in mutation module" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Like(Col("name"), "A%"))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "LIKE") == true
+end
+
+test "compile ILike in mutation module" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(ILike(Col("name"), "a%"))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "ILIKE") == true
+end
+
+test "compile Between in mutation module" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Between(Col("price"), Lit(PInt(10)), Lit(PInt(100))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "BETWEEN") == true
+end
+
+test "compile In in mutation module" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(In(Col("color"), [Lit(PString("red")), Lit(PString("blue"))]))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "IN") == true
+end
+
+test "compile NotIn in mutation module" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(NotIn(Col("status"), [Lit(PString("banned"))]))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "NOT IN") == true
+end
+
+test "compile IsNotNull in mutation module" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(IsNotNull(Col("email")))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "IS NOT NULL") == true
+end
+
+test "compile Mul Div in mutation module" do
+  let q1 = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Gt(Mul(Col("x"), Col("y")), Lit(PInt(0))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile(q1)).sql, "*") == true
+  let q2 = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Gt(Div(Col("x"), Col("y")), Lit(PInt(0))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile(q2)).sql, "/") == true
+end
+
+test "compile SELECT with aggregates in mutation module" do
+  let q = Query({ from_ = FromTable("orders"),
+    selects = [SelectAs(Sum(Col("amount")), "total"), SelectAs(CountAll, "n")],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "SUM") == true
+  assert String.contains(r.sql, "COUNT(*)") == true
+end
+
+test "compile DISTINCT in mutation module" do
+  let q = Query({ from_ = FromTable("categories"), selects = [SelectField(Col("name"))],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = true })
+  let r = compile(q)
+  assert String.contains(r.sql, "DISTINCT") == true
+end
+
+test "compile LIMIT OFFSET in mutation module" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = Some(25), offset_ = Some(50), distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "LIMIT") == true
+  assert String.contains(r.sql, "OFFSET") == true
+end
+
+test "compile GROUP BY in mutation module" do
+  let q = Query({ from_ = FromTable("events"), selects = Nil,
+    group_bys = [Col("type"), Col("date")],
+    wheres = Nil, joins = Nil, orders = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "GROUP BY") == true
+end
+
+test "compile HAVING in mutation module" do
+  let q = Query({ from_ = FromTable("orders"), selects = Nil,
+    group_bys = [Col("status")],
+    havings = [Where(Gte(Count(Col("id")), Lit(PInt(5))))],
+    wheres = Nil, joins = Nil, orders = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "HAVING") == true
+end
+
+test "compile ORDER BY ASC DESC in mutation module" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    orders = [OrderExpr(Col("name"), Asc), OrderExpr(Col("created_at"), Desc)],
+    wheres = Nil, joins = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "ASC") == true
+  assert String.contains(r.sql, "DESC") == true
+end
+
+test "compile INNER JOIN in mutation module" do
+  let q = Query({ from_ = FromTable("a"), selects = Nil,
+    joins = [JoinClause(Inner, "b", Eq(QCol("a", "bid"), QCol("b", "id")))],
+    wheres = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "INNER JOIN") == true
+end
+
+test "compile LEFT JOIN in mutation module" do
+  let q = Query({ from_ = FromTable("posts"), selects = Nil,
+    joins = [JoinClause(Left, "tags", Eq(QCol("posts", "id"), QCol("tags", "post_id")))],
+    wheres = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "LEFT JOIN") == true
+end
+
+test "compile RIGHT JOIN in mutation module" do
+  let q = Query({ from_ = FromTable("a"), selects = Nil,
+    joins = [JoinClause(Right, "b", Eq(QCol("a", "bid"), QCol("b", "id")))],
+    wheres = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "RIGHT JOIN") == true
+end
+
+test "compile multiple WHERE params in mutation module" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Eq(Col("x"), Lit(PInt(1)))), Where(Eq(Col("y"), Lit(PString("z"))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "WHERE") == true
+
+end
+
+end -- mod TestMutation

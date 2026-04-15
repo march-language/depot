@@ -7,39 +7,30 @@ import Ast
 import Build
 import Cursor
 
-fn test_declare_sql() do
-  let q = from("events") |> where_(Lt(Col("created_at"), Lit(PString("2026-01-01"))))
+test "declare_sql" do
+  let q = from("events") |> where_(Expr.Lt(Expr.Col("created_at"), Lit(PString("2026-01-01"))))
   let sql = declare_sql("cur1", q)
-  assert(sql == "DECLARE \"cur1\" CURSOR FOR SELECT * FROM \"events\" WHERE \"created_at\" < '2026-01-01'")
+  assert sql == "DECLARE \"cur1\" CURSOR FOR SELECT * FROM \"events\" WHERE \"created_at\" < '2026-01-01'"
 end
 
-fn test_fetch_sql() do
+test "fetch_sql" do
   let sql = fetch_sql("cur1", 100)
-  assert(sql == "FETCH 100 FROM \"cur1\"")
+  assert sql == "FETCH 100 FROM \"cur1\""
 end
 
-fn test_fetch_all_sql() do
+test "fetch_all_sql" do
   let sql = fetch_all_sql("cur1")
-  assert(sql == "FETCH ALL FROM \"cur1\"")
+  assert sql == "FETCH ALL FROM \"cur1\""
 end
 
-fn test_close_sql() do
+test "close_sql" do
   let sql = close_sql("cur1")
-  assert(sql == "CLOSE \"cur1\"")
+  assert sql == "CLOSE \"cur1\""
 end
 
-fn test_move_sql() do
+test "move_sql" do
   let sql = move_sql("cur1", 50)
-  assert(sql == "MOVE 50 FROM \"cur1\"")
+  assert sql == "MOVE 50 FROM \"cur1\""
 end
 
-fn main() : Unit do
-  test_declare_sql()
-  test_fetch_sql()
-  test_fetch_all_sql()
-  test_close_sql()
-  test_move_sql()
-  println("test_cursor: all tests passed")
-end
-
-end
+end -- mod TestCursor

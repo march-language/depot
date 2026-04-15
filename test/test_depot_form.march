@@ -141,4 +141,415 @@ test "unknown constraint name is a no-op" do
   assert Depot.Form.is_valid(form2) == true
 end
 
+-- ---------------------------------------------------------------------------
+-- validate_length
+-- ---------------------------------------------------------------------------
+
+test "validate_length passes for value within bounds" do
+  let form = Depot.Form.cast([("bio", "Hello!")], ["bio"])
+    |> Depot.Form.validate_length("bio", [LenMin(3), LenMax(20)])
+  assert Depot.Form.is_valid(form) == true
+end
+
+test "validate_length fails below LenMin" do
+  let form = Depot.Form.cast([("name", "Al")], ["name"])
+    |> Depot.Form.validate_length("name", [LenMin(3)])
+  assert Depot.Form.is_valid(form) == false
+end
+
+test "validate_length fails above LenMax" do
+  let form = Depot.Form.cast([("name", "Toolongname")], ["name"])
+    |> Depot.Form.validate_length("name", [LenMax(5)])
+  assert Depot.Form.is_valid(form) == false
+end
+
+test "validate_length absent field is skipped" do
+  let form = Depot.Form.cast([], [])
+    |> Depot.Form.validate_length("bio", [LenMin(1)])
+  assert Depot.Form.is_valid(form) == true
+end
+
+test "validate_length LenExact passes" do
+  let form = Depot.Form.cast([("code", "XYZ")], ["code"])
+    |> Depot.Form.validate_length("code", [LenExact(3)])
+  assert Depot.Form.is_valid(form) == true
+end
+
+test "validate_length LenExact fails" do
+  let form = Depot.Form.cast([("code", "ABCD")], ["code"])
+    |> Depot.Form.validate_length("code", [LenExact(3)])
+  assert Depot.Form.is_valid(form) == false
+end
+
+-- ---------------------------------------------------------------------------
+-- validate_inclusion / validate_exclusion
+-- ---------------------------------------------------------------------------
+
+test "validate_inclusion passes for valid value" do
+  let form = Depot.Form.cast([("role", "admin")], ["role"])
+    |> Depot.Form.validate_inclusion("role", ["user", "admin", "mod"])
+  assert Depot.Form.is_valid(form) == true
+end
+
+test "validate_inclusion fails for invalid value" do
+  let form = Depot.Form.cast([("role", "superuser")], ["role"])
+    |> Depot.Form.validate_inclusion("role", ["user", "admin"])
+  assert Depot.Form.is_valid(form) == false
+  assert Depot.Form.get_errors(form, "role") == ["is not a valid value"]
+end
+
+test "validate_inclusion absent field is skipped" do
+  let form = Depot.Form.cast([], [])
+    |> Depot.Form.validate_inclusion("role", ["user"])
+  assert Depot.Form.is_valid(form) == true
+end
+
+test "validate_exclusion passes when not excluded" do
+  let form = Depot.Form.cast([("username", "alice")], ["username"])
+    |> Depot.Form.validate_exclusion("username", ["root", "admin"])
+  assert Depot.Form.is_valid(form) == true
+end
+
+test "validate_exclusion fails when excluded" do
+  let form = Depot.Form.cast([("username", "root")], ["username"])
+    |> Depot.Form.validate_exclusion("username", ["root", "admin"])
+  assert Depot.Form.is_valid(form) == false
+  assert Depot.Form.get_errors(form, "username") == ["is reserved"]
+end
+
+test "validate_exclusion absent field is skipped" do
+  let form = Depot.Form.cast([], [])
+    |> Depot.Form.validate_exclusion("username", ["root"])
+  assert Depot.Form.is_valid(form) == true
+end
+
+-- ---------------------------------------------------------------------------
+-- validate_acceptance / validate_confirmation
+-- ---------------------------------------------------------------------------
+
+test "validate_acceptance passes for '1'" do
+  let form = Depot.Form.cast([("tos", "1")], ["tos"])
+    |> Depot.Form.validate_acceptance("tos")
+  assert Depot.Form.is_valid(form) == true
+end
+
+test "validate_acceptance fails for 'false'" do
+  let form = Depot.Form.cast([("tos", "false")], ["tos"])
+    |> Depot.Form.validate_acceptance("tos")
+  assert Depot.Form.is_valid(form) == false
+end
+
+test "validate_acceptance fails when field absent" do
+  let form = Depot.Form.cast([], [])
+    |> Depot.Form.validate_acceptance("tos")
+  assert Depot.Form.is_valid(form) == false
+end
+
+test "validate_confirmation passes when match" do
+  let form = Depot.Form.cast([("pw", "abc123"), ("pw_confirmation", "abc123")], ["pw", "pw_confirmation"])
+    |> Depot.Form.validate_confirmation("pw")
+  assert Depot.Form.is_valid(form) == true
+end
+
+test "validate_confirmation fails when mismatch" do
+  let form = Depot.Form.cast([("pw", "abc123"), ("pw_confirmation", "wrong")], ["pw", "pw_confirmation"])
+    |> Depot.Form.validate_confirmation("pw")
+  assert Depot.Form.is_valid(form) == false
+end
+
+test "validate_confirmation skips when base field absent" do
+  let form = Depot.Form.cast([], [])
+    |> Depot.Form.validate_confirmation("pw")
+  assert Depot.Form.is_valid(form) == true
+end
+
+-- ---------------------------------------------------------------------------
+-- validate_change
+-- ---------------------------------------------------------------------------
+
+test "validate_change passes when validator returns None" do
+  let form = Depot.Form.cast([("code", "ABC")], ["code"])
+    |> Depot.Form.validate_change("code", fn v ->
+         if String.byte_size(v) == 3 then None else Some("must be 3 chars")
+       )
+  assert Depot.Form.is_valid(form) == true
+end
+
+test "validate_change fails when validator returns Some(msg)" do
+  let form = Depot.Form.cast([("code", "AB")], ["code"])
+    |> Depot.Form.validate_change("code", fn v ->
+         if String.byte_size(v) == 3 then None else Some("must be 3 chars")
+       )
+  assert Depot.Form.is_valid(form) == false
+  assert Depot.Form.get_errors(form, "code") == ["must be 3 chars"]
+end
+
+test "validate_change skips absent field" do
+  let form = Depot.Form.cast([], [])
+    |> Depot.Form.validate_change("x", fn _ -> Some("always fails"))
+  assert Depot.Form.is_valid(form) == true
+end
+
+-- ---------------------------------------------------------------------------
+-- base
+-- ---------------------------------------------------------------------------
+
+test "apply_changes on unchanged cast" do
+  let form = Depot.Form.cast([("x", "1"), ("y", "2")], ["x", "y"])
+  let merged = Depot.Form.apply_changes(form)
+  assert List.member(merged, ("x", "1")) == true
+  assert List.member(merged, ("y", "2")) == true
+end
+
+-- ---------------------------------------------------------------------------
+-- Additional constraint functions
+-- ---------------------------------------------------------------------------
+
+test "foreign_key_constraint registers and resolves" do
+  let form = Depot.Form.cast([("user_id", "999")], ["user_id"])
+    |> Depot.Form.foreign_key_constraint("user_id",
+         [ConstraintName("posts_user_fkey"), ConstraintMessage("does not exist")])
+  let form2 = Depot.Form.apply_constraint_error(form, "posts_user_fkey")
+  assert Depot.Form.is_valid(form2) == false
+  assert Depot.Form.get_errors(form2, "user_id") == ["does not exist"]
+end
+
+test "check_constraint registers and resolves" do
+  let form = Depot.Form.cast([("age", "-1")], ["age"])
+    |> Depot.Form.check_constraint("age",
+         [ConstraintName("users_age_check"), ConstraintMessage("must be non-negative")])
+  let form2 = Depot.Form.apply_constraint_error(form, "users_age_check")
+  assert Depot.Form.is_valid(form2) == false
+end
+
+test "no_assoc_constraint registers and resolves" do
+  let form = Depot.Form.cast([], [])
+    |> Depot.Form.no_assoc_constraint("posts",
+         [ConstraintName("posts_user_id_fkey"), ConstraintMessage("still associated")])
+  let form2 = Depot.Form.apply_constraint_error(form, "posts_user_id_fkey")
+  assert Depot.Form.is_valid(form2) == false
+end
+
+-- ---------------------------------------------------------------------------
+-- validate_number coverage
+-- ---------------------------------------------------------------------------
+
+test "validate_number passes NumGreaterThan" do
+  let form = Depot.Form.cast([("n", "10")], ["n"])
+    |> Depot.Form.validate_number("n", [NumGreaterThan(5)])
+  assert Depot.Form.is_valid(form) == true
+end
+
+test "validate_number fails NumGreaterThan at boundary" do
+  let form = Depot.Form.cast([("n", "5")], ["n"])
+    |> Depot.Form.validate_number("n", [NumGreaterThan(5)])
+  assert Depot.Form.is_valid(form) == false
+end
+
+test "validate_number passes NumLessThan" do
+  let form = Depot.Form.cast([("n", "3")], ["n"])
+    |> Depot.Form.validate_number("n", [NumLessThan(5)])
+  assert Depot.Form.is_valid(form) == true
+end
+
+test "validate_number fails NumLessThan at boundary" do
+  let form = Depot.Form.cast([("n", "5")], ["n"])
+    |> Depot.Form.validate_number("n", [NumLessThan(5)])
+  assert Depot.Form.is_valid(form) == false
+end
+
+test "validate_number passes NumEqualTo" do
+  let form = Depot.Form.cast([("code", "42")], ["code"])
+    |> Depot.Form.validate_number("code", [NumEqualTo(42)])
+  assert Depot.Form.is_valid(form) == true
+end
+
+test "validate_number fails NumEqualTo when not equal" do
+  let form = Depot.Form.cast([("code", "43")], ["code"])
+    |> Depot.Form.validate_number("code", [NumEqualTo(42)])
+  assert Depot.Form.is_valid(form) == false
+end
+
+-- ---- Additional Form tests ----
+
+test "cast with empty allow-list" do
+  let form = Depot.Form.cast([("name", "Alice")], Nil)
+  assert Depot.Form.is_valid(form) == true
+  assert Depot.Form.get_change(form, "name") == None
+end
+
+test "cast multiple params all allowed" do
+  let form = Depot.Form.cast([("a", "1"), ("b", "2")], ["a", "b"])
+  assert Depot.Form.get_change(form, "a") == Some("1")
+  assert Depot.Form.get_change(form, "b") == Some("2")
+end
+
+test "get_field returns value from params" do
+  let form = Depot.Form.cast([("title", "Hello")], ["title"])
+  assert Depot.Form.get_field(form, "title") != None
+end
+
+test "get_field returns None for absent field" do
+  let form = Depot.Form.cast([("name", "X")], ["name"])
+  assert Depot.Form.get_field(form, "email") == None
+end
+
+test "put_change sets a new change" do
+  let form = Depot.Form.cast([("name", "Alice")], ["name"])
+    |> Depot.Form.put_change("role", "admin")
+  assert Depot.Form.get_change(form, "role") == Some("admin")
+end
+
+test "delete_change removes a change" do
+  let form = Depot.Form.cast([("name", "Alice"), ("role", "admin")], ["name", "role"])
+    |> Depot.Form.delete_change("role")
+  assert Depot.Form.get_change(form, "role") == None
+end
+
+test "add_error makes form invalid" do
+  let form = Depot.Form.cast([("email", "x")], ["email"])
+    |> Depot.Form.add_error("email", "already taken")
+  assert Depot.Form.is_valid(form) == false
+  assert Depot.Form.get_errors(form, "email") != Nil
+end
+
+test "validate_required passes when field present" do
+  let form = Depot.Form.cast([("name", "Bob")], ["name"])
+    |> Depot.Form.validate_required(["name"])
+  assert Depot.Form.is_valid(form) == true
+end
+
+test "validate_required fails empty string" do
+  let form = Depot.Form.cast([("name", "")], ["name"])
+    |> Depot.Form.validate_required(["name"])
+  assert Depot.Form.is_valid(form) == false
+end
+
+test "validate_format passes when pattern matches" do
+  let form = Depot.Form.cast([("url", "https://example.com")], ["url"])
+    |> Depot.Form.validate_format("url", "https://")
+  assert Depot.Form.is_valid(form) == true
+end
+
+test "validate_length LenMin pass" do
+  let form = Depot.Form.cast([("bio", "Hello world")], ["bio"])
+    |> Depot.Form.validate_length("bio", [LenMin(3)])
+  assert Depot.Form.is_valid(form) == true
+end
+
+test "validate_length LenMax fail" do
+  let form = Depot.Form.cast([("tag", "toolongtagvalue")], ["tag"])
+    |> Depot.Form.validate_length("tag", [LenMax(5)])
+  assert Depot.Form.is_valid(form) == false
+end
+
+test "validate_length exact pass" do
+  let form = Depot.Form.cast([("code", "ABCD")], ["code"])
+    |> Depot.Form.validate_length("code", [LenMin(4), LenMax(4)])
+  assert Depot.Form.is_valid(form) == true
+end
+
+test "validate_length exact fail too short" do
+  let form = Depot.Form.cast([("code", "AB")], ["code"])
+    |> Depot.Form.validate_length("code", [LenMin(4)])
+  assert Depot.Form.is_valid(form) == false
+end
+
+test "validate_inclusion pass" do
+  let form = Depot.Form.cast([("status", "active")], ["status"])
+    |> Depot.Form.validate_inclusion("status", ["active", "inactive"])
+  assert Depot.Form.is_valid(form) == true
+end
+
+test "validate_inclusion fail" do
+  let form = Depot.Form.cast([("status", "unknown")], ["status"])
+    |> Depot.Form.validate_inclusion("status", ["active", "inactive"])
+  assert Depot.Form.is_valid(form) == false
+end
+
+test "validate_exclusion pass" do
+  let form = Depot.Form.cast([("name", "alice")], ["name"])
+    |> Depot.Form.validate_exclusion("name", ["admin", "root"])
+  assert Depot.Form.is_valid(form) == true
+end
+
+test "validate_exclusion fail" do
+  let form = Depot.Form.cast([("name", "root")], ["name"])
+    |> Depot.Form.validate_exclusion("name", ["admin", "root"])
+  assert Depot.Form.is_valid(form) == false
+end
+
+test "validate_acceptance pass" do
+  let form = Depot.Form.cast([("tos", "true")], ["tos"])
+    |> Depot.Form.validate_acceptance("tos")
+  assert Depot.Form.is_valid(form) == true
+end
+
+test "validate_acceptance fail" do
+  let form = Depot.Form.cast([("tos", "false")], ["tos"])
+    |> Depot.Form.validate_acceptance("tos")
+  assert Depot.Form.is_valid(form) == false
+end
+
+test "validate_confirmation pass" do
+  let form = Depot.Form.cast([("pw", "s3cr3t"), ("pw_confirmation", "s3cr3t")], ["pw", "pw_confirmation"])
+    |> Depot.Form.validate_confirmation("pw")
+  assert Depot.Form.is_valid(form) == true
+end
+
+test "validate_confirmation fail" do
+  let form = Depot.Form.cast([("pw", "secret"), ("pw_confirmation", "wrong")], ["pw", "pw_confirmation"])
+    |> Depot.Form.validate_confirmation("pw")
+  assert Depot.Form.is_valid(form) == false
+end
+
+test "validate_number NumMin fail" do
+  let form = Depot.Form.cast([("age", "15")], ["age"])
+    |> Depot.Form.validate_number("age", [NumMin(18)])
+  assert Depot.Form.is_valid(form) == false
+end
+
+test "validate_number NumMax fail" do
+  let form = Depot.Form.cast([("qty", "200")], ["qty"])
+    |> Depot.Form.validate_number("qty", [NumMax(100)])
+  assert Depot.Form.is_valid(form) == false
+end
+
+test "validate_number NumGreaterThan pass" do
+  let form = Depot.Form.cast([("score", "10")], ["score"])
+    |> Depot.Form.validate_number("score", [NumGreaterThan(5)])
+  assert Depot.Form.is_valid(form) == true
+end
+
+test "validate_number NumLessThan pass" do
+  let form = Depot.Form.cast([("priority", "3")], ["priority"])
+    |> Depot.Form.validate_number("priority", [NumLessThan(10)])
+  assert Depot.Form.is_valid(form) == true
+end
+
+test "validate_change passes when validator returns None" do
+  let form =
+    Depot.Form.cast([("name", "Bob")], ["name"])
+    |> Depot.Form.validate_change("name", fn v ->
+         if String.byte_size(v) > 0 then None else Some("empty")
+       )
+  assert Depot.Form.is_valid(form) == true
+end
+
+test "validate_change fails when validator returns Some" do
+  let form =
+    Depot.Form.cast([("name", "X")], ["name"])
+    |> Depot.Form.validate_change("name", fn v ->
+         if String.byte_size(v) < 3 then Some("too short") else None
+       )
+  assert Depot.Form.is_valid(form) == false
+end
+
+test "errors returns all error tuples" do
+  let form = Depot.Form.cast([("a", "")], ["a"])
+    |> Depot.Form.validate_required(["a"])
+    |> Depot.Form.add_error("a", "custom error")
+  assert List.length(Depot.Form.errors(form)) > 0
+end
+
 end -- mod TestDepotForm

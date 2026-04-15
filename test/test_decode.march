@@ -5,88 +5,359 @@ mod TestDecode do
 
 import Decode
 
--- ---- Tests ----
-
-fn test_read_u16_zero() do
+test "read_u16 zero" do
   let b = Bytes.from_list([0, 0, 0, 0])
-  assert(read_u16(b, 0) == 0)
+  assert read_u16(b, 0) == 0
 end
 
-fn test_read_u16_256() do
+test "read_u16 256" do
   let b = Bytes.from_list([1, 0])
-  assert(read_u16(b, 0) == 256)
+  assert read_u16(b, 0) == 256
 end
 
-fn test_read_u16_offset() do
+test "read_u16 at offset" do
   let b = Bytes.from_list([0, 0, 1, 5])
-  assert(read_u16(b, 2) == 261)
+  assert read_u16(b, 2) == 261
 end
 
-fn test_read_i32_zero() do
+test "read_i32 zero" do
   let b = Bytes.from_list([0, 0, 0, 0])
-  assert(read_i32(b, 0) == 0)
+  assert read_i32(b, 0) == 0
 end
 
-fn test_read_i32_positive() do
+test "read_i32 positive" do
   let b = Bytes.from_list([0, 0, 0, 42])
-  assert(read_i32(b, 0) == 42)
+  assert read_i32(b, 0) == 42
 end
 
-fn test_read_i32_big() do
+test "read_i32 large value" do
   -- 0x00010000 = 65536
   let b = Bytes.from_list([0, 1, 0, 0])
-  assert(read_i32(b, 0) == 65536)
+  assert read_i32(b, 0) == 65536
 end
 
-fn test_read_cstring_empty() do
+test "read_cstring empty" do
   let b = Bytes.from_list([0])
   let (s, next) = read_cstring(b, 0)
-  assert(s == "")
-  assert(next == 1)
+  assert s == ""
+  assert next == 1
 end
 
-fn test_read_cstring_hello() do
+test "read_cstring hello" do
   -- "hi" + null terminator
   let b = Bytes.from_list([104, 105, 0])
   let (s, next) = read_cstring(b, 0)
-  assert(s == "hi")
-  assert(next == 3)
+  assert s == "hi"
+  assert next == 3
 end
 
-fn test_read_bytes_field_null() do
+test "read_bytes_field NULL" do
   -- -1 in big-endian = null field
   let b = Bytes.from_list([255, 255, 255, 255])
   let (opt, next) = read_bytes_field(b, 0)
-  assert(next == 4)
-  match opt do None -> () | Some(_) -> assert(false) end
+  assert next == 4
+  assert opt == None
 end
 
-fn test_read_bytes_field_data() do
+test "read_bytes_field with data" do
   -- length=2, then bytes [65, 66]
   let b = Bytes.from_list([0, 0, 0, 2, 65, 66])
   let (opt, next) = read_bytes_field(b, 0)
-  assert(next == 6)
+  assert next == 6
   match opt do
   Some(data) -> do
-    assert(Bytes.length(data) == 2)
-    assert(Bytes.get(data, 0) == 65)
+    assert Bytes.length(data) == 2
+    assert Bytes.get(data, 0) == 65
   end
-  None -> assert(false)
   end
 end
 
-fn main() : Unit do
-  test_read_u16_zero()
-  test_read_u16_256()
-  test_read_u16_offset()
-  test_read_i32_zero()
-  test_read_i32_positive()
-  test_read_i32_big()
-  test_read_cstring_empty()
-  test_read_cstring_hello()
-  test_read_bytes_field_null()
-  test_read_bytes_field_data()
-  println("test_decode: all tests passed")
+test "read_i32 negative one" do
+  -- 0xFFFFFFFF should decode as -1
+  let b = Bytes.from_list([255, 255, 255, 255])
+  assert read_i32(b, 0) == -1
 end
 
+test "read_i32 at non-zero offset" do
+  -- skip 2 bytes, then read [0, 0, 0, 5]
+  let b = Bytes.from_list([0, 0, 0, 0, 0, 5])
+  assert read_i32(b, 2) == 5
 end
+
+-- ---- decode tests ----
+
+test "decode ParseComplete" do
+  assert decode(49, Bytes.empty()) == Ok(ParseComplete)
+end
+
+test "decode BindComplete" do
+  assert decode(50, Bytes.empty()) == Ok(BindComplete)
+end
+
+test "decode CloseComplete" do
+  assert decode(51, Bytes.empty()) == Ok(CloseComplete)
+end
+
+test "decode NoData" do
+  assert decode(110, Bytes.empty()) == Ok(NoData)
+end
+
+test "decode PortalSuspended" do
+  assert decode(115, Bytes.empty()) == Ok(PortalSuspended)
+end
+
+test "decode EmptyQueryResponse" do
+  assert decode(73, Bytes.empty()) == Ok(EmptyQueryResponse)
+end
+
+test "decode AuthOk" do
+  -- auth_type = 0 in 4 bytes
+  let p = Bytes.from_list([0, 0, 0, 0])
+  assert decode(82, p) == Ok(AuthOk)
+end
+
+test "decode AuthMD5" do
+  -- auth_type = 5, then 4 salt bytes
+  let p = Bytes.from_list([0, 0, 0, 5, 1, 2, 3, 4])
+  match decode(82, p) do
+  Ok(AuthMD5(salt)) -> assert Bytes.length(salt) == 4
+  end
+end
+
+test "decode BackendKeyData" do
+  -- pid=42, secret=123
+  let p = Bytes.from_list([0, 0, 0, 42, 0, 0, 0, 123])
+  assert decode(75, p) == Ok(BackendKeyData(42, 123))
+end
+
+test "decode CommandComplete" do
+  -- "OK\0"
+  let p = Bytes.from_list([79, 75, 0])
+  assert decode(67, p) == Ok(CommandComplete("OK"))
+end
+
+test "decode ReadyForQuery Idle" do
+  -- 'I' = 73
+  let p = Bytes.from_list([73])
+  assert decode(90, p) == Ok(ReadyForQuery(Idle))
+end
+
+test "decode ReadyForQuery InTransaction" do
+  -- 'T' = 84
+  let p = Bytes.from_list([84])
+  assert decode(90, p) == Ok(ReadyForQuery(InTransaction))
+end
+
+test "decode ReadyForQuery InFailedTransaction" do
+  -- 'E' = 69
+  let p = Bytes.from_list([69])
+  assert decode(90, p) == Ok(ReadyForQuery(InFailedTransaction))
+end
+
+test "decode ParameterStatus" do
+  -- "server_version\0" "14.0\0"
+  let p = Bytes.from_list([115, 101, 114, 118, 101, 114, 95, 118, 101, 114, 115, 105, 111, 110, 0,
+                            49, 52, 46, 48, 0])
+  assert decode(83, p) == Ok(ParameterStatus("server_version", "14.0"))
+end
+
+test "decode RowDescription zero fields" do
+  -- field count = 0
+  let p = Bytes.from_list([0, 0])
+  match decode(84, p) do
+  Ok(RowDescription(fields)) -> assert List.length(fields) == 0
+  end
+end
+
+test "decode DataRow zero columns" do
+  -- column count = 0
+  let p = Bytes.from_list([0, 0])
+  match decode(68, p) do
+  Ok(DataRow(cols)) -> assert List.length(cols) == 0
+  end
+end
+
+test "decode unknown type returns Err" do
+  match decode(255, Bytes.empty()) do
+  Err(_) -> ()
+  end
+end
+
+test "decode RowDescription with one column" do
+  -- field_count=1, name="id\0", table_oid=0, attr_num=1, type_oid=23, type_size=4, type_mod=-1, format=0
+  let p = Bytes.from_list([0, 1,
+    105, 100, 0,
+    0, 0, 0, 0,
+    0, 1,
+    0, 0, 0, 23,
+    0, 4,
+    255, 255, 255, 255,
+    0, 0])
+  match decode(84, p) do
+  Ok(RowDescription(fields)) -> do
+    assert List.length(fields) == 1
+    match fields do
+    Cons(FieldDesc(name, _, _, tyoid, _, _, _), Nil) -> do
+      assert name == "id"
+      assert tyoid == 23
+    end
+    end
+  end
+  end
+end
+
+test "decode DataRow with NULL and data columns" do
+  -- col_count=2, col0=NULL, col1=len=5 "Hello"
+  let p = Bytes.from_list([0, 2,
+    255, 255, 255, 255,
+    0, 0, 0, 5,
+    72, 101, 108, 108, 111])
+  match decode(68, p) do
+  Ok(DataRow(cols)) -> do
+    assert List.length(cols) == 2
+    match cols do
+    Cons(None, Cons(Some(_), Nil)) -> ()
+    end
+  end
+  end
+end
+
+test "decode ErrorResponse with all field types" do
+  -- S="FATAL"  (83 + [70,65,84,65,76] + 0)
+  -- C="P0001"  (67 + [80,48,48,48,49] + 0)
+  -- M="Error"  (77 + [69,114,114,111,114] + 0)
+  -- D="detail" (68 + [100,101,116,97,105,108] + 0)
+  -- H="hint"   (72 + [104,105,110,116] + 0)
+  -- P="5"      (80 + [53] + 0)
+  -- terminator 0
+  let p = Bytes.from_list([83, 70, 65, 84, 65, 76, 0,
+    67, 80, 48, 48, 48, 49, 0,
+    77, 69, 114, 114, 111, 114, 0,
+    68, 100, 101, 116, 97, 105, 108, 0,
+    72, 104, 105, 110, 116, 0,
+    80, 53, 0,
+    0])
+  match decode(69, p) do
+  Ok(ErrorResponse(err)) -> do
+    assert err.severity == "FATAL"
+    assert err.code == "P0001"
+    assert err.message == "Error"
+    assert err.detail == Some("detail")
+    assert err.hint == Some("hint")
+    assert err.position == Some(5)
+  end
+  end
+end
+
+test "decode NoticeResponse" do
+  -- same format as ErrorResponse but type byte 78
+  let p = Bytes.from_list([83, 73, 78, 70, 79, 0,
+    77, 78, 111, 116, 105, 99, 101, 0,
+    0])
+  match decode(78, p) do
+  Ok(NoticeResponse(err)) -> do
+    assert err.severity == "INFO"
+    assert err.message == "Notice"
+  end
+  end
+end
+
+test "decode AuthSASL with mechanism" do
+  -- auth_type=10, "SCRAM-SHA-256\0", then null terminator
+  let p = Bytes.from_list([0, 0, 0, 10,
+    83, 67, 82, 65, 77, 45, 83, 72, 65, 45, 50, 53, 54, 0,
+    0])
+  match decode(82, p) do
+  Ok(AuthSASL(mechs)) -> assert List.length(mechs) == 1
+  end
+end
+
+test "decode AuthSASLContinue" do
+  -- auth_type=11, then data bytes
+  let p = Bytes.from_list([0, 0, 0, 11, 1, 2, 3, 4])
+  match decode(82, p) do
+  Ok(AuthSASLContinue(data)) -> assert Bytes.length(data) == 4
+  end
+end
+
+test "decode AuthSASLFinal" do
+  -- auth_type=12, then data bytes
+  let p = Bytes.from_list([0, 0, 0, 12, 9, 8, 7])
+  match decode(82, p) do
+  Ok(AuthSASLFinal(data)) -> assert Bytes.length(data) == 3
+  end
+end
+
+test "decode ErrorResponse with unknown field type" do
+  -- unknown field type 90 ('Z'), then message field, then terminator
+  let p = Bytes.from_list([77, 104, 101, 108, 108, 111, 0,
+    90, 118, 97, 108, 0,
+    0])
+  match decode(69, p) do
+  Ok(ErrorResponse(err)) -> assert err.message == "hello"
+  end
+end
+
+test "decode_auth unsupported type returns Err" do
+  -- auth_type = 99 (unsupported)
+  let p = Bytes.from_list([0, 0, 0, 99])
+  match decode(82, p) do
+  Err(_) -> ()
+  end
+end
+
+test "decode AuthSASL with multiple mechanisms" do
+  -- auth_type=10, "SCRAM-SHA-256\0", "SCRAM-SHA-256-PLUS\0", null terminator
+  -- SCRAM-SHA-256 = [83,67,82,65,77,45,83,72,65,45,50,53,54]
+  -- SCRAM-SHA-256-PLUS = [83,67,82,65,77,45,83,72,65,45,50,53,54,45,80,76,85,83]
+  let p = Bytes.from_list([0, 0, 0, 10,
+    83, 67, 82, 65, 77, 45, 83, 72, 65, 45, 50, 53, 54, 0,
+    83, 67, 82, 65, 77, 45, 83, 72, 65, 45, 50, 53, 54, 45, 80, 76, 85, 83, 0,
+    0])
+  match decode(82, p) do
+  Ok(AuthSASL(mechs)) -> assert List.length(mechs) == 2
+  end
+end
+
+test "decode RowDescription with two fields" do
+  -- field_count=2
+  -- field1: name="a\0", table_oid=0, attr_num=1, type_oid=23, type_size=4, type_mod=-1, format=0
+  -- field2: name="b\0", table_oid=0, attr_num=2, type_oid=25, type_size=-1, type_mod=-1, format=0
+  let p = Bytes.from_list([
+    0, 2,
+    97, 0,
+    0, 0, 0, 0,
+    0, 1,
+    0, 0, 0, 23,
+    0, 4,
+    255, 255, 255, 255,
+    0, 0,
+    98, 0,
+    0, 0, 0, 0,
+    0, 2,
+    0, 0, 0, 25,
+    255, 255,
+    255, 255, 255, 255,
+    0, 0])
+  match decode(84, p) do
+  Ok(RowDescription(fields)) -> assert List.length(fields) == 2
+  end
+end
+
+test "decode DataRow with three columns" do
+  -- col_count=3, col0=NULL, col1=len=1 byte [65], col2=NULL
+  let p = Bytes.from_list([0, 3,
+    255, 255, 255, 255,
+    0, 0, 0, 1, 65,
+    255, 255, 255, 255])
+  match decode(68, p) do
+  Ok(DataRow(cols)) -> do
+    assert List.length(cols) == 3
+    match cols do
+    Cons(None, Cons(Some(_), Cons(None, Nil))) -> ()
+    end
+  end
+  end
+end
+
+end -- mod TestDecode

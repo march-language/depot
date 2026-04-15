@@ -111,13 +111,15 @@ pfn ci_from(f, dp) do
 end
 
 pfn ci_assemble(f, dp, from_sql) do
-  "SELECT " ++ dp ++ compile_select_inline(f) ++ " FROM " ++ from_sql
-  ++ compile_joins_inline(f.joins)
-  ++ compile_wheres_inline(f.wheres)
-  ++ compile_group_bys_inline(f.group_bys)
-  ++ compile_havings_inline(f.havings)
-  ++ compile_orders_inline(f.orders)
-  ++ compile_limit(f.limit_) ++ compile_offset(f.offset_)
+  let sql =
+    "SELECT " ++ dp ++ compile_select_inline(f) ++ " FROM " ++ from_sql
+    ++ compile_joins_inline(f.joins)
+    ++ compile_wheres_inline(f.wheres)
+    ++ compile_group_bys_inline(f.group_bys)
+    ++ compile_havings_inline(f.havings)
+    ++ compile_orders_inline(f.orders)
+    ++ compile_limit(f.limit_) ++ compile_offset(f.offset_)
+  { sql = sql, params = Nil }
 end
 
 -- ---- SELECT ----

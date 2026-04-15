@@ -14,18 +14,18 @@ end
 
 -- ---- Tests ----
 
-fn test_default_pool_config() do
+test "default pool config" do
   let cc = make_conn_config("127.0.0.1", 5432, "alice", "mydb")
   let cfg = default_pool_config(cc)
-  assert(cfg.min_size == 5)
-  assert(cfg.max_size == 20)
-  assert(cfg.idle_timeout_ms == 300000)
-  assert(cfg.connect_timeout_ms == 5000)
-  assert(cfg.conn_config.user == "alice")
-  assert(cfg.conn_config.database == "mydb")
+  assert cfg.min_size == 5
+  assert cfg.max_size == 20
+  assert cfg.idle_timeout_ms == 300000
+  assert cfg.connect_timeout_ms == 5000
+  assert cfg.conn_config.user == "alice"
+  assert cfg.conn_config.database == "mydb"
 end
 
-fn test_pool_config_custom() do
+test "custom pool config" do
   let cc = make_conn_config("db.example.com", 5433, "bob", "prod")
   let cfg = {
     min_size           = 2,
@@ -34,64 +34,53 @@ fn test_pool_config_custom() do
     connect_timeout_ms = 3000,
     conn_config        = cc
   }
-  assert(cfg.min_size == 2)
-  assert(cfg.max_size == 10)
-  assert(cfg.idle_timeout_ms == 60000)
-  assert(cfg.connect_timeout_ms == 3000)
-  assert(cfg.conn_config.host == "db.example.com")
-  assert(cfg.conn_config.port == 5433)
+  assert cfg.min_size == 2
+  assert cfg.max_size == 10
+  assert cfg.idle_timeout_ms == 60000
+  assert cfg.connect_timeout_ms == 3000
+  assert cfg.conn_config.host == "db.example.com"
+  assert cfg.conn_config.port == 5433
 end
 
-fn test_pool_stats_zero() do
+test "pool stats zero" do
   let s = { idle_count = 0, active_count = 0, waiting_count = 0, total_size = 0 }
-  assert(s.idle_count == 0)
-  assert(s.active_count == 0)
-  assert(s.waiting_count == 0)
-  assert(s.total_size == 0)
+  assert s.idle_count == 0
+  assert s.active_count == 0
+  assert s.waiting_count == 0
+  assert s.total_size == 0
 end
 
-fn test_pool_stats_fields() do
+test "pool stats fields" do
   let s = { idle_count = 3, active_count = 2, waiting_count = 1, total_size = 5 }
-  assert(s.idle_count == 3)
-  assert(s.active_count == 2)
-  assert(s.waiting_count == 1)
-  assert(s.total_size == 5)
+  assert s.idle_count == 3
+  assert s.active_count == 2
+  assert s.waiting_count == 1
+  assert s.total_size == 5
 end
 
-fn test_conn_config_no_password() do
+test "conn config no password" do
   let cc = make_conn_config("localhost", 5432, "u", "d")
-  match cc.password do | None -> () | Some(_) -> assert(false) end
+  match cc.password do | None -> () | Some(_) -> assert false end
 end
 
-fn test_conn_config_with_password() do
+test "conn config with password" do
   let cc = {
     host = "localhost", port = 5432, user = "u",
     database = "d", password = Some("secret")
   }
   match cc.password do
-  Some(pw) -> assert(pw == "secret")
-  None     -> assert(false)
+  Some(pw) -> assert pw == "secret"
+  None     -> assert false
   end
 end
 
-fn test_pool_config_conn_nested() do
+test "pool config nested conn fields" do
   let cc = make_conn_config("127.0.0.1", 5432, "carol", "testdb")
   let cfg = default_pool_config(cc)
-  assert(cfg.conn_config.host == "127.0.0.1")
-  assert(cfg.conn_config.port == 5432)
-  assert(cfg.conn_config.database == "testdb")
-  match cfg.conn_config.password do | None -> () | Some(_) -> assert(false) end
+  assert cfg.conn_config.host == "127.0.0.1"
+  assert cfg.conn_config.port == 5432
+  assert cfg.conn_config.database == "testdb"
+  match cfg.conn_config.password do | None -> () | Some(_) -> assert false end
 end
 
-fn main() : Unit do
-  test_default_pool_config()
-  test_pool_config_custom()
-  test_pool_stats_zero()
-  test_pool_stats_fields()
-  test_conn_config_no_password()
-  test_conn_config_with_password()
-  test_pool_config_conn_nested()
-  println("test_pool: all tests passed")
-end
-
-end
+end -- mod TestPool

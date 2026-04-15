@@ -23,25 +23,25 @@ end
 
 -- ---- Tests ----
 
-fn test_simple_select_star() do
+test "simple SELECT *" do
   let q = make_query("users")
   let r = compile(q)
-  assert(r.sql == "SELECT * FROM \"users\"")
-  assert(list_len(r.params) == 0)
+  assert r.sql == "SELECT * FROM \"users\""
+  assert list_len(r.params) == 0
 end
 
-fn test_select_with_columns() do
+test "SELECT with columns" do
   let q = Query({
     from_ = FromTable("posts"), selects = [SelectField(Col("id")), SelectField(Col("title"))],
     wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
     limit_ = None, offset_ = None, distinct_ = false
   })
   let r = compile(q)
-  assert(r.sql == "SELECT \"id\", \"title\" FROM \"posts\"")
-  assert(list_len(r.params) == 0)
+  assert r.sql == "SELECT \"id\", \"title\" FROM \"posts\""
+  assert list_len(r.params) == 0
 end
 
-fn test_where_with_param() do
+test "WHERE with param" do
   let q = Query({
     from_ = FromTable("users"),
     selects = Nil,
@@ -50,15 +50,12 @@ fn test_where_with_param() do
     limit_ = None, offset_ = None, distinct_ = false
   })
   let r = compile(q)
-  assert(r.sql == "SELECT * FROM \"users\" WHERE \"id\" = $1")
-  assert(list_len(r.params) == 1)
-  match r.params do
-  Cons(ParamText(s), Nil) -> assert(s == "42")
-  _ -> assert(false)
-  end
+  assert r.sql == "SELECT * FROM \"users\" WHERE \"id\" = $1"
+  assert list_len(r.params) == 1
+  assert r.params == [ParamText("42")]
 end
 
-fn test_two_where_params() do
+test "two WHERE params joined with AND" do
   let q = Query({
     from_ = FromTable("products"),
     selects = Nil,
@@ -68,11 +65,11 @@ fn test_two_where_params() do
     limit_ = None, offset_ = None, distinct_ = false
   })
   let r = compile(q)
-  assert(list_len(r.params) == 2)
-  assert(r.sql == "SELECT * FROM \"products\" WHERE \"active\" = $1 AND \"price\" = $2")
+  assert list_len(r.params) == 2
+  assert r.sql == "SELECT * FROM \"products\" WHERE \"active\" = $1 AND \"price\" = $2"
 end
 
-fn test_null_param() do
+test "NULL param" do
   let q = Query({
     from_ = FromTable("t"),
     selects = Nil,
@@ -81,33 +78,30 @@ fn test_null_param() do
     limit_ = None, offset_ = None, distinct_ = false
   })
   let r = compile(q)
-  match r.params do
-  Cons(ParamNull, Nil) -> ()
-  _ -> assert(false)
-  end
+  assert r.params == [ParamNull]
 end
 
-fn test_limit_and_offset() do
+test "LIMIT and OFFSET" do
   let q = Query({
     from_ = FromTable("events"), selects = Nil, wheres = Nil,
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
     limit_ = Some(10), offset_ = Some(20), distinct_ = false
   })
   let r = compile(q)
-  assert(r.sql == "SELECT * FROM \"events\" LIMIT 10 OFFSET 20")
+  assert r.sql == "SELECT * FROM \"events\" LIMIT 10 OFFSET 20"
 end
 
-fn test_distinct() do
+test "SELECT DISTINCT" do
   let q = Query({
     from_ = FromTable("tags"), selects = Nil, wheres = Nil,
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
     limit_ = None, offset_ = None, distinct_ = true
   })
   let r = compile(q)
-  assert(r.sql == "SELECT DISTINCT * FROM \"tags\"")
+  assert r.sql == "SELECT DISTINCT * FROM \"tags\""
 end
 
-fn test_order_by() do
+test "ORDER BY DESC" do
   let q = Query({
     from_ = FromTable("logs"), selects = Nil, wheres = Nil,
     joins = Nil, orders = [OrderExpr(Col("created_at"), Desc)],
@@ -115,10 +109,10 @@ fn test_order_by() do
     limit_ = None, offset_ = None, distinct_ = false
   })
   let r = compile(q)
-  assert(r.sql == "SELECT * FROM \"logs\" ORDER BY \"created_at\" DESC")
+  assert r.sql == "SELECT * FROM \"logs\" ORDER BY \"created_at\" DESC"
 end
 
-fn test_select_as() do
+test "SELECT AS alias" do
   let q = Query({
     from_ = FromTable("t"),
     selects = [SelectAs(CountAll, "total")],
@@ -126,10 +120,10 @@ fn test_select_as() do
     limit_ = None, offset_ = None, distinct_ = false
   })
   let r = compile(q)
-  assert(r.sql == "SELECT COUNT(*) AS \"total\" FROM \"t\"")
+  assert r.sql == "SELECT COUNT(*) AS \"total\" FROM \"t\""
 end
 
-fn test_is_null() do
+test "IS NULL" do
   let q = Query({
     from_ = FromTable("users"), selects = Nil,
     wheres = [Where(IsNull(Col("deleted_at")))],
@@ -137,78 +131,10 @@ fn test_is_null() do
     limit_ = None, offset_ = None, distinct_ = false
   })
   let r = compile(q)
-  assert(r.sql == "SELECT * FROM \"users\" WHERE \"deleted_at\" IS NULL")
+  assert r.sql == "SELECT * FROM \"users\" WHERE \"deleted_at\" IS NULL"
 end
 
-fn test_raw_expr() do
-  let q = Query({
-    from_ = FromTable("t"), selects = [SelectField(Raw("1+1"))],
-    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false
-  })
-  let r = compile(q)
-  assert(r.sql == "SELECT 1+1 FROM \"t\"")
-end
-
-fn test_in_expr() do
-  let q = Query({
-    from_ = FromTable("users"), selects = Nil,
-    wheres = [Where(In(Col("id"), [Lit(PInt(1)), Lit(PInt(2)), Lit(PInt(3))]))],
-    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false
-  })
-  let r = compile(q)
-  assert(r.sql == "SELECT * FROM \"users\" WHERE \"id\" IN ($1, $2, $3)")
-  assert(list_len(r.params) == 3)
-end
-
-fn test_not_in_expr() do
-  let q = Query({
-    from_ = FromTable("t"), selects = Nil,
-    wheres = [Where(NotIn(Col("status"), [Lit(PString("banned")), Lit(PString("deleted"))]))],
-    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false
-  })
-  let r = compile(q)
-  assert(r.sql == "SELECT * FROM \"t\" WHERE \"status\" NOT IN ($1, $2)")
-  assert(list_len(r.params) == 2)
-end
-
-fn test_between_expr() do
-  let q = Query({
-    from_ = FromTable("products"), selects = Nil,
-    wheres = [Where(Between(Col("price"), Lit(PInt(10)), Lit(PInt(100))))],
-    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false
-  })
-  let r = compile(q)
-  assert(r.sql == "SELECT * FROM \"products\" WHERE \"price\" BETWEEN $1 AND $2")
-  assert(list_len(r.params) == 2)
-end
-
-fn test_in_inline() do
-  let q = Query({
-    from_ = FromTable("t"), selects = Nil,
-    wheres = [Where(In(Col("id"), [Lit(PInt(10)), Lit(PInt(20))]))],
-    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false
-  })
-  let r = compile_inline(q)
-  assert(r.sql == "SELECT * FROM \"t\" WHERE \"id\" IN (10, 20)")
-end
-
-fn test_between_inline() do
-  let q = Query({
-    from_ = FromTable("t"), selects = Nil,
-    wheres = [Where(Between(Col("score"), Lit(PInt(0)), Lit(PInt(100))))],
-    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false
-  })
-  let r = compile_inline(q)
-  assert(r.sql == "SELECT * FROM \"t\" WHERE \"score\" BETWEEN 0 AND 100")
-end
-
-fn test_is_not_null() do
+test "IS NOT NULL" do
   let q = Query({
     from_ = FromTable("users"), selects = Nil,
     wheres = [Where(IsNotNull(Col("confirmed_at")))],
@@ -216,10 +142,78 @@ fn test_is_not_null() do
     limit_ = None, offset_ = None, distinct_ = false
   })
   let r = compile(q)
-  assert(r.sql == "SELECT * FROM \"users\" WHERE \"confirmed_at\" IS NOT NULL")
+  assert r.sql == "SELECT * FROM \"users\" WHERE \"confirmed_at\" IS NOT NULL"
 end
 
-fn test_qualified_col() do
+test "Raw expr" do
+  let q = Query({
+    from_ = FromTable("t"), selects = [SelectField(Raw("1+1"))],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false
+  })
+  let r = compile(q)
+  assert r.sql == "SELECT 1+1 FROM \"t\""
+end
+
+test "IN expr" do
+  let q = Query({
+    from_ = FromTable("users"), selects = Nil,
+    wheres = [Where(In(Col("id"), [Lit(PInt(1)), Lit(PInt(2)), Lit(PInt(3))]))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false
+  })
+  let r = compile(q)
+  assert r.sql == "SELECT * FROM \"users\" WHERE \"id\" IN ($1, $2, $3)"
+  assert list_len(r.params) == 3
+end
+
+test "NOT IN expr" do
+  let q = Query({
+    from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(NotIn(Col("status"), [Lit(PString("banned")), Lit(PString("deleted"))]))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false
+  })
+  let r = compile(q)
+  assert r.sql == "SELECT * FROM \"t\" WHERE \"status\" NOT IN ($1, $2)"
+  assert list_len(r.params) == 2
+end
+
+test "BETWEEN expr" do
+  let q = Query({
+    from_ = FromTable("products"), selects = Nil,
+    wheres = [Where(Between(Col("price"), Lit(PInt(10)), Lit(PInt(100))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false
+  })
+  let r = compile(q)
+  assert r.sql == "SELECT * FROM \"products\" WHERE \"price\" BETWEEN $1 AND $2"
+  assert list_len(r.params) == 2
+end
+
+test "IN inline" do
+  let q = Query({
+    from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(In(Col("id"), [Lit(PInt(10)), Lit(PInt(20))]))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false
+  })
+  let r = compile_inline(q)
+  assert r.sql == "SELECT * FROM \"t\" WHERE \"id\" IN (10, 20)"
+end
+
+test "BETWEEN inline" do
+  let q = Query({
+    from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Between(Col("score"), Lit(PInt(0)), Lit(PInt(100))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false
+  })
+  let r = compile_inline(q)
+  assert r.sql == "SELECT * FROM \"t\" WHERE \"score\" BETWEEN 0 AND 100"
+end
+
+test "qualified column QCol" do
   let q = Query({
     from_ = FromTable("users"),
     selects = [SelectField(QCol("users", "id")), SelectField(QCol("orders", "total"))],
@@ -227,10 +221,10 @@ fn test_qualified_col() do
     limit_ = None, offset_ = None, distinct_ = false
   })
   let r = compile(q)
-  assert(r.sql == "SELECT \"users\".\"id\", \"orders\".\"total\" FROM \"users\"")
+  assert r.sql == "SELECT \"users\".\"id\", \"orders\".\"total\" FROM \"users\""
 end
 
-fn test_boolean_operators() do
+test "AND / OR / NOT boolean operators" do
   let q = Query({
     from_ = FromTable("t"), selects = Nil,
     wheres = [Where(And(
@@ -241,10 +235,10 @@ fn test_boolean_operators() do
     limit_ = None, offset_ = None, distinct_ = false
   })
   let r = compile(q)
-  assert(r.sql == "SELECT * FROM \"t\" WHERE (\"a\" = $1 AND (\"b\" = $2 OR NOT (\"c\" IS NULL)))")
+  assert r.sql == "SELECT * FROM \"t\" WHERE (\"a\" = $1 AND (\"b\" = $2 OR NOT (\"c\" IS NULL)))"
 end
 
-fn test_or_where() do
+test "OrWhere clause" do
   let q = Query({
     from_ = FromTable("t"), selects = Nil,
     wheres = [Where(Eq(Col("a"), Lit(PInt(1)))), OrWhere(Eq(Col("b"), Lit(PInt(2))))],
@@ -252,11 +246,11 @@ fn test_or_where() do
     limit_ = None, offset_ = None, distinct_ = false
   })
   let r = compile(q)
-  assert(r.sql == "SELECT * FROM \"t\" WHERE \"a\" = $1 OR \"b\" = $2")
-  assert(list_len(r.params) == 2)
+  assert r.sql == "SELECT * FROM \"t\" WHERE \"a\" = $1 OR \"b\" = $2"
+  assert list_len(r.params) == 2
 end
 
-fn test_join_inner() do
+test "INNER JOIN" do
   let q = Query({
     from_ = FromTable("orders"), selects = Nil, wheres = Nil,
     joins = [JoinClause(Inner, "users", Eq(QCol("orders", "user_id"), QCol("users", "id")))],
@@ -264,10 +258,10 @@ fn test_join_inner() do
     limit_ = None, offset_ = None, distinct_ = false
   })
   let r = compile(q)
-  assert(r.sql == "SELECT * FROM \"orders\" INNER JOIN \"users\" ON \"orders\".\"user_id\" = \"users\".\"id\"")
+  assert r.sql == "SELECT * FROM \"orders\" INNER JOIN \"users\" ON \"orders\".\"user_id\" = \"users\".\"id\""
 end
 
-fn test_join_left() do
+test "LEFT JOIN" do
   let q = Query({
     from_ = FromTable("users"), selects = Nil, wheres = Nil,
     joins = [JoinClause(Left, "posts", Eq(QCol("posts", "user_id"), QCol("users", "id")))],
@@ -275,10 +269,10 @@ fn test_join_left() do
     limit_ = None, offset_ = None, distinct_ = false
   })
   let r = compile(q)
-  assert(r.sql == "SELECT * FROM \"users\" LEFT JOIN \"posts\" ON \"posts\".\"user_id\" = \"users\".\"id\"")
+  assert r.sql == "SELECT * FROM \"users\" LEFT JOIN \"posts\" ON \"posts\".\"user_id\" = \"users\".\"id\""
 end
 
-fn test_group_by() do
+test "GROUP BY" do
   let q = Query({
     from_ = FromTable("orders"),
     selects = [SelectField(Col("status")), SelectAs(CountAll, "n")],
@@ -288,10 +282,10 @@ fn test_group_by() do
     limit_ = None, offset_ = None, distinct_ = false
   })
   let r = compile(q)
-  assert(r.sql == "SELECT \"status\", COUNT(*) AS \"n\" FROM \"orders\" GROUP BY \"status\"")
+  assert r.sql == "SELECT \"status\", COUNT(*) AS \"n\" FROM \"orders\" GROUP BY \"status\""
 end
 
-fn test_order_nulls() do
+test "ORDER BY NULLS variants" do
   let q = Query({
     from_ = FromTable("t"), selects = Nil, wheres = Nil, joins = Nil,
     orders = [
@@ -304,10 +298,10 @@ fn test_order_nulls() do
     limit_ = None, offset_ = None, distinct_ = false
   })
   let r = compile(q)
-  assert(r.sql == "SELECT * FROM \"t\" ORDER BY \"a\" ASC NULLS FIRST, \"b\" ASC NULLS LAST, \"c\" DESC NULLS FIRST, \"d\" DESC NULLS LAST")
+  assert r.sql == "SELECT * FROM \"t\" ORDER BY \"a\" ASC NULLS FIRST, \"b\" ASC NULLS LAST, \"c\" DESC NULLS FIRST, \"d\" DESC NULLS LAST"
 end
 
-fn test_fncall() do
+test "FnCall expr" do
   let q = Query({
     from_ = FromTable("t"),
     selects = [SelectField(FnCall("LOWER", [Col("email")]))],
@@ -315,10 +309,10 @@ fn test_fncall() do
     limit_ = None, offset_ = None, distinct_ = false
   })
   let r = compile(q)
-  assert(r.sql == "SELECT LOWER(\"email\") FROM \"t\"")
+  assert r.sql == "SELECT LOWER(\"email\") FROM \"t\""
 end
 
-fn test_like_param() do
+test "LIKE with param" do
   let q = Query({
     from_ = FromTable("users"), selects = Nil,
     wheres = [Where(Like(Col("name"), "%alice%"))],
@@ -326,11 +320,11 @@ fn test_like_param() do
     limit_ = None, offset_ = None, distinct_ = false
   })
   let r = compile(q)
-  assert(r.sql == "SELECT * FROM \"users\" WHERE \"name\" LIKE $1")
-  assert(list_len(r.params) == 1)
+  assert r.sql == "SELECT * FROM \"users\" WHERE \"name\" LIKE $1"
+  assert list_len(r.params) == 1
 end
 
-fn test_string_escaping_inline() do
+test "string escaping in inline compile" do
   let q = Query({
     from_ = FromTable("t"), selects = Nil,
     wheres = [Where(Eq(Col("name"), Lit(PString("O'Reilly"))))],
@@ -338,10 +332,10 @@ fn test_string_escaping_inline() do
     limit_ = None, offset_ = None, distinct_ = false
   })
   let r = compile_inline(q)
-  assert(r.sql == "SELECT * FROM \"t\" WHERE \"name\" = 'O''Reilly'")
+  assert r.sql == "SELECT * FROM \"t\" WHERE \"name\" = 'O''Reilly'"
 end
 
-fn test_ilike_inline() do
+test "ILIKE in inline compile" do
   let q = Query({
     from_ = FromTable("t"), selects = Nil,
     wheres = [Where(ILike(Col("bio"), "%engineer%"))],
@@ -349,39 +343,1971 @@ fn test_ilike_inline() do
     limit_ = None, offset_ = None, distinct_ = false
   })
   let r = compile_inline(q)
-  assert(r.sql == "SELECT * FROM \"t\" WHERE \"bio\" ILIKE '%engineer%'")
+  assert r.sql == "SELECT * FROM \"t\" WHERE \"bio\" ILIKE '%engineer%'"
 end
 
-fn main() : Unit do
-  test_simple_select_star()
-  test_select_with_columns()
-  test_where_with_param()
-  test_two_where_params()
-  test_null_param()
-  test_limit_and_offset()
-  test_distinct()
-  test_order_by()
-  test_select_as()
-  test_is_null()
-  test_is_not_null()
-  test_raw_expr()
-  test_in_expr()
-  test_not_in_expr()
-  test_between_expr()
-  test_in_inline()
-  test_between_inline()
-  test_qualified_col()
-  test_boolean_operators()
-  test_or_where()
-  test_join_inner()
-  test_join_left()
-  test_group_by()
-  test_order_nulls()
-  test_fncall()
-  test_like_param()
-  test_string_escaping_inline()
-  test_ilike_inline()
-  println("test_compile: all tests passed")
+test "Neq operator" do
+  let r = compile(Query({ from_ = FromTable("users"), selects = Nil,
+    wheres = [Where(Neq(Col("status"), Lit(PString("banned"))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false }))
+  assert r.sql == "SELECT * FROM \"users\" WHERE \"status\" <> $1"
+  assert list_len(r.params) == 1
 end
 
+test "Lt Gt Lte Gte operators" do
+  let lt_q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Lt(Col("age"), Lit(PInt(18))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert (compile(lt_q)).sql == "SELECT * FROM \"t\" WHERE \"age\" < $1"
+
+  let gt_q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Gt(Col("score"), Lit(PInt(100))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert (compile(gt_q)).sql == "SELECT * FROM \"t\" WHERE \"score\" > $1"
+
+  let lte_q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Lte(Col("n"), Lit(PInt(5))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert (compile(lte_q)).sql == "SELECT * FROM \"t\" WHERE \"n\" <= $1"
+
+  let gte_q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Gte(Col("n"), Lit(PInt(0))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert (compile(gte_q)).sql == "SELECT * FROM \"t\" WHERE \"n\" >= $1"
 end
+
+test "Add Sub Mul Div arithmetic in WHERE" do
+  let add_q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Eq(Add(Col("x"), Lit(PInt(1))), Lit(PInt(5))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert (compile(add_q)).sql == "SELECT * FROM \"t\" WHERE \"x\" + $1 = $2"
+
+  let sub_q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Eq(Sub(Col("a"), Col("b")), Lit(PInt(0))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert (compile(sub_q)).sql == "SELECT * FROM \"t\" WHERE \"a\" - \"b\" = $1"
+
+  let mul_q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Eq(Mul(Col("price"), Lit(PInt(2))), Lit(PInt(100))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert (compile(mul_q)).sql == "SELECT * FROM \"t\" WHERE \"price\" * $1 = $2"
+
+  let div_q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Eq(Div(Col("total"), Lit(PInt(100))), Lit(PInt(1))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert (compile(div_q)).sql == "SELECT * FROM \"t\" WHERE \"total\" / $1 = $2"
+end
+
+test "aggregate functions in SELECT" do
+  let q = Query({ from_ = FromTable("sales"),
+    selects = [SelectField(Sum(Col("amount"))),
+               SelectField(Avg(Col("score"))),
+               SelectField(Min(Col("price"))),
+               SelectField(Max(Col("price"))),
+               SelectField(Count(Col("id"))),
+               SelectField(CountAll)],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert r.sql == "SELECT SUM(\"amount\"), AVG(\"score\"), MIN(\"price\"), MAX(\"price\"), COUNT(\"id\"), COUNT(*) FROM \"sales\""
+end
+
+test "ExprParam in WHERE" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Gte(Col("n"), ExprParam(5)))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert r.sql == "SELECT * FROM \"t\" WHERE \"n\" >= $5"
+  assert list_len(r.params) == 0
+end
+
+test "Exists in WHERE" do
+  let sub = Query({ from_ = FromTable("orders"), selects = Nil,
+    wheres = [Where(Eq(Col("user_id"), Col("id")))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let q = Query({ from_ = FromTable("users"), selects = Nil,
+    wheres = [Where(Exists(sub))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert r.sql == "SELECT * FROM \"users\" WHERE EXISTS (SELECT * FROM \"orders\" WHERE \"user_id\" = \"id\")"
+end
+
+test "SubqueryExpr in SELECT" do
+  let sub = Query({ from_ = FromTable("counts"), selects = [SelectField(CountAll)],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let q = Query({ from_ = FromTable("t"),
+    selects = [SelectAs(SubqueryExpr(sub), "total")],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert r.sql == "SELECT (SELECT COUNT(*) FROM \"counts\") AS \"total\" FROM \"t\""
+end
+
+test "SelectAll in SELECT list" do
+  let q = Query({ from_ = FromTable("t"),
+    selects = [SelectAll],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert r.sql == "SELECT * FROM \"t\""
+end
+
+test "compile_inline with comparison operators" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Neq(Col("x"), Lit(PInt(0)))),
+              Where(Lt(Col("age"), Lit(PInt(18)))),
+              Where(Gt(Col("score"), Lit(PInt(100)))),
+              Where(Lte(Col("n"), Lit(PInt(5)))),
+              Where(Gte(Col("n"), Lit(PInt(0))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert r.sql == "SELECT * FROM \"t\" WHERE \"x\" <> 0 AND \"age\" < 18 AND \"score\" > 100 AND \"n\" <= 5 AND \"n\" >= 0"
+end
+
+test "compile_inline with arithmetic" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Eq(Add(Col("a"), Col("b")), Lit(PInt(10)))),
+              Where(Eq(Sub(Col("x"), Lit(PInt(1))), Lit(PInt(0)))),
+              Where(Eq(Mul(Col("p"), Lit(PInt(2))), Lit(PInt(8)))),
+              Where(Eq(Div(Col("total"), Lit(PInt(4))), Lit(PInt(5))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert r.sql == "SELECT * FROM \"t\" WHERE \"a\" + \"b\" = 10 AND \"x\" - 1 = 0 AND \"p\" * 2 = 8 AND \"total\" / 4 = 5"
+end
+
+test "compile_inline with aggregates in SELECT" do
+  let q = Query({ from_ = FromTable("sales"),
+    selects = [SelectField(Sum(Col("amount"))), SelectField(Avg(Col("score"))),
+               SelectField(Min(Col("price"))), SelectField(Max(Col("price"))),
+               SelectField(Count(Col("id"))), SelectField(CountAll)],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert r.sql == "SELECT SUM(\"amount\"), AVG(\"score\"), MIN(\"price\"), MAX(\"price\"), COUNT(\"id\"), COUNT(*) FROM \"sales\""
+end
+
+test "compile_inline ExprParam and Raw" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Gte(Col("n"), ExprParam(3))),
+              Where(Raw("x IS DISTINCT FROM NULL"))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert r.sql == "SELECT * FROM \"t\" WHERE \"n\" >= $3 AND x IS DISTINCT FROM NULL"
+end
+
+test "compile_inline Exists" do
+  let sub = Query({ from_ = FromTable("orders"), selects = Nil,
+    wheres = [Where(Eq(Col("user_id"), Col("id")))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let q = Query({ from_ = FromTable("users"), selects = Nil,
+    wheres = [Where(Exists(sub))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert r.sql == "SELECT * FROM \"users\" WHERE EXISTS (SELECT * FROM \"orders\" WHERE \"user_id\" = \"id\")"
+end
+
+test "compile_inline SubqueryExpr" do
+  let sub = Query({ from_ = FromTable("counts"), selects = [SelectField(CountAll)],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let q = Query({ from_ = FromTable("t"),
+    selects = [SelectAs(SubqueryExpr(sub), "cnt")],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert r.sql == "SELECT (SELECT COUNT(*) FROM \"counts\") AS \"cnt\" FROM \"t\""
+end
+
+test "compile_inline SelectAll item" do
+  let q = Query({ from_ = FromTable("t"), selects = [SelectAll],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert r.sql == "SELECT * FROM \"t\""
+end
+
+test "compile_inline RIGHT JOIN and FULL OUTER JOIN" do
+  let rj_q = Query({ from_ = FromTable("a"), selects = Nil,
+    joins = [JoinClause(Right, "b", Eq(Col("a_id"), Col("id")))],
+    wheres = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let rj = compile_inline(rj_q)
+  assert rj.sql == "SELECT * FROM \"a\" RIGHT JOIN \"b\" ON \"a_id\" = \"id\""
+
+  let fj_q = Query({ from_ = FromTable("a"), selects = Nil,
+    joins = [JoinClause(FullOuter, "b", Eq(Col("a_id"), Col("id")))],
+    wheres = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let fj = compile_inline(fj_q)
+  assert fj.sql == "SELECT * FROM \"a\" FULL OUTER JOIN \"b\" ON \"a_id\" = \"id\""
+end
+
+test "compile_inline CROSS JOIN" do
+  let q = Query({ from_ = FromTable("a"), selects = Nil,
+    joins = [JoinClause(Cross, "b", Raw("TRUE"))],
+    wheres = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert r.sql == "SELECT * FROM \"a\" CROSS JOIN \"b\" ON TRUE"
+end
+
+test "compile_inline NOT expr" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Not(Eq(Col("active"), Lit(PBool(false)))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert r.sql == "SELECT * FROM \"t\" WHERE NOT (\"active\" = FALSE)"
+end
+
+test "compile_inline FnCall" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Eq(FnCall("LOWER", [Col("email")]), Lit(PString("a@b.com"))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert r.sql == "SELECT * FROM \"t\" WHERE LOWER(\"email\") = 'a@b.com'"
+end
+
+test "compile_inline IsNull IsNotNull" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(IsNull(Col("deleted_at"))), Where(IsNotNull(Col("created_at")))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert r.sql == "SELECT * FROM \"t\" WHERE \"deleted_at\" IS NULL AND \"created_at\" IS NOT NULL"
+end
+
+test "compile_inline In NotIn Between" do
+  let in_q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(In(Col("id"), [Lit(PInt(1)), Lit(PInt(2))]))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r_in = compile_inline(in_q)
+  assert r_in.sql == "SELECT * FROM \"t\" WHERE \"id\" IN (1, 2)"
+
+  let nin_q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(NotIn(Col("id"), [Lit(PInt(3))]))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r_nin = compile_inline(nin_q)
+  assert r_nin.sql == "SELECT * FROM \"t\" WHERE \"id\" NOT IN (3)"
+
+  let btw_q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Between(Col("age"), Lit(PInt(18)), Lit(PInt(65))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r_btw = compile_inline(btw_q)
+  assert r_btw.sql == "SELECT * FROM \"t\" WHERE \"age\" BETWEEN 18 AND 65"
+end
+
+test "compile_inline LIKE and ILike" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Like(Col("name"), "%alice%")),
+              Where(ILike(Col("email"), "%@test.com"))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert r.sql == "SELECT * FROM \"t\" WHERE \"name\" LIKE '%alice%' AND \"email\" ILIKE '%@test.com'"
+end
+
+test "compile_inline QCol" do
+  let q = Query({ from_ = FromTable("orders"), selects = Nil,
+    wheres = [Where(Eq(QCol("orders", "user_id"), QCol("users", "id")))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert r.sql == "SELECT * FROM \"orders\" WHERE \"orders\".\"user_id\" = \"users\".\"id\""
+end
+
+test "compile_inline Or And" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Or(Eq(Col("a"), Lit(PInt(1))), Eq(Col("b"), Lit(PInt(2))))),
+              Where(And(Gt(Col("x"), Lit(PInt(0))), Lt(Col("x"), Lit(PInt(10)))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert r.sql == "SELECT * FROM \"t\" WHERE (\"a\" = 1 OR \"b\" = 2) AND (\"x\" > 0 AND \"x\" < 10)"
+end
+
+
+test "compile PFloat param" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Eq(Col("rate"), Lit(PFloat(1.5))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert list_len(r.params) == 1
+end
+
+test "compile_inline unsupported expr" do
+  let q = Query({ from_ = FromTable("t"),
+    selects = [SelectField(ExprParam(1))],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert r.sql == "SELECT $1 FROM \"t\""
+end
+
+test "compile_inline ORDER BY ASC and DESC" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil, wheres = Nil, joins = Nil,
+    orders = [OrderExpr(Col("name"), Asc), OrderExpr(Col("score"), Desc)],
+    group_bys = Nil, havings = Nil, limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert r.sql == "SELECT * FROM \"t\" ORDER BY \"name\" ASC, \"score\" DESC"
+end
+
+test "compile_inline ORDER BY NULLS variants" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil, wheres = Nil, joins = Nil,
+    orders = [OrderExpr(Col("a"), AscNullsFirst), OrderExpr(Col("b"), AscNullsLast),
+              OrderExpr(Col("c"), DescNullsFirst), OrderExpr(Col("d"), DescNullsLast)],
+    group_bys = Nil, havings = Nil, limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert r.sql == "SELECT * FROM \"t\" ORDER BY \"a\" ASC NULLS FIRST, \"b\" ASC NULLS LAST, \"c\" DESC NULLS FIRST, \"d\" DESC NULLS LAST"
+end
+
+test "compile_inline GROUP BY" do
+  let q = Query({ from_ = FromTable("sales"),
+    selects = [SelectField(Col("region")), SelectField(CountAll)],
+    wheres = Nil, joins = Nil, orders = Nil,
+    group_bys = [Col("region")],
+    havings = Nil, limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert r.sql == "SELECT \"region\", COUNT(*) FROM \"sales\" GROUP BY \"region\""
+end
+
+test "compile_inline HAVING" do
+  let q = Query({ from_ = FromTable("orders"),
+    selects = [SelectField(Col("status")), SelectAs(CountAll, "n")],
+    wheres = Nil, joins = Nil, orders = Nil,
+    group_bys = [Col("status")],
+    havings = [Where(Gt(CountAll, Lit(PInt(5))))],
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "HAVING") == true
+  assert String.contains(r.sql, "GROUP BY") == true
+end
+
+test "compile_inline DISTINCT" do
+  let q = Query({ from_ = FromTable("tags"), selects = Nil, wheres = Nil, joins = Nil,
+    orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = true })
+  let r = compile_inline(q)
+  assert r.sql == "SELECT DISTINCT * FROM \"tags\""
+end
+
+test "compile_inline OrWhere" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Eq(Col("a"), Lit(PInt(1)))), OrWhere(Eq(Col("b"), Lit(PInt(2))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "OR") == true
+end
+
+test "compile_inline LIMIT and OFFSET" do
+  let q = Query({ from_ = FromTable("events"), selects = Nil, wheres = Nil, joins = Nil,
+    orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = Some(10), offset_ = Some(5), distinct_ = false })
+  let r = compile_inline(q)
+  assert r.sql == "SELECT * FROM \"events\" LIMIT 10 OFFSET 5"
+end
+
+test "compile_inline full query: WHERE + GROUP BY + HAVING + ORDER + LIMIT" do
+  let q = Query({ from_ = FromTable("logs"),
+    selects = [SelectField(Col("level")), SelectAs(CountAll, "cnt")],
+    wheres = [Where(Gte(Col("severity"), Lit(PInt(3))))],
+    joins = Nil,
+    orders = [OrderExpr(Col("cnt"), Desc)],
+    group_bys = [Col("level")],
+    havings = [Where(Gt(CountAll, Lit(PInt(10))))],
+    limit_ = Some(5), offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "SELECT") == true
+  assert String.contains(r.sql, "GROUP BY") == true
+  assert String.contains(r.sql, "HAVING") == true
+  assert String.contains(r.sql, "ORDER BY") == true
+  assert String.contains(r.sql, "LIMIT") == true
+end
+
+-- ---- Parameterized compile: uncovered branches ----
+
+test "compile RIGHT JOIN parameterized" do
+  let q = Query({ from_ = FromTable("a"), selects = Nil,
+    joins = [JoinClause(Right, "b", Eq(Col("a_id"), Col("id")))],
+    wheres = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert r.sql == "SELECT * FROM \"a\" RIGHT JOIN \"b\" ON \"a_id\" = \"id\""
+end
+
+test "compile FULL OUTER JOIN parameterized" do
+  let q = Query({ from_ = FromTable("a"), selects = Nil,
+    joins = [JoinClause(FullOuter, "b", Eq(Col("a_id"), Col("id")))],
+    wheres = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert r.sql == "SELECT * FROM \"a\" FULL OUTER JOIN \"b\" ON \"a_id\" = \"id\""
+end
+
+test "compile CROSS JOIN parameterized" do
+  let q = Query({ from_ = FromTable("a"), selects = Nil,
+    joins = [JoinClause(Cross, "b", Lit(PBool(true)))],
+    wheres = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "CROSS JOIN") == true
+end
+
+test "compile HAVING parameterized" do
+  let q = Query({ from_ = FromTable("orders"),
+    selects = [SelectField(Col("status")), SelectAs(CountAll, "n")],
+    wheres = Nil, joins = Nil,
+    orders = Nil,
+    group_bys = [Col("status")],
+    havings = [Where(Gt(CountAll, Lit(PInt(5))))],
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "HAVING") == true
+  assert String.contains(r.sql, "GROUP BY") == true
+end
+
+test "compile PBool true parameterized" do
+  let q = Query({ from_ = FromTable("users"), selects = Nil,
+    wheres = [Where(Eq(Col("active"), Lit(PBool(true))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "$1") == true
+  match r.params do
+  Cons(ParamText(v), Nil) -> assert v == "t"
+  end
+end
+
+test "compile PBool false parameterized" do
+  let q = Query({ from_ = FromTable("users"), selects = Nil,
+    wheres = [Where(Eq(Col("deleted"), Lit(PBool(false))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  match r.params do
+  Cons(ParamText(v), Nil) -> assert v == "f"
+  end
+end
+
+test "compile ILike parameterized" do
+  let q = Query({ from_ = FromTable("posts"), selects = Nil,
+    wheres = [Where(ILike(Col("title"), "%hello%"))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "ILIKE $1") == true
+  match r.params do
+  Cons(ParamText(v), Nil) -> assert v == "%hello%"
+  end
+end
+
+-- ---- Inline compile: uncovered sql_value_to_string branches ----
+
+test "compile_inline PFloat literal" do
+  let q = Query({ from_ = FromTable("metrics"), selects = Nil,
+    wheres = [Where(Gt(Col("score"), Lit(PFloat(3.14))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "3.") == true
+end
+
+test "compile_inline PBool true literal" do
+  let q = Query({ from_ = FromTable("flags"), selects = Nil,
+    wheres = [Where(Eq(Col("on"), Lit(PBool(true))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "TRUE") == true
+end
+
+test "compile_inline PNull literal" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Eq(Col("x"), Lit(PNull)))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "NULL") == true
+end
+
+-- ---- escape_ident double-quote branch ----
+
+test "quote_ident escapes embedded double quote" do
+  -- Col with a double-quote in name triggers the b==34 branch in escape_ident
+  let q = Query({ from_ = FromTable("t"),
+    selects = [SelectField(Col("weird\"col"))],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  -- The double quote is doubled: "weird""col"
+  assert String.contains(r.sql, "weird\"\"col") == true
+end
+
+-- ---- OrWhere in HAVING (parameterized) ----
+
+test "compile HAVING OrWhere parameterized" do
+  let q = Query({ from_ = FromTable("sales"),
+    selects = [SelectField(Col("region")), SelectAs(CountAll, "n")],
+    wheres = Nil, joins = Nil,
+    orders = Nil,
+    group_bys = [Col("region")],
+    havings = [Where(Gt(CountAll, Lit(PInt(1)))),
+               OrWhere(Gt(CountAll, Lit(PInt(10))))],
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "HAVING") == true
+  assert String.contains(r.sql, "OR") == true
+end
+
+-- ---- Inline compile: JOIN kinds ----
+
+test "compile_inline INNER JOIN" do
+  let q = Query({ from_ = FromTable("orders"),
+    selects = Nil,
+    joins = [JoinClause(Inner, "users", Eq(QCol("orders","user_id"), QCol("users","id")))],
+    wheres = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "INNER JOIN") == true
+end
+
+test "compile_inline LEFT JOIN" do
+  let q = Query({ from_ = FromTable("orders"),
+    selects = Nil,
+    joins = [JoinClause(Left, "users", Eq(QCol("orders","user_id"), QCol("users","id")))],
+    wheres = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "LEFT JOIN") == true
+end
+
+test "compile_inline RIGHT JOIN" do
+  let q = Query({ from_ = FromTable("a"),
+    selects = Nil,
+    joins = [JoinClause(Right, "b", Eq(Col("a_id"), Col("id")))],
+    wheres = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "RIGHT JOIN") == true
+end
+
+test "compile_inline FULL OUTER JOIN" do
+  let q = Query({ from_ = FromTable("a"),
+    selects = Nil,
+    joins = [JoinClause(FullOuter, "b", Eq(Col("a_id"), Col("id")))],
+    wheres = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "FULL OUTER JOIN") == true
+end
+
+test "compile_inline CROSS JOIN" do
+  let q = Query({ from_ = FromTable("a"),
+    selects = Nil,
+    joins = [JoinClause(Cross, "b", Lit(PBool(true)))],
+    wheres = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "CROSS JOIN") == true
+end
+
+-- ---- Inline compile: SelectAll and SelectAs in select list ----
+
+test "compile_inline SelectAll in selects list" do
+  let q = Query({ from_ = FromTable("t"),
+    selects = [SelectAll],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert r.sql == "SELECT * FROM \"t\""
+end
+
+test "compile_inline SelectAs in selects list" do
+  let q = Query({ from_ = FromTable("t"),
+    selects = [SelectAs(Col("id"), "my_id"), SelectField(Col("name"))],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "AS \"my_id\"") == true
+  assert String.contains(r.sql, "\"name\"") == true
+end
+
+-- ---- Inline compile: GROUP BY, HAVING, ORDER BY ----
+
+test "compile_inline GROUP BY" do
+  let q = Query({ from_ = FromTable("sales"),
+    selects = Nil,
+    group_bys = [Col("region"), Col("year")],
+    wheres = Nil, joins = Nil, orders = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "GROUP BY") == true
+end
+
+test "compile_inline HAVING" do
+  let q = Query({ from_ = FromTable("orders"),
+    selects = Nil,
+    group_bys = [Col("status")],
+    havings = [Where(Gt(CountAll, Lit(PInt(5))))],
+    wheres = Nil, joins = Nil, orders = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "HAVING") == true
+  assert String.contains(r.sql, "COUNT(*)") == true
+end
+
+test "compile_inline HAVING OrWhere" do
+  let q = Query({ from_ = FromTable("t"),
+    selects = Nil,
+    group_bys = [Col("x")],
+    havings = [Where(Gt(CountAll, Lit(PInt(1)))),
+               OrWhere(Gt(CountAll, Lit(PInt(10))))],
+    wheres = Nil, joins = Nil, orders = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "HAVING") == true
+  assert String.contains(r.sql, "OR") == true
+end
+
+test "compile_inline ORDER BY ASC" do
+  let q = Query({ from_ = FromTable("users"),
+    selects = Nil,
+    orders = [OrderExpr(Col("name"), Asc)],
+    wheres = Nil, joins = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "ORDER BY \"name\" ASC") == true
+end
+
+test "compile_inline ORDER BY AscNullsFirst" do
+  let q = Query({ from_ = FromTable("t"),
+    selects = Nil,
+    orders = [OrderExpr(Col("x"), AscNullsFirst)],
+    wheres = Nil, joins = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "ASC NULLS FIRST") == true
+end
+
+test "compile_inline ORDER BY AscNullsLast" do
+  let q = Query({ from_ = FromTable("t"),
+    selects = Nil,
+    orders = [OrderExpr(Col("x"), AscNullsLast)],
+    wheres = Nil, joins = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "ASC NULLS LAST") == true
+end
+
+test "compile_inline ORDER BY DescNullsFirst" do
+  let q = Query({ from_ = FromTable("t"),
+    selects = Nil,
+    orders = [OrderExpr(Col("x"), DescNullsFirst)],
+    wheres = Nil, joins = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "DESC NULLS FIRST") == true
+end
+
+test "compile_inline ORDER BY DescNullsLast" do
+  let q = Query({ from_ = FromTable("t"),
+    selects = Nil,
+    orders = [OrderExpr(Col("x"), DescNullsLast)],
+    wheres = Nil, joins = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "DESC NULLS LAST") == true
+end
+
+test "compile_inline OrWhere" do
+  let q = Query({ from_ = FromTable("users"), selects = Nil,
+    wheres = [Where(Eq(Col("role"), Lit(PString("admin")))),
+              OrWhere(Eq(Col("role"), Lit(PString("mod"))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "OR") == true
+end
+
+-- ---- compile_expr_inline: arithmetic and boolean operators ----
+
+test "compile_inline WHERE Add" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Gt(Add(Col("a"), Col("b")), Lit(PInt(0))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "+") == true
+end
+
+test "compile_inline WHERE Sub" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Gt(Sub(Col("a"), Col("b")), Lit(PInt(0))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "-") == true
+end
+
+test "compile_inline WHERE Mul" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Gt(Mul(Col("a"), Col("b")), Lit(PInt(0))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "*") == true
+end
+
+test "compile_inline WHERE Div" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Gt(Div(Col("a"), Col("b")), Lit(PInt(0))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "/") == true
+end
+
+test "compile_inline WHERE Neq" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Neq(Col("x"), Lit(PInt(0))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "<>") == true
+end
+
+test "compile_inline WHERE Lt" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Lt(Col("x"), Lit(PInt(5))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, " < ") == true
+end
+
+test "compile_inline WHERE Lte" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Lte(Col("x"), Lit(PInt(5))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "<=") == true
+end
+
+test "compile_inline WHERE Gte" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Gte(Col("x"), Lit(PInt(5))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, ">=") == true
+end
+
+test "compile_inline WHERE And" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(And(Gt(Col("x"), Lit(PInt(0))), Lt(Col("x"), Lit(PInt(10)))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, " AND ") == true
+end
+
+test "compile_inline WHERE Or" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Or(Eq(Col("x"), Lit(PInt(1))), Eq(Col("x"), Lit(PInt(2)))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, " OR ") == true
+end
+
+test "compile_inline WHERE Not" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Not(Eq(Col("x"), Lit(PInt(0)))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "NOT (") == true
+end
+
+test "compile_inline WHERE IsNull" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(IsNull(Col("deleted_at")))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "IS NULL") == true
+end
+
+test "compile_inline WHERE IsNotNull" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(IsNotNull(Col("published_at")))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "IS NOT NULL") == true
+end
+
+test "compile_inline WHERE In" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(In(Col("id"), [Lit(PInt(1)), Lit(PInt(2))]))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "IN (1, 2)") == true
+end
+
+test "compile_inline WHERE NotIn" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(NotIn(Col("status"), [Lit(PString("x")), Lit(PString("y"))]))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "NOT IN") == true
+end
+
+test "compile_inline WHERE Between" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Between(Col("x"), Lit(PInt(1)), Lit(PInt(10))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "BETWEEN 1 AND 10") == true
+end
+
+test "compile_inline WHERE FnCall" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Eq(FnCall("LOWER", [Col("email")]), Lit(PString("test"))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "LOWER(\"email\")") == true
+end
+
+test "compile_inline WHERE Like" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Like(Col("name"), "%alice%"))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "LIKE '%alice%'") == true
+end
+
+test "compile_inline WHERE ILike" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(ILike(Col("name"), "%alice%"))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "ILIKE '%alice%'") == true
+end
+
+test "compile_inline HAVING Count" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    group_bys = [Col("x")],
+    havings = [Where(Gt(Count(Col("id")), Lit(PInt(0))))],
+    wheres = Nil, joins = Nil, orders = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "COUNT(\"id\")") == true
+end
+
+test "compile_inline HAVING Sum" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    group_bys = [Col("x")],
+    havings = [Where(Gt(Sum(Col("amount")), Lit(PInt(100))))],
+    wheres = Nil, joins = Nil, orders = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "SUM(\"amount\")") == true
+end
+
+test "compile_inline HAVING Avg" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    group_bys = [Col("x")],
+    havings = [Where(Gt(Avg(Col("score")), Lit(PFloat(5.0))))],
+    wheres = Nil, joins = Nil, orders = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "AVG(\"score\")") == true
+end
+
+test "compile_inline HAVING Min" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    group_bys = [Col("x")],
+    havings = [Where(Gt(Min(Col("val")), Lit(PInt(0))))],
+    wheres = Nil, joins = Nil, orders = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "MIN(\"val\")") == true
+end
+
+test "compile_inline HAVING Max" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    group_bys = [Col("x")],
+    havings = [Where(Lt(Max(Col("val")), Lit(PInt(1000))))],
+    wheres = Nil, joins = Nil, orders = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "MAX(\"val\")") == true
+end
+
+test "compile_inline HAVING CountAll" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    group_bys = [Col("x")],
+    havings = [Where(Gt(CountAll, Lit(PInt(5))))],
+    wheres = Nil, joins = Nil, orders = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "COUNT(*)") == true
+end
+
+test "compile_inline WHERE ExprParam" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(ExprParam(1))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "$1") == true
+end
+
+test "compile_inline WHERE Raw" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Raw("\"x\" IS DISTINCT FROM NULL"))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "IS DISTINCT FROM") == true
+end
+
+test "compile_inline WHERE Exists" do
+  let sub = Query({ from_ = FromTable("orders"),
+    selects = Nil, wheres = Nil, joins = Nil, orders = Nil,
+    group_bys = Nil, havings = Nil, limit_ = None, offset_ = None, distinct_ = false })
+  let q = Query({ from_ = FromTable("users"), selects = Nil,
+    wheres = [Where(Exists(sub))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "EXISTS") == true
+end
+
+test "compile_inline WHERE SubqueryExpr" do
+  let sub = Query({ from_ = FromTable("scores"),
+    selects = Nil, wheres = Nil, joins = Nil, orders = Nil,
+    group_bys = Nil, havings = Nil, limit_ = None, offset_ = None, distinct_ = false })
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Gt(Col("score"), SubqueryExpr(sub)))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "SELECT") == true
+end
+
+test "compile_inline WHERE unsupported expr wildcard" do
+  -- QCol with an unusual name to trigger quote path
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Eq(QCol("tbl","col"), Lit(PInt(1))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "\"tbl\".\"col\"") == true
+end
+
+-- ---- Parameterized compile: arithmetic, aggregates, ORDER BY NULLS ----
+
+test "compile WHERE Add" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Gt(Add(Col("a"), Col("b")), Lit(PInt(0))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "+") == true
+end
+
+test "compile WHERE Sub" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Gt(Sub(Col("a"), Col("b")), Lit(PInt(0))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "-") == true
+end
+
+test "compile WHERE Mul" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Gt(Mul(Col("a"), Col("b")), Lit(PInt(0))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "*") == true
+end
+
+test "compile WHERE Div" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Gt(Div(Col("a"), Col("b")), Lit(PInt(0))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "/") == true
+end
+
+test "compile HAVING Sum" do
+  let q = Query({ from_ = FromTable("t"),
+    selects = [SelectAs(Sum(Col("amount")), "total")],
+    group_bys = [Col("category")],
+    havings = [Where(Gt(Sum(Col("amount")), Lit(PInt(100))))],
+    wheres = Nil, joins = Nil, orders = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "SUM") == true
+end
+
+test "compile HAVING Avg" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    group_bys = [Col("category")],
+    havings = [Where(Gt(Avg(Col("score")), Lit(PFloat(5.0))))],
+    wheres = Nil, joins = Nil, orders = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "AVG") == true
+end
+
+test "compile HAVING Min" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    group_bys = [Col("x")],
+    havings = [Where(Gt(Min(Col("val")), Lit(PInt(0))))],
+    wheres = Nil, joins = Nil, orders = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "MIN") == true
+end
+
+test "compile HAVING Max" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    group_bys = [Col("x")],
+    havings = [Where(Lt(Max(Col("val")), Lit(PInt(1000))))],
+    wheres = Nil, joins = Nil, orders = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "MAX") == true
+end
+
+test "compile Exists subquery" do
+  let sub = Query({ from_ = FromTable("orders"),
+    selects = Nil, wheres = Nil, joins = Nil, orders = Nil,
+    group_bys = Nil, havings = Nil, limit_ = None, offset_ = None, distinct_ = false })
+  let q = Query({ from_ = FromTable("users"), selects = Nil,
+    wheres = [Where(Exists(sub))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "EXISTS") == true
+end
+
+test "compile SubqueryExpr" do
+  let sub = Query({ from_ = FromTable("scores"),
+    selects = Nil, wheres = Nil, joins = Nil, orders = Nil,
+    group_bys = Nil, havings = Nil, limit_ = None, offset_ = None, distinct_ = false })
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Gt(Col("score"), SubqueryExpr(sub)))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "SELECT") == true
+end
+
+test "compile ORDER BY AscNullsFirst" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    orders = [OrderExpr(Col("x"), AscNullsFirst)],
+    wheres = Nil, joins = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "ASC NULLS FIRST") == true
+end
+
+test "compile ORDER BY AscNullsLast" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    orders = [OrderExpr(Col("x"), AscNullsLast)],
+    wheres = Nil, joins = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "ASC NULLS LAST") == true
+end
+
+test "compile ORDER BY DescNullsFirst" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    orders = [OrderExpr(Col("x"), DescNullsFirst)],
+    wheres = Nil, joins = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "DESC NULLS FIRST") == true
+end
+
+test "compile ORDER BY DescNullsLast" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    orders = [OrderExpr(Col("x"), DescNullsLast)],
+    wheres = Nil, joins = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "DESC NULLS LAST") == true
+end
+
+test "compile SelectAll in selects list" do
+  let q = Query({ from_ = FromTable("t"),
+    selects = [SelectAll],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert r.sql == "SELECT * FROM \"t\""
+end
+
+-- ---- compile_inline PBool false (covers sql_value_to_string FALSE branch) ----
+
+test "compile_inline PBool false literal" do
+  let q = Query({ from_ = FromTable("flags"), selects = Nil,
+    wheres = [Where(Eq(Col("active"), Lit(PBool(false))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "FALSE") == true
+end
+
+-- ---- Additional SELECT expressions ----
+
+test "compile SelectField Col" do
+  let q = Query({ from_ = FromTable("users"), selects = [SelectField(Col("name"))],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "\"name\"") == true
+  assert String.contains(r.sql, "FROM \"users\"") == true
+end
+
+test "compile SelectField QCol" do
+  let q = Query({ from_ = FromTable("orders"), selects = [SelectField(QCol("o", "id"))],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "\"o\".\"id\"") == true
+end
+
+test "compile SelectAs Col alias" do
+  let q = Query({ from_ = FromTable("products"), selects = [SelectAs(Col("price"), "cost")],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "\"price\"") == true
+  assert String.contains(r.sql, "\"cost\"") == true
+end
+
+test "compile SelectAs Sum alias" do
+  let q = Query({ from_ = FromTable("sales"), selects = [SelectAs(Sum(Col("amount")), "total")],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "SUM") == true
+  assert String.contains(r.sql, "\"total\"") == true
+end
+
+test "compile multiple SELECT columns" do
+  let q = Query({ from_ = FromTable("t"),
+    selects = [SelectField(Col("a")), SelectField(Col("b")), SelectField(Col("c"))],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "\"a\"") == true
+  assert String.contains(r.sql, "\"b\"") == true
+  assert String.contains(r.sql, "\"c\"") == true
+end
+
+test "compile DISTINCT" do
+  let q = Query({ from_ = FromTable("users"), selects = [SelectField(Col("name"))],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = true })
+  let r = compile(q)
+  assert String.contains(r.sql, "DISTINCT") == true
+end
+
+test "compile LIMIT" do
+  let q = Query({ from_ = FromTable("users"), selects = Nil,
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = Some(10), offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "LIMIT") == true
+  assert String.contains(r.sql, "10") == true
+end
+
+test "compile OFFSET" do
+  let q = Query({ from_ = FromTable("users"), selects = Nil,
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = Some(20), distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "OFFSET") == true
+  assert String.contains(r.sql, "20") == true
+end
+
+test "compile LIMIT and OFFSET combined" do
+  let q = Query({ from_ = FromTable("posts"), selects = Nil,
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = Some(5), offset_ = Some(15), distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "LIMIT") == true
+  assert String.contains(r.sql, "OFFSET") == true
+end
+
+-- ---- WHERE clause variations ----
+
+test "compile WHERE Neq" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Neq(Col("status"), Lit(PString("deleted"))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "<>") == true
+  assert String.contains(r.sql, "WHERE") == true
+end
+
+test "compile WHERE Lt" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Lt(Col("age"), Lit(PInt(18))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "<") == true
+end
+
+test "compile WHERE Lte" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Lte(Col("score"), Lit(PInt(100))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "<=") == true
+end
+
+test "compile WHERE Gte" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Gte(Col("rating"), Lit(PInt(4))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, ">=") == true
+end
+
+test "compile WHERE And two conditions" do
+  let q = Query({ from_ = FromTable("users"), selects = Nil,
+    wheres = [Where(And(Eq(Col("active"), Lit(PBool(true))), Gt(Col("age"), Lit(PInt(18)))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "AND") == true
+end
+
+test "compile WHERE Or two conditions" do
+  let q = Query({ from_ = FromTable("items"), selects = Nil,
+    wheres = [Where(Or(Eq(Col("type"), Lit(PString("a"))), Eq(Col("type"), Lit(PString("b")))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "OR") == true
+end
+
+test "compile WHERE Not" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Not(Eq(Col("deleted"), Lit(PBool(true)))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "NOT") == true
+end
+
+test "compile WHERE IsNull" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(IsNull(Col("deleted_at")))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "IS NULL") == true
+end
+
+test "compile WHERE IsNotNull" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(IsNotNull(Col("email")))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "IS NOT NULL") == true
+end
+
+test "compile WHERE Like" do
+  let q = Query({ from_ = FromTable("users"), selects = Nil,
+    wheres = [Where(Like(Col("name"), "Al%"))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "LIKE") == true
+end
+
+test "compile WHERE ILike" do
+  let q = Query({ from_ = FromTable("users"), selects = Nil,
+    wheres = [Where(ILike(Col("name"), "al%"))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "ILIKE") == true
+end
+
+test "compile WHERE Between" do
+  let q = Query({ from_ = FromTable("events"), selects = Nil,
+    wheres = [Where(Between(Col("date"), Lit(PString("2024-01-01")), Lit(PString("2024-12-31"))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "BETWEEN") == true
+end
+
+test "compile WHERE In list" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(In(Col("status"), [Lit(PString("a")), Lit(PString("b"))]))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "IN") == true
+end
+
+test "compile WHERE NotIn list" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(NotIn(Col("role"), [Lit(PString("banned"))]))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "NOT IN") == true
+end
+
+test "compile multiple WHERE conditions" do
+  let q = Query({ from_ = FromTable("orders"), selects = Nil,
+    wheres = [Where(Eq(Col("status"), Lit(PString("active")))), Where(Gt(Col("total"), Lit(PInt(0))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "WHERE") == true
+  assert String.contains(r.sql, "AND") == true
+end
+
+test "compile WHERE arithmetic Add" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Gt(Add(Col("x"), Col("y")), Lit(PInt(10))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "+") == true
+end
+
+test "compile WHERE arithmetic Sub" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Gt(Sub(Col("x"), Col("y")), Lit(PInt(0))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "-") == true
+end
+
+test "compile WHERE arithmetic Mul" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Gt(Mul(Col("qty"), Col("price")), Lit(PInt(100))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "*") == true
+end
+
+test "compile WHERE arithmetic Div" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Gt(Div(Col("total"), Col("count")), Lit(PInt(5))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "/") == true
+end
+
+-- ---- JOIN variations ----
+
+test "compile INNER JOIN" do
+  let q = Query({ from_ = FromTable("orders"), selects = Nil,
+    joins = [JoinClause(Inner, "users", Eq(QCol("orders", "user_id"), QCol("users", "id")))],
+    wheres = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "INNER JOIN") == true
+  assert String.contains(r.sql, "\"users\"") == true
+end
+
+test "compile LEFT JOIN" do
+  let q = Query({ from_ = FromTable("posts"), selects = Nil,
+    joins = [JoinClause(Left, "comments", Eq(QCol("posts", "id"), QCol("comments", "post_id")))],
+    wheres = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "LEFT JOIN") == true
+end
+
+test "compile multiple JOINs" do
+  let q = Query({ from_ = FromTable("a"), selects = Nil,
+    joins = [JoinClause(Inner, "b", Eq(Col("a_id"), Col("id"))),
+             JoinClause(Left, "c", Eq(Col("b_id"), Col("id")))],
+    wheres = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "INNER JOIN") == true
+  assert String.contains(r.sql, "LEFT JOIN") == true
+end
+
+-- ---- ORDER BY variations ----
+
+test "compile ORDER BY ASC" do
+  let q = Query({ from_ = FromTable("products"), selects = Nil,
+    orders = [OrderExpr(Col("price"), Asc)],
+    wheres = Nil, joins = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "ORDER BY") == true
+  assert String.contains(r.sql, "ASC") == true
+end
+
+test "compile ORDER BY DESC" do
+  let q = Query({ from_ = FromTable("products"), selects = Nil,
+    orders = [OrderExpr(Col("price"), Desc)],
+    wheres = Nil, joins = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "ORDER BY") == true
+  assert String.contains(r.sql, "DESC") == true
+end
+
+test "compile multiple ORDER BY columns" do
+  let q = Query({ from_ = FromTable("users"), selects = Nil,
+    orders = [OrderExpr(Col("last_name"), Asc), OrderExpr(Col("first_name"), Asc)],
+    wheres = Nil, joins = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "\"last_name\"") == true
+  assert String.contains(r.sql, "\"first_name\"") == true
+end
+
+-- ---- GROUP BY and HAVING variations ----
+
+test "compile GROUP BY single column" do
+  let q = Query({ from_ = FromTable("orders"), selects = Nil,
+    group_bys = [Col("status")],
+    wheres = Nil, joins = Nil, orders = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "GROUP BY") == true
+  assert String.contains(r.sql, "\"status\"") == true
+end
+
+test "compile GROUP BY multiple columns" do
+  let q = Query({ from_ = FromTable("sales"), selects = Nil,
+    group_bys = [Col("region"), Col("product")],
+    wheres = Nil, joins = Nil, orders = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "GROUP BY") == true
+  assert String.contains(r.sql, "\"region\"") == true
+  assert String.contains(r.sql, "\"product\"") == true
+end
+
+test "compile HAVING Eq Count" do
+  let q = Query({ from_ = FromTable("orders"), selects = Nil,
+    group_bys = [Col("user_id")],
+    havings = [Where(Gt(Count(Col("id")), Lit(PInt(3))))],
+    wheres = Nil, joins = Nil, orders = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "HAVING") == true
+  assert String.contains(r.sql, "COUNT") == true
+end
+
+-- ---- Aggregate SELECT expressions ----
+
+test "compile SELECT Count" do
+  let q = Query({ from_ = FromTable("orders"), selects = [SelectAs(Count(Col("id")), "n")],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "COUNT") == true
+end
+
+test "compile SELECT Sum" do
+  let q = Query({ from_ = FromTable("sales"), selects = [SelectAs(Sum(Col("amount")), "total")],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "SUM") == true
+end
+
+test "compile SELECT Avg" do
+  let q = Query({ from_ = FromTable("metrics"), selects = [SelectAs(Avg(Col("val")), "mean")],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "AVG") == true
+end
+
+test "compile SELECT Min" do
+  let q = Query({ from_ = FromTable("t"), selects = [SelectAs(Min(Col("price")), "min_price")],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "MIN") == true
+end
+
+test "compile SELECT Max" do
+  let q = Query({ from_ = FromTable("t"), selects = [SelectAs(Max(Col("price")), "max_price")],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "MAX") == true
+end
+
+test "compile SELECT CountAll" do
+  let q = Query({ from_ = FromTable("t"), selects = [SelectAs(CountAll, "total")],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "COUNT(*)") == true
+end
+
+-- ---- compile_inline variations ----
+
+test "compile_inline simple WHERE Eq" do
+  let q = Query({ from_ = FromTable("users"), selects = Nil,
+    wheres = [Where(Eq(Col("id"), Lit(PString("abc-123"))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "WHERE") == true
+  assert String.contains(r.sql, "abc-123") == true
+end
+
+test "compile_inline multiple WHERE conditions" do
+  let q = Query({ from_ = FromTable("products"), selects = Nil,
+    wheres = [Where(Eq(Col("active"), Lit(PBool(true)))),
+              Where(Gt(Col("stock"), Lit(PInt(0))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "WHERE") == true
+  assert String.contains(r.sql, "AND") == true
+end
+
+test "compile_inline WITH JOIN" do
+  let q = Query({ from_ = FromTable("orders"), selects = Nil,
+    joins = [JoinClause(Left, "users", Eq(QCol("orders", "user_id"), QCol("users", "id")))],
+    wheres = [Where(Eq(Col("status"), Lit(PString("open"))))],
+    orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "JOIN") == true
+  assert String.contains(r.sql, "open") == true
+end
+
+test "compile_inline ORDER BY" do
+  let q = Query({ from_ = FromTable("products"), selects = Nil,
+    orders = [OrderExpr(Col("name"), Asc)],
+    wheres = Nil, joins = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "ORDER BY") == true
+end
+
+test "compile_inline GROUP BY HAVING" do
+  let q = Query({ from_ = FromTable("orders"), selects = Nil,
+    group_bys = [Col("user_id")],
+    havings = [Where(Gte(CountAll, Lit(PInt(2))))],
+    wheres = Nil, joins = Nil, orders = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "GROUP BY") == true
+  assert String.contains(r.sql, "HAVING") == true
+end
+
+test "compile_inline DISTINCT" do
+  let q = Query({ from_ = FromTable("categories"), selects = [SelectField(Col("name"))],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = true })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "DISTINCT") == true
+end
+
+test "compile_inline LIMIT" do
+  let q = Query({ from_ = FromTable("logs"), selects = Nil,
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = Some(50), offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "LIMIT 50") == true
+end
+
+test "compile_inline OFFSET" do
+  let q = Query({ from_ = FromTable("logs"), selects = Nil,
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = Some(100), distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "OFFSET 100") == true
+end
+
+test "compile_inline IsNull" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(IsNull(Col("archived_at")))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "IS NULL") == true
+end
+
+test "compile_inline IsNotNull" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(IsNotNull(Col("confirmed_at")))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "IS NOT NULL") == true
+end
+
+test "compile_inline Like" do
+  let q = Query({ from_ = FromTable("users"), selects = Nil,
+    wheres = [Where(Like(Col("email"), "%@example.com"))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "LIKE") == true
+end
+
+test "compile_inline ILike" do
+  let q = Query({ from_ = FromTable("users"), selects = Nil,
+    wheres = [Where(ILike(Col("name"), "alice%"))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "ILIKE") == true
+end
+
+test "compile_inline Between" do
+  let q = Query({ from_ = FromTable("events"), selects = Nil,
+    wheres = [Where(Between(Col("score"), Lit(PInt(50)), Lit(PInt(100))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "BETWEEN") == true
+end
+
+test "compile_inline In" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(In(Col("type"), [Lit(PString("x")), Lit(PString("y"))]))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "IN") == true
+end
+
+test "compile_inline NotIn" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(NotIn(Col("status"), [Lit(PString("spam"))]))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "NOT IN") == true
+end
+
+test "compile_inline Not" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Not(Eq(Col("active"), Lit(PBool(false)))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "NOT") == true
+end
+
+test "compile_inline And" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(And(Gte(Col("age"), Lit(PInt(18))), Lt(Col("age"), Lit(PInt(65)))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "AND") == true
+end
+
+test "compile_inline Or" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Or(Eq(Col("role"), Lit(PString("admin"))), Eq(Col("role"), Lit(PString("mod")))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "OR") == true
+end
+
+test "compile_inline arithmetic Add" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Gt(Add(Col("a"), Lit(PInt(5))), Lit(PInt(10))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "+") == true
+end
+
+test "compile_inline arithmetic Sub" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Gt(Sub(Col("total"), Col("discount")), Lit(PInt(0))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "-") == true
+end
+
+test "compile_inline arithmetic Mul" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Gt(Mul(Col("qty"), Lit(PInt(3))), Lit(PInt(0))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "*") == true
+end
+
+test "compile_inline arithmetic Div" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Gt(Div(Col("revenue"), Col("count")), Lit(PInt(1000))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "/") == true
+end
+
+test "compile_inline FnCall" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Eq(FnCall("lower", [Col("email")]), Lit(PString("test@test.com"))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "lower") == true
+end
+
+test "compile_inline Neq" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Neq(Col("type"), Lit(PString("guest"))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "<>") == true
+end
+
+test "compile_inline Lt" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Lt(Col("created_at"), Lit(PString("2024-01-01"))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "<") == true
+end
+
+test "compile_inline Lte" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Lte(Col("priority"), Lit(PInt(5))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "<=") == true
+end
+
+test "compile_inline Gte" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Gte(Col("version"), Lit(PInt(2))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, ">=") == true
+end
+
+test "compile_inline Gt" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Gt(Col("balance"), Lit(PInt(0))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, ">") == true
+end
+
+test "compile_inline SelectField" do
+  let q = Query({ from_ = FromTable("users"), selects = [SelectField(Col("email"))],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "\"email\"") == true
+end
+
+test "compile_inline SelectAs alias" do
+  let q = Query({ from_ = FromTable("t"), selects = [SelectAs(Col("full_name"), "name")],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "\"name\"") == true
+end
+
+test "compile_inline multiple selects" do
+  let q = Query({ from_ = FromTable("t"),
+    selects = [SelectField(Col("id")), SelectField(Col("name")), SelectField(Col("email"))],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "\"id\"") == true
+  assert String.contains(r.sql, "\"name\"") == true
+  assert String.contains(r.sql, "\"email\"") == true
+end
+
+test "compile_inline QCol" do
+  let q = Query({ from_ = FromTable("orders"),
+    selects = [SelectField(QCol("orders", "id"))],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "\"orders\".\"id\"") == true
+end
+
+test "compile_inline Count SELECT" do
+  let q = Query({ from_ = FromTable("t"), selects = [SelectAs(Count(Col("id")), "c")],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "COUNT") == true
+end
+
+test "compile_inline CountAll SELECT" do
+  let q = Query({ from_ = FromTable("t"), selects = [SelectAs(CountAll, "total")],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "COUNT(*)") == true
+end
+
+test "compile_inline Sum SELECT" do
+  let q = Query({ from_ = FromTable("t"), selects = [SelectAs(Sum(Col("amount")), "s")],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "SUM") == true
+end
+
+test "compile_inline Avg SELECT" do
+  let q = Query({ from_ = FromTable("t"), selects = [SelectAs(Avg(Col("val")), "avg")],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "AVG") == true
+end
+
+test "compile_inline Min SELECT" do
+  let q = Query({ from_ = FromTable("t"), selects = [SelectAs(Min(Col("price")), "lo")],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "MIN") == true
+end
+
+test "compile_inline Max SELECT" do
+  let q = Query({ from_ = FromTable("t"), selects = [SelectAs(Max(Col("price")), "hi")],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "MAX") == true
+end
+
+test "compile_inline INNER JOIN" do
+  let q = Query({ from_ = FromTable("a"), selects = Nil,
+    joins = [JoinClause(Inner, "b", Eq(QCol("a", "b_id"), QCol("b", "id")))],
+    wheres = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "INNER JOIN") == true
+end
+
+test "compile_inline LEFT JOIN" do
+  let q = Query({ from_ = FromTable("a"), selects = Nil,
+    joins = [JoinClause(Left, "b", Eq(QCol("a", "b_id"), QCol("b", "id")))],
+    wheres = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "LEFT JOIN") == true
+end
+
+test "compile_inline GROUP BY" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    group_bys = [Col("category")],
+    wheres = Nil, joins = Nil, orders = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "GROUP BY") == true
+  assert String.contains(r.sql, "\"category\"") == true
+end
+
+test "compile_inline full complex query" do
+  let q = Query({ from_ = FromTable("orders"),
+    selects = [SelectField(Col("user_id")), SelectAs(Sum(Col("amount")), "total")],
+    joins = [JoinClause(Inner, "users", Eq(QCol("orders", "user_id"), QCol("users", "id")))],
+    wheres = [Where(Eq(Col("status"), Lit(PString("completed"))))],
+    group_bys = [Col("user_id")],
+    havings = [Where(Gt(Sum(Col("amount")), Lit(PInt(100))))],
+    orders = [OrderExpr(Col("total"), Desc)],
+    limit_ = Some(10), offset_ = Some(0), distinct_ = false })
+  let r = compile_inline(q)
+  assert String.contains(r.sql, "GROUP BY") == true
+  assert String.contains(r.sql, "HAVING") == true
+  assert String.contains(r.sql, "ORDER BY") == true
+  assert String.contains(r.sql, "LIMIT") == true
+end
+
+-- ---- compile params correctness ----
+
+test "compile params list grows with Lit values" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Eq(Col("a"), Lit(PString("x")))),
+              Where(Eq(Col("b"), Lit(PInt(42))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert list_len(r.params) == 2
+end
+
+test "compile inline has no params" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Eq(Col("a"), Lit(PString("x"))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile_inline(q)
+  assert list_len(r.params) == 0
+end
+
+end -- mod TestCompile

@@ -337,4 +337,81 @@ test "update returns Err when gate is invalid" do
   assert Depot.Gate.is_valid(g) == false
 end
 
+test "update returns Err when pk not in gate base" do
+  let schema = user_schema()
+  let base_no_pk = { name = "Alice", email = "alice@test.com" }
+  let params = { name = "Bob", email = "bob@test.com" }
+  let gate = Depot.Gate.cast_record(base_no_pk, params, ["name", "email"])
+  let result = Depot.Repo.update(schema, gate)
+  assert is_err(result) == true
+end
+
+test "insert then get by id" do
+  clear_users()
+  let record = insert_user("Charlie", "charlie@test.com", 25, "user")
+  let schema = user_schema()
+  let found = Depot.Repo.get(schema, record.id)
+  assert found != None
+end
+
+test "insert then delete then get returns None" do
+  clear_users()
+  let record = insert_user("Dana", "dana@test.com", 28, "user")
+  let schema = user_schema()
+  let del_result = Depot.Repo.delete(schema, record.id)
+  assert del_result != Err("not found")
+  let after = Depot.Repo.get(schema, record.id)
+  assert after == None
+end
+
+test "delete returns Err for missing id" do
+  let schema = user_schema()
+  let result = Depot.Repo.delete(schema, "nonexistent-id-xyz")
+  assert result == Err("not found")
+end
+
+test "all returns list of all records" do
+  clear_users()
+  let _a = insert_user("E1", "e1@test.com", 20, "user")
+  let _b = insert_user("E2", "e2@test.com", 21, "user")
+  let schema = user_schema()
+  let records = Depot.Repo.all(schema)
+  assert List.length(records) == 2
+end
+
+test "delete_all removes all records" do
+  clear_users()
+  let _a = insert_user("F1", "f1@test.com", 20, "user")
+  let schema = user_schema()
+  Depot.Repo.delete_all(schema)
+  let records = Depot.Repo.all(schema)
+  assert List.length(records) == 0
+end
+
+test "update changes field value" do
+  clear_users()
+  let record = insert_user("Greta", "g@test.com", 30, "user")
+  let schema = user_schema()
+  let params = { name = "Greta Updated", email = "g@test.com", age = 30, role = "user" }
+  let gate = Depot.Gate.cast_record(record, params, ["name"])
+  let result = Depot.Repo.update(schema, gate)
+  assert is_err(result) == false
+end
+
+test "get returns None for missing id" do
+  let schema = user_schema()
+  let result = Depot.Repo.get(schema, "no-such-id-123")
+  assert result == None
+end
+
+test "insert multiple users then all count" do
+  clear_users()
+  let _1 = insert_user("H1", "h1@test.com", 20, "user")
+  let _2 = insert_user("H2", "h2@test.com", 21, "user")
+  let _3 = insert_user("H3", "h3@test.com", 22, "user")
+  let schema = user_schema()
+  let records = Depot.Repo.all(schema)
+  assert List.length(records) == 3
+end
+
 end -- mod TestDepotRepo

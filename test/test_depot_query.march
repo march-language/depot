@@ -161,6 +161,44 @@ test "first returns None for empty results" do
   assert result == None
 end
 
+test "offset beyond list length returns empty" do
+  let q = Depot.Query.from(user_schema())
+    |> Depot.Query.offset(100)
+  let results = Depot.Query.execute(q, sample_rows())
+  assert List.length(results) == 0
+end
+
+test "limit zero returns empty" do
+  let q = Depot.Query.from(user_schema())
+    |> Depot.Query.limit(0)
+  let results = Depot.Query.execute(q, sample_rows())
+  assert List.length(results) == 0
+end
+
+test "order_asc on empty list returns empty" do
+  let q = Depot.Query.from(user_schema())
+    |> Depot.Query.order_asc("age")
+  let results = Depot.Query.execute(q, [])
+  assert List.length(results) == 0
+end
+
+test "count on empty list returns zero" do
+  let q = Depot.Query.from(user_schema())
+  let n = Depot.Query.count(q, [])
+  assert n == 0
+end
+
+test "exists on empty list returns false" do
+  let q = Depot.Query.from(user_schema())
+  assert Depot.Query.exists(q, []) == false
+end
+
+test "first on empty list returns None" do
+  let q = Depot.Query.from(user_schema())
+  let result = Depot.Query.first(q, [])
+  assert result == None
+end
+
 test "full pipeline: where + order + offset + limit + select" do
   let q = Depot.Query.from(user_schema())
     |> Depot.Query.where_(fn row -> match record_get(row, "active") do
@@ -180,6 +218,243 @@ test "full pipeline: where + order + offset + limit + select" do
   -- Limit 1 -> Alice(30)
   assert List.length(results) == 1
   assert List.head(results) == "Alice"
+end
+
+test "limit larger than list size returns all rows" do
+  let q = Depot.Query.from(user_schema())
+    |> Depot.Query.limit(100)
+  let results = Depot.Query.execute(q, sample_rows())
+  assert List.length(results) == 5
+end
+
+test "sort rows with tied values (compare_rows all-fields-tied base case)" do
+  let rows = [
+    { id = "1", name = "Alice", age = 30, active = true },
+    { id = "2", name = "Bob",   age = 30, active = false }
+  ]
+  let q = Depot.Query.from(user_schema())
+    |> Depot.Query.order_asc("age")
+  let results = Depot.Query.execute(q, rows)
+  assert List.length(results) == 2
+end
+
+test "sort single-element list returns same list" do
+  let rows = [{ id = "1", name = "Alice", age = 30, active = true }]
+  let q = Depot.Query.from(user_schema())
+    |> Depot.Query.order_asc("name")
+  let results = Depot.Query.execute(q, rows)
+  assert List.length(results) == 1
+end
+
+test "order_desc then limit applies correctly" do
+  let q = Depot.Query.from(user_schema())
+    |> Depot.Query.order_desc("age")
+    |> Depot.Query.limit(2)
+  let results = Depot.Query.execute(q, sample_rows())
+  assert List.length(results) == 2
+  let first = List.head(results)
+  assert record_get(first, "name") == Some("Charlie")
+end
+
+test "where filters to empty then limit returns empty" do
+  let q = Depot.Query.from(user_schema())
+    |> Depot.Query.where_(fn row -> match record_get(row, "age") do
+      Some(a) -> a > 100
+      _ -> false
+    end)
+    |> Depot.Query.limit(10)
+  let results = Depot.Query.execute(q, sample_rows())
+  assert List.length(results) == 0
+end
+
+-- ---- Additional Depot.Query tests ----
+
+test "from returns query with correct schema" do
+  let q = Depot.Query.from(user_schema())
+  let s = Depot.Query.schema(q)
+  assert Depot.Schema.table(s) == "users"
+end
+
+test "execute with empty rows returns empty" do
+  let q = Depot.Query.from(user_schema())
+  let results = Depot.Query.execute(q, Nil)
+  assert List.length(results) == 0
+end
+
+test "where_ with always-true predicate returns all" do
+  let q = Depot.Query.from(user_schema())
+    |> Depot.Query.where_(fn _ -> true)
+  let results = Depot.Query.execute(q, sample_rows())
+  assert List.length(results) == 5
+end
+
+test "where_ with always-false predicate returns none" do
+  let q = Depot.Query.from(user_schema())
+    |> Depot.Query.where_(fn _ -> false)
+  let results = Depot.Query.execute(q, sample_rows())
+  assert List.length(results) == 0
+end
+
+test "limit 0 returns empty" do
+  let q = Depot.Query.from(user_schema())
+    |> Depot.Query.limit(0)
+  let results = Depot.Query.execute(q, sample_rows())
+  assert List.length(results) == 0
+end
+
+test "limit 1 returns first row" do
+  let q = Depot.Query.from(user_schema())
+    |> Depot.Query.limit(1)
+  let results = Depot.Query.execute(q, sample_rows())
+  assert List.length(results) == 1
+end
+
+test "limit greater than count returns all" do
+  let q = Depot.Query.from(user_schema())
+    |> Depot.Query.limit(100)
+  let results = Depot.Query.execute(q, sample_rows())
+  assert List.length(results) == 5
+end
+
+test "offset 0 returns all rows" do
+  let q = Depot.Query.from(user_schema())
+    |> Depot.Query.offset(0)
+  let results = Depot.Query.execute(q, sample_rows())
+  assert List.length(results) == 5
+end
+
+test "offset greater than count returns empty" do
+  let q = Depot.Query.from(user_schema())
+    |> Depot.Query.offset(10)
+  let results = Depot.Query.execute(q, sample_rows())
+  assert List.length(results) == 0
+end
+
+test "order_asc by name alphabetical" do
+  let q = Depot.Query.from(user_schema())
+    |> Depot.Query.order_asc("name")
+  let results = Depot.Query.execute(q, sample_rows())
+  let first = List.head(results)
+  assert record_get(first, "name") == Some("Alice")
+end
+
+test "order_desc by age descending" do
+  let q = Depot.Query.from(user_schema())
+    |> Depot.Query.order_desc("age")
+  let results = Depot.Query.execute(q, sample_rows())
+  assert List.length(results) == 5
+end
+
+test "count with no filter returns total" do
+  let q = Depot.Query.from(user_schema())
+  let n = Depot.Query.count(q, sample_rows())
+  assert n == 5
+end
+
+test "count with always-false filter returns 0" do
+  let q = Depot.Query.from(user_schema())
+    |> Depot.Query.where_(fn _ -> false)
+  let n = Depot.Query.count(q, sample_rows())
+  assert n == 0
+end
+
+test "count with always-true filter returns all" do
+  let q = Depot.Query.from(user_schema())
+    |> Depot.Query.where_(fn _ -> true)
+  let n = Depot.Query.count(q, sample_rows())
+  assert n == 5
+end
+
+test "exists with empty rows returns false" do
+  let q = Depot.Query.from(user_schema())
+  assert Depot.Query.exists(q, Nil) == false
+end
+
+test "exists with all rows returns true" do
+  let q = Depot.Query.from(user_schema())
+    |> Depot.Query.where_(fn _ -> true)
+  assert Depot.Query.exists(q, sample_rows()) == true
+end
+
+test "select then count" do
+  let q = Depot.Query.from(user_schema())
+    |> Depot.Query.select(fn row -> match record_get(row, "name") do
+         Some(n) -> n
+         None -> ""
+       end)
+  let results = Depot.Query.execute(q, sample_rows())
+  assert List.length(results) == 5
+end
+
+test "where then order_asc" do
+  let q = Depot.Query.from(user_schema())
+    |> Depot.Query.where_(fn row -> match record_get(row, "active") do
+         Some(true) -> true
+         _ -> false
+       end)
+    |> Depot.Query.order_asc("age")
+  let results = Depot.Query.execute(q, sample_rows())
+  assert List.length(results) == 3
+end
+
+test "where then order_desc" do
+  let q = Depot.Query.from(user_schema())
+    |> Depot.Query.where_(fn row -> match record_get(row, "active") do
+         Some(false) -> true
+         _ -> false
+       end)
+    |> Depot.Query.order_desc("age")
+  let results = Depot.Query.execute(q, sample_rows())
+  assert List.length(results) == 2
+end
+
+test "order then limit" do
+  let q = Depot.Query.from(user_schema())
+    |> Depot.Query.order_asc("age")
+    |> Depot.Query.limit(3)
+  let results = Depot.Query.execute(q, sample_rows())
+  assert List.length(results) == 3
+end
+
+test "offset 2 limit 2" do
+  let q = Depot.Query.from(user_schema())
+    |> Depot.Query.offset(2)
+    |> Depot.Query.limit(2)
+  let results = Depot.Query.execute(q, sample_rows())
+  assert List.length(results) == 2
+end
+
+test "where age > 25 count" do
+  let q = Depot.Query.from(user_schema())
+    |> Depot.Query.where_(fn row -> match record_get(row, "age") do
+         Some(a) -> a > 25
+         _ -> false
+       end)
+  let n = Depot.Query.count(q, sample_rows())
+  assert n == 3
+end
+
+test "where age > 20 exists" do
+  let q = Depot.Query.from(user_schema())
+    |> Depot.Query.where_(fn row -> match record_get(row, "age") do
+         Some(a) -> a > 20
+         _ -> false
+       end)
+  assert Depot.Query.exists(q, sample_rows()) == true
+end
+
+test "chained where_ calls filter" do
+  let q = Depot.Query.from(user_schema())
+    |> Depot.Query.where_(fn row -> match record_get(row, "age") do
+         Some(a) -> a > 22
+         _ -> false
+       end)
+    |> Depot.Query.where_(fn row -> match record_get(row, "age") do
+         Some(a) -> a < 35
+         _ -> false
+       end)
+  let results = Depot.Query.execute(q, sample_rows())
+  assert List.length(results) == 3
 end
 
 end

@@ -14,116 +14,188 @@ end
 
 -- ---- Tests ----
 
-fn test_from_table() do
+test "from table" do
   let q = from("users")
   match q do
   Query(f) -> do
     match f.from_ do
-    FromTable(t) -> assert(t == "users")
-    _ -> assert(false)
+    FromTable(t) -> assert t == "users"
     end
-    assert(f.distinct_ == false)
-    match f.limit_  do None -> () | Some(_) -> assert(false) end
-    match f.offset_ do None -> () | Some(_) -> assert(false) end
+    assert f.distinct_ == false
+    assert f.limit_ == None
+    assert f.offset_ == None
   end
   end
 end
 
-fn test_select_exprs() do
+test "select exprs" do
   let q = select(from("posts"), [Col("id"), Col("title")])
   match q do
   Query(f) ->
-    assert(list_len(f.selects) == 2)
+    assert list_len(f.selects) == 2
   end
 end
 
-fn test_select_all() do
+test "select_all" do
   let q = select_all(from("posts"))
   match q do
   Query(f) -> do
-    assert(list_len(f.selects) == 1)
-    match f.selects do
-    Cons(SelectAll, Nil) -> ()
-    _ -> assert(false)
-    end
+    assert list_len(f.selects) == 1
+    assert f.selects == [SelectAll]
   end
   end
 end
 
-fn test_where_clause() do
+test "WHERE clause" do
   let q = where_(from("users"), Eq(Col("active"), Lit(PBool(true))))
   match q do
   Query(f) -> do
-    assert(list_len(f.wheres) == 1)
+    assert list_len(f.wheres) == 1
     match f.wheres do
     Cons(Where(_), Nil) -> ()
-    _ -> assert(false)
     end
   end
   end
 end
 
-fn test_or_where() do
+test "or_where adds clause" do
   let q = from("users")
          |> where_(Eq(Col("role"), Lit(PString("admin"))))
          |> or_where(Eq(Col("role"), Lit(PString("superuser"))))
   match q do
-  Query(f) -> assert(list_len(f.wheres) == 2)
+  Query(f) -> assert list_len(f.wheres) == 2
   end
 end
 
-fn test_limit_offset() do
+test "limit and offset" do
   let q = limit(offset(from("events"), 20), 10)
   match q do
   Query(f) -> do
-    match f.limit_  do Some(n) -> assert(n == 10) | None -> assert(false) end
-    match f.offset_ do Some(n) -> assert(n == 20) | None -> assert(false) end
+    assert f.limit_ == Some(10)
+    assert f.offset_ == Some(20)
   end
   end
 end
 
-fn test_distinct() do
+test "distinct" do
   let q = distinct(from("tags"))
   match q do
-  Query(f) -> assert(f.distinct_ == true)
+  Query(f) -> assert f.distinct_ == true
   end
 end
 
-fn test_order_by_asc() do
+test "order_by ASC" do
   let q = order_by(from("logs"), Col("created_at"), Asc)
   match q do
   Query(f) -> do
-    assert(list_len(f.orders) == 1)
-    match f.orders do
-    Cons(OrderExpr(Col("created_at"), Asc), Nil) -> ()
-    _ -> assert(false)
-    end
+    assert list_len(f.orders) == 1
+    assert f.orders == [OrderExpr(Col("created_at"), Asc)]
   end
   end
 end
 
-fn test_inner_join() do
+test "INNER JOIN" do
   let q = join(from("orders"), "users", Eq(QCol("orders", "user_id"), QCol("users", "id")))
   match q do
   Query(f) -> do
-    assert(list_len(f.joins) == 1)
+    assert list_len(f.joins) == 1
     match f.joins do
     Cons(JoinClause(Inner, "users", _), Nil) -> ()
-    _ -> assert(false)
     end
   end
   end
 end
 
-fn test_group_by() do
+test "group_by" do
   let q = group_by(from("sales"), [Col("category"), Col("year")])
   match q do
   Query(f) ->
-    assert(list_len(f.group_bys) == 2)
+    assert list_len(f.group_bys) == 2
   end
 end
 
-fn test_chained_builder() do
+test "LEFT JOIN" do
+  let q = left_join(from("orders"), "users", Eq(QCol("orders", "user_id"), QCol("users", "id")))
+  match q do
+  Query(f) -> do
+    assert list_len(f.joins) == 1
+    match f.joins do
+    Cons(JoinClause(Left, "users", _), Nil) -> ()
+    end
+  end
+  end
+end
+
+test "RIGHT JOIN" do
+  let q = right_join(from("orders"), "users", Eq(QCol("orders", "user_id"), QCol("users", "id")))
+  match q do
+  Query(f) ->
+    match f.joins do
+    Cons(JoinClause(Right, "users", _), Nil) -> ()
+    end
+  end
+end
+
+test "FULL OUTER JOIN" do
+  let q = full_join(from("a"), "b", Eq(Col("a.id"), Col("b.a_id")))
+  match q do
+  Query(f) ->
+    match f.joins do
+    Cons(JoinClause(FullOuter, "b", _), Nil) -> ()
+    end
+  end
+end
+
+test "CROSS JOIN" do
+  let q = cross_join(from("a"), "b")
+  match q do
+  Query(f) ->
+    match f.joins do
+    Cons(JoinClause(Cross, "b", _), Nil) -> ()
+    end
+  end
+end
+
+test "having clause" do
+  let q = having(from("sales"), Gt(Count(Col("id")), Lit(PInt(1))))
+  match q do
+  Query(f) -> do
+    assert list_len(f.havings) == 1
+    match f.havings do
+    Cons(Where(_), Nil) -> ()
+    end
+  end
+  end
+end
+
+test "order_by DESC" do
+  let q = order_by(from("logs"), Col("created_at"), Desc)
+  match q do
+  Query(f) ->
+    assert f.orders == [OrderExpr(Col("created_at"), Desc)]
+  end
+end
+
+test "from_subquery" do
+  let sub = from("events") |> where_(Eq(Col("active"), Lit(PBool(true))))
+  let q = from_subquery(sub, "e")
+  match q do
+  Query(f) ->
+    match f.from_ do
+    FromSubquery(_, alias_name) -> assert alias_name == "e"
+    end
+  end
+end
+
+test "select_as" do
+  let q = select_as(from("posts"), Count(Col("id")), "total")
+  match q do
+  Query(f) ->
+    assert f.selects == [SelectAs(Count(Col("id")), "total")]
+  end
+end
+
+test "chained builder" do
   let q = from("users")
          |> select([Col("id"), Col("name")])
          |> where_(Eq(Col("active"), Lit(PBool(true))))
@@ -131,27 +203,273 @@ fn test_chained_builder() do
          |> limit(50)
   match q do
   Query(f) -> do
-    assert(list_len(f.selects) == 2)
-    assert(list_len(f.wheres) == 1)
-    assert(list_len(f.orders) == 1)
-    match f.limit_ do Some(n) -> assert(n == 50) | None -> assert(false) end
+    assert list_len(f.selects) == 2
+    assert list_len(f.wheres) == 1
+    assert list_len(f.orders) == 1
+    assert f.limit_ == Some(50)
   end
   end
 end
 
-fn main() : Unit do
-  test_from_table()
-  test_select_exprs()
-  test_select_all()
-  test_where_clause()
-  test_or_where()
-  test_limit_offset()
-  test_distinct()
-  test_order_by_asc()
-  test_inner_join()
-  test_group_by()
-  test_chained_builder()
-  println("test_build: all tests passed")
+test "order_asc shorthand" do
+  let q = order_asc(from("logs"), Col("created_at"))
+  match q do
+  Query(f) ->
+    assert f.orders == [OrderExpr(Col("created_at"), Asc)]
+  end
 end
 
+test "order_desc shorthand" do
+  let q = order_desc(from("scores"), Col("points"))
+  match q do
+  Query(f) ->
+    assert f.orders == [OrderExpr(Col("points"), Desc)]
+  end
 end
+
+test "multiple where_ and or_where" do
+  let q = from("events")
+         |> where_(Eq(Col("active"), Lit(PBool(true))))
+         |> where_(Gt(Col("score"), Lit(PInt(0))))
+         |> or_where(Eq(Col("featured"), Lit(PBool(true))))
+  match q do
+  Query(f) -> assert list_len(f.wheres) == 3
+  end
+end
+
+test "multiple group_by accumulates" do
+  let q = from("sales")
+         |> group_by([Col("region"), Col("year"), Col("quarter")])
+  match q do
+  Query(f) -> assert list_len(f.group_bys) == 3
+  end
+end
+
+test "chained joins" do
+  let q = from("orders")
+         |> join("users", Eq(QCol("orders", "user_id"), QCol("users", "id")))
+         |> left_join("products", Eq(QCol("orders", "product_id"), QCol("products", "id")))
+  match q do
+  Query(f) -> assert list_len(f.joins) == 2
+  end
+end
+
+-- ---- Additional Build tests ----
+
+test "from creates query with correct table" do
+  let q = from("products")
+  match q do
+  Query(f) ->
+    match f.from_ do
+    FromTable(t) -> assert t == "products"
+    end
+  end
+end
+
+test "where_ appends to wheres list" do
+  let q = from("t") |> where_(Eq(Col("a"), Lit(PInt(1))))
+  match q do
+  Query(f) -> assert list_len(f.wheres) == 1
+  end
+end
+
+test "multiple where_ calls accumulate" do
+  let q = from("t")
+    |> where_(Eq(Col("a"), Lit(PInt(1))))
+    |> where_(Eq(Col("b"), Lit(PInt(2))))
+    |> where_(Eq(Col("c"), Lit(PInt(3))))
+  match q do
+  Query(f) -> assert list_len(f.wheres) == 3
+  end
+end
+
+test "select clears and sets selects" do
+  let q = from("t") |> select([Col("id"), Col("name"), Col("email")])
+  match q do
+  Query(f) -> assert list_len(f.selects) == 3
+  end
+end
+
+test "select_all sets SelectAll" do
+  let q = from("t") |> select_all
+  match q do
+  Query(f) -> assert f.selects == [SelectAll]
+  end
+end
+
+test "join adds inner join" do
+  let q = from("t") |> join("other", Eq(Col("id"), Col("other_id")))
+  match q do
+  Query(f) -> assert list_len(f.joins) == 1
+  end
+end
+
+test "left_join adds left join" do
+  let q = from("t") |> left_join("other", Eq(Col("id"), Col("other_id")))
+  match q do
+  Query(f) -> assert list_len(f.joins) == 1
+  end
+end
+
+test "right_join adds right join" do
+  let q = from("t") |> right_join("other", Eq(Col("id"), Col("other_id")))
+  match q do
+  Query(f) -> assert list_len(f.joins) == 1
+  end
+end
+
+test "limit sets limit" do
+  let q = from("t") |> limit(10)
+  match q do
+  Query(f) -> assert f.limit_ == Some(10)
+  end
+end
+
+test "offset sets offset" do
+  let q = from("t") |> offset(20)
+  match q do
+  Query(f) -> assert f.offset_ == Some(20)
+  end
+end
+
+test "distinct sets distinct flag" do
+  let q = from("t") |> distinct
+  match q do
+  Query(f) -> assert f.distinct_ == true
+  end
+end
+
+test "order_asc adds asc order" do
+  let q = from("t") |> order_asc(Col("name"))
+  match q do
+  Query(f) -> assert list_len(f.orders) == 1
+  end
+end
+
+test "order_desc adds desc order" do
+  let q = from("t") |> order_desc(Col("created_at"))
+  match q do
+  Query(f) -> assert list_len(f.orders) == 1
+  end
+end
+
+test "multiple orders accumulate" do
+  let q = from("t") |> order_asc(Col("a")) |> order_desc(Col("b")) |> order_asc(Col("c"))
+  match q do
+  Query(f) -> assert list_len(f.orders) == 3
+  end
+end
+
+test "group_by adds group by" do
+  let q = from("t") |> group_by([Col("status")])
+  match q do
+  Query(f) -> assert list_len(f.group_bys) == 1
+  end
+end
+
+test "having adds having clause" do
+  let q = from("t") |> having(Gt(CountAll, Lit(PInt(1))))
+  match q do
+  Query(f) -> assert list_len(f.havings) == 1
+  end
+end
+
+test "complex chained query" do
+  let q = from("orders")
+    |> join("users", Eq(QCol("orders", "user_id"), QCol("users", "id")))
+    |> where_(Eq(Col("status"), Lit(PString("active"))))
+    |> group_by([Col("user_id")])
+    |> having(Gt(Count(Col("id")), Lit(PInt(2))))
+    |> order_desc(Col("user_id"))
+    |> limit(10)
+    |> offset(0)
+  match q do
+  Query(f) -> do
+    assert list_len(f.joins) == 1
+    assert list_len(f.wheres) == 1
+    assert list_len(f.group_bys) == 1
+    assert list_len(f.havings) == 1
+    assert list_len(f.orders) == 1
+    assert f.limit_ == Some(10)
+    assert f.offset_ == Some(0)
+  end
+  end
+end
+
+test "from starts with no wheres" do
+  let q = from("t")
+  match q do
+  Query(f) -> assert f.wheres == Nil
+  end
+end
+
+test "from starts with no joins" do
+  let q = from("t")
+  match q do
+  Query(f) -> assert f.joins == Nil
+  end
+end
+
+test "from starts with no orders" do
+  let q = from("t")
+  match q do
+  Query(f) -> assert f.orders == Nil
+  end
+end
+
+test "from starts with no group_bys" do
+  let q = from("t")
+  match q do
+  Query(f) -> assert f.group_bys == Nil
+  end
+end
+
+test "from starts with no havings" do
+  let q = from("t")
+  match q do
+  Query(f) -> assert f.havings == Nil
+  end
+end
+
+test "from starts with no limit" do
+  let q = from("t")
+  match q do
+  Query(f) -> assert f.limit_ == None
+  end
+end
+
+test "from starts with no offset" do
+  let q = from("t")
+  match q do
+  Query(f) -> assert f.offset_ == None
+  end
+end
+
+test "order_asc with multiple columns" do
+  let q = from("users")
+    |> order_asc(Col("last_name"))
+    |> order_asc(Col("first_name"))
+  match q do
+  Query(f) -> assert list_len(f.orders) == 2
+  end
+end
+
+test "group_by multiple columns" do
+  let q = from("sales")
+    |> group_by([Col("year"), Col("month"), Col("product_id")])
+  match q do
+  Query(f) -> assert list_len(f.group_bys) == 3
+  end
+end
+
+test "limit then offset" do
+  let q = from("t") |> limit(5) |> offset(10)
+  match q do
+  Query(f) -> do
+    assert f.limit_ == Some(5)
+    assert f.offset_ == Some(10)
+  end
+  end
+end
+
+end -- mod TestBuild
