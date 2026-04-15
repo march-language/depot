@@ -8,7 +8,7 @@ import Build
 
 -- ---- Helpers ----
 
-pfn list_len(lst) do
+fn list_len(lst) do
   match lst do | Nil -> 0 | Cons(_, rest) -> 1 + list_len(rest) end
 end
 

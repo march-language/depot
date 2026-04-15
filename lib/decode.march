@@ -67,7 +67,7 @@ end
 
 -- ---- Error/Notice field parsing ----
 
-pfn parse_error_fields(b, pos) do
+fn parse_error_fields(b, pos) do
   fn go(i, severity, code, message, detail, hint, position) do
     if i >= Bytes.length(b) do
       { severity = severity, code = code, message = message,
@@ -97,7 +97,7 @@ end
 
 -- ---- RowDescription / DataRow parsing ----
 
-pfn parse_one_field_desc(b, pos) do
+fn parse_one_field_desc(b, pos) do
   let (name, pos1) = read_cstring(b, pos)
   let table_oid = read_i32(b, pos1)
   let attr_num  = read_u16(b, pos1 + 4)
@@ -108,7 +108,7 @@ pfn parse_one_field_desc(b, pos) do
   (FieldDesc(name, table_oid, attr_num, type_oid, type_size, type_mod, format), pos1 + 18)
 end
 
-pfn parse_field_descs(b, pos, n, acc) do
+fn parse_field_descs(b, pos, n, acc) do
   if n == 0 then reverse(acc)
   else
     match parse_one_field_desc(b, pos) do
@@ -116,7 +116,7 @@ pfn parse_field_descs(b, pos, n, acc) do
     end
 end
 
-pfn parse_data_columns(b, pos, n, acc) do
+fn parse_data_columns(b, pos, n, acc) do
   if n == 0 then reverse(acc)
   else
     match read_bytes_field(b, pos) do
@@ -124,7 +124,7 @@ pfn parse_data_columns(b, pos, n, acc) do
     end
 end
 
-pfn parse_sasl_mechanisms(b, pos, acc) do
+fn parse_sasl_mechanisms(b, pos, acc) do
   if pos >= Bytes.length(b) then reverse(acc)
   else
     if Bytes.get(b, pos) == 0 then reverse(acc)

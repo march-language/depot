@@ -222,35 +222,35 @@ pfn map_exprs_to_select(exprs) do
   end
 end
 
-pfn concat_selects(xs, ys) do
+fn concat_selects(xs, ys) do
   match xs do
   Nil -> ys
   Cons(x, rest) -> Cons(x, concat_selects(rest, ys))
   end
 end
 
-pfn concat_wheres(xs, ys) do
+fn concat_wheres(xs, ys) do
   match xs do
   Nil -> ys
   Cons(x, rest) -> Cons(x, concat_wheres(rest, ys))
   end
 end
 
-pfn concat_joins(xs, ys) do
+fn concat_joins(xs, ys) do
   match xs do
   Nil -> ys
   Cons(x, rest) -> Cons(x, concat_joins(rest, ys))
   end
 end
 
-pfn concat_orders(xs, ys) do
+fn concat_orders(xs, ys) do
   match xs do
   Nil -> ys
   Cons(x, rest) -> Cons(x, concat_orders(rest, ys))
   end
 end
 
-pfn concat_exprs(xs, ys) do
+fn concat_exprs(xs, ys) do
   match xs do
   Nil -> ys
   Cons(x, rest) -> Cons(x, concat_exprs(rest, ys))

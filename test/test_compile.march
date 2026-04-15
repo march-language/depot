@@ -9,11 +9,11 @@ import Compile
 
 -- ---- Helpers ----
 
-pfn list_len(lst) do
+fn list_len(lst) do
   match lst do | Nil -> 0 | Cons(_, rest) -> 1 + list_len(rest) end
 end
 
-pfn make_query(table) do
+fn make_query(table) do
   Query({
     from_ = FromTable(table), selects = Nil, wheres = Nil,
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
@@ -2308,6 +2308,403 @@ test "compile inline has no params" do
     limit_ = None, offset_ = None, distinct_ = false })
   let r = compile_inline(q)
   assert list_len(r.params) == 0
+end
+
+-- ---- JOIN kinds (parameterized) ----
+
+test "compile parameterized RIGHT JOIN" do
+  let q = Query({ from_ = FromTable("a"), selects = Nil, wheres = Nil,
+    joins = [JoinClause(Right, "b", Eq(QCol("a", "id"), QCol("b", "a_id")))],
+    orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile(q)).sql, "RIGHT JOIN") == true
+end
+
+test "compile parameterized FULL OUTER JOIN" do
+  let q = Query({ from_ = FromTable("a"), selects = Nil, wheres = Nil,
+    joins = [JoinClause(FullOuter, "b", Eq(QCol("a", "id"), QCol("b", "a_id")))],
+    orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile(q)).sql, "FULL OUTER JOIN") == true
+end
+
+test "compile parameterized CROSS JOIN" do
+  let q = Query({ from_ = FromTable("a"), selects = Nil, wheres = Nil,
+    joins = [JoinClause(Cross, "b", Raw("TRUE"))],
+    orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile(q)).sql, "CROSS JOIN") == true
+end
+
+-- ---- SortDir variants ----
+
+test "compile parameterized Asc" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil, wheres = Nil,
+    joins = Nil, orders = [OrderExpr(Col("a"), Asc)],
+    group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile(q)).sql, "ASC") == true
+end
+
+test "compile parameterized Desc" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil, wheres = Nil,
+    joins = Nil, orders = [OrderExpr(Col("a"), Desc)],
+    group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile(q)).sql, "DESC") == true
+end
+
+test "compile inline AscNullsFirst" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil, wheres = Nil,
+    joins = Nil, orders = [OrderExpr(Col("a"), AscNullsFirst)],
+    group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile_inline(q)).sql, "NULLS FIRST") == true
+end
+
+test "compile inline AscNullsLast" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil, wheres = Nil,
+    joins = Nil, orders = [OrderExpr(Col("a"), AscNullsLast)],
+    group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile_inline(q)).sql, "NULLS LAST") == true
+end
+
+test "compile inline DescNullsFirst" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil, wheres = Nil,
+    joins = Nil, orders = [OrderExpr(Col("a"), DescNullsFirst)],
+    group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile_inline(q)).sql, "DESC NULLS FIRST") == true
+end
+
+test "compile inline DescNullsLast" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil, wheres = Nil,
+    joins = Nil, orders = [OrderExpr(Col("a"), DescNullsLast)],
+    group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile_inline(q)).sql, "DESC NULLS LAST") == true
+end
+
+-- ---- Subquery SortDir (hits subq_order_items arms) ----
+
+test "subquery order AscNullsFirst" do
+  let sub = Query({ from_ = FromTable("t"), selects = Nil, wheres = Nil,
+    joins = Nil, orders = [OrderExpr(Col("x"), AscNullsFirst)],
+    group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let q = Query({ from_ = FromTable("u"), selects = [SelectAs(SubqueryExpr(sub), "s")],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile_inline(q)).sql, "NULLS FIRST") == true
+end
+
+test "subquery order DescNullsLast" do
+  let sub = Query({ from_ = FromTable("t"), selects = Nil, wheres = Nil,
+    joins = Nil, orders = [OrderExpr(Col("x"), DescNullsLast)],
+    group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let q = Query({ from_ = FromTable("u"), selects = [SelectAs(SubqueryExpr(sub), "s")],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile_inline(q)).sql, "DESC NULLS LAST") == true
+end
+
+test "subquery Desc direction" do
+  let sub = Query({ from_ = FromTable("t"), selects = Nil, wheres = Nil,
+    joins = Nil, orders = [OrderExpr(Col("x"), Desc)],
+    group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let q = Query({ from_ = FromTable("u"), selects = [SelectAs(SubqueryExpr(sub), "s")],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile_inline(q)).sql, "DESC") == true
+end
+
+-- ---- Subquery expression branches ----
+
+test "subquery with all comparison operators" do
+  let sub = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(And(Or(Lt(Col("a"), Lit(PInt(1))), Gt(Col("b"), Lit(PInt(2)))),
+                       Not(Eq(Col("c"), Lit(PInt(3))))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let q = Query({ from_ = FromTable("u"), selects = Nil,
+    wheres = [Where(Exists(sub))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let s = (compile_inline(q)).sql
+  assert String.contains(s, "EXISTS (") == true
+  assert String.contains(s, "AND") == true
+  assert String.contains(s, "OR") == true
+  assert String.contains(s, "NOT") == true
+end
+
+test "subquery with arithmetic" do
+  let sub = Query({ from_ = FromTable("t"),
+    selects = [SelectField(Add(Col("a"), Sub(Col("b"), Mul(Col("c"), Div(Col("d"), Lit(PInt(2)))))))],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let q = Query({ from_ = FromTable("u"), selects = [SelectAs(SubqueryExpr(sub), "x")],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let s = (compile_inline(q)).sql
+  assert String.contains(s, "+") == true
+  assert String.contains(s, "-") == true
+  assert String.contains(s, "*") == true
+  assert String.contains(s, "/") == true
+end
+
+test "subquery with IsNull/IsNotNull/Neq/Lte/Gte" do
+  let sub = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(And(IsNull(Col("a")),
+                   And(IsNotNull(Col("b")),
+                   And(Neq(Col("c"), Lit(PInt(1))),
+                   And(Lte(Col("d"), Lit(PInt(2))), Gte(Col("e"), Lit(PInt(3)))))))) ],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let q = Query({ from_ = FromTable("u"), selects = Nil,
+    wheres = [Where(Exists(sub))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let s = (compile_inline(q)).sql
+  assert String.contains(s, "IS NULL") == true
+  assert String.contains(s, "IS NOT NULL") == true
+  assert String.contains(s, "<>") == true
+  assert String.contains(s, "<=") == true
+  assert String.contains(s, ">=") == true
+end
+
+test "subquery with In/NotIn/Between" do
+  let sub = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(And(In(Col("a"), [Lit(PInt(1)), Lit(PInt(2))]),
+                   And(NotIn(Col("b"), [Lit(PInt(3))]),
+                       Between(Col("c"), Lit(PInt(0)), Lit(PInt(10))))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let q = Query({ from_ = FromTable("u"), selects = Nil,
+    wheres = [Where(Exists(sub))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let s = (compile_inline(q)).sql
+  assert String.contains(s, "IN (") == true
+  assert String.contains(s, "NOT IN") == true
+  assert String.contains(s, "BETWEEN") == true
+end
+
+test "subquery with Like/ILike/FnCall/aggregates" do
+  let sub = Query({ from_ = FromTable("t"),
+    selects = [SelectField(Count(Col("a"))), SelectField(Sum(Col("b"))),
+               SelectField(Avg(Col("c"))), SelectField(Min(Col("d"))),
+               SelectField(Max(Col("e"))), SelectAll],
+    wheres = [Where(And(Like(Col("n"), "x%"), ILike(Col("m"), "y%")))],
+    joins = Nil, orders = Nil, group_bys = [Col("g")],
+    havings = [Where(Gt(Count(Col("a")), Lit(PInt(0))))],
+    limit_ = Some(5), offset_ = Some(1), distinct_ = true })
+  let q = Query({ from_ = FromTable("u"), selects = [SelectAs(SubqueryExpr(sub), "x")],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let s = (compile_inline(q)).sql
+  assert String.contains(s, "COUNT") == true
+  assert String.contains(s, "SUM") == true
+  assert String.contains(s, "AVG") == true
+  assert String.contains(s, "MIN") == true
+  assert String.contains(s, "MAX") == true
+  assert String.contains(s, "LIKE") == true
+  assert String.contains(s, "ILIKE") == true
+  assert String.contains(s, "GROUP BY") == true
+  assert String.contains(s, "HAVING") == true
+  assert String.contains(s, "DISTINCT") == true
+  assert String.contains(s, "LIMIT") == true
+  assert String.contains(s, "OFFSET") == true
+end
+
+test "subquery with FnCall and QCol" do
+  let sub = Query({ from_ = FromTable("t"),
+    selects = [SelectField(FnCall("COALESCE", [Col("a"), Col("b"), Lit(PInt(0))]))],
+    wheres = [Where(Eq(QCol("t", "id"), Lit(PInt(1))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let q = Query({ from_ = FromTable("u"), selects = [SelectAs(SubqueryExpr(sub), "x")],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let s = (compile_inline(q)).sql
+  assert String.contains(s, "COALESCE(") == true
+  assert String.contains(s, "\"t\".\"id\"") == true
+end
+
+test "subquery with CountAll/ExprParam/Raw/OrWhere" do
+  let sub = Query({ from_ = FromTable("t"),
+    selects = [SelectField(CountAll), SelectField(ExprParam(7)), SelectField(Raw("CAST(x AS INT)"))],
+    wheres = [Where(Eq(Col("a"), Lit(PInt(1)))), OrWhere(Eq(Col("b"), Lit(PInt(2))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let q = Query({ from_ = FromTable("u"), selects = [SelectAs(SubqueryExpr(sub), "x")],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let s = (compile_inline(q)).sql
+  assert String.contains(s, "COUNT(*)") == true
+  assert String.contains(s, "$7") == true
+  assert String.contains(s, "CAST(x AS INT)") == true
+  assert String.contains(s, "OR") == true
+end
+
+-- ---- Lit value coverage (parameterized) ----
+
+test "parameterized PFloat literal" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Gt(Col("x"), Lit(PFloat(3.14))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert list_len((compile(q)).params) == 1
+end
+
+test "parameterized PBool true literal" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Eq(Col("active"), Lit(PBool(true))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert list_len((compile(q)).params) == 1
+end
+
+test "parameterized PBool false literal" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Eq(Col("active"), Lit(PBool(false))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert list_len((compile(q)).params) == 1
+end
+
+test "parameterized PNull literal" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Eq(Col("deleted_at"), Lit(PNull)))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert list_len((compile(q)).params) == 1
+end
+
+-- ---- Multi-arg FnCall + nested arithmetic ----
+
+test "multi-arg FnCall in parameterized select" do
+  let q = Query({ from_ = FromTable("t"),
+    selects = [SelectField(FnCall("COALESCE", [Col("a"), Col("b"), Lit(PInt(0))]))],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile(q)).sql, "COALESCE(") == true
+end
+
+test "nested arithmetic in parameterized SELECT" do
+  let q = Query({ from_ = FromTable("t"),
+    selects = [SelectAs(Add(Mul(Col("a"), Col("b")),
+                            Div(Col("c"), Lit(PInt(2)))), "computed")],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let s = (compile(q)).sql
+  assert String.contains(s, "+") == true
+  assert String.contains(s, "*") == true
+  assert String.contains(s, "/") == true
+  assert String.contains(s, "AS \"computed\"") == true
+end
+
+test "aggregate in SelectAs parameterized" do
+  let q = Query({ from_ = FromTable("t"),
+    selects = [SelectAs(Sum(Col("x")), "total"),
+               SelectAs(Count(Col("id")), "n"),
+               SelectAs(Avg(Col("score")), "avg_score"),
+               SelectAs(Min(Col("v")), "mn"),
+               SelectAs(Max(Col("v")), "mx"),
+               SelectAs(CountAll, "total_rows")],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let s = (compile(q)).sql
+  assert String.contains(s, "SUM(") == true
+  assert String.contains(s, "COUNT(") == true
+  assert String.contains(s, "AVG(") == true
+  assert String.contains(s, "MIN(") == true
+  assert String.contains(s, "MAX(") == true
+  assert String.contains(s, "COUNT(*)") == true
+end
+
+test "parameterized DISTINCT" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil, wheres = Nil,
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = true })
+  assert String.contains((compile(q)).sql, "DISTINCT") == true
+end
+
+test "parameterized OrWhere in wheres" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Eq(Col("a"), Lit(PInt(1)))), OrWhere(Eq(Col("b"), Lit(PInt(2))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  assert String.contains((compile(q)).sql, "OR") == true
+end
+
+test "parameterized OrWhere in havings" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil, wheres = Nil, joins = Nil,
+    orders = Nil, group_bys = [Col("g")],
+    havings = [Where(Gt(Count(Col("a")), Lit(PInt(1)))),
+               OrWhere(Lt(Sum(Col("b")), Lit(PInt(100))))],
+    limit_ = None, offset_ = None, distinct_ = false })
+  let s = (compile(q)).sql
+  assert String.contains(s, "HAVING") == true
+  assert String.contains(s, "OR") == true
+end
+
+-- ---- More Expr arms in parameterized mode ----
+
+test "parameterized Like" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Like(Col("n"), "al%"))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "LIKE") == true
+  assert list_len(r.params) == 1
+end
+
+test "parameterized ILike" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(ILike(Col("n"), "al%"))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "ILIKE") == true
+  assert list_len(r.params) == 1
+end
+
+test "parameterized Between" do
+  let q = Query({ from_ = FromTable("t"), selects = Nil,
+    wheres = [Where(Between(Col("age"), Lit(PInt(18)), Lit(PInt(65))))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let r = compile(q)
+  assert String.contains(r.sql, "BETWEEN") == true
+  assert list_len(r.params) == 2
+end
+
+test "parameterized Exists and SubqueryExpr" do
+  let sub = Query({ from_ = FromTable("orders"), selects = [SelectField(CountAll)],
+    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let q = Query({ from_ = FromTable("users"),
+    selects = [SelectAs(SubqueryExpr(sub), "order_count")],
+    wheres = [Where(Exists(sub))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let s = (compile(q)).sql
+  assert String.contains(s, "EXISTS (") == true
+  assert String.contains(s, "(SELECT") == true
+end
+
+test "parameterized ExprParam and Raw" do
+  let q = Query({ from_ = FromTable("t"), selects = [SelectField(Raw("CAST(x AS INT)"))],
+    wheres = [Where(Eq(Col("id"), ExprParam(3)))],
+    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
+    limit_ = None, offset_ = None, distinct_ = false })
+  let s = (compile(q)).sql
+  assert String.contains(s, "CAST(x AS INT)") == true
+  assert String.contains(s, "$3") == true
 end
 
 end -- mod TestCompile

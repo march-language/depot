@@ -33,7 +33,11 @@ mod Depot.Schema do
 --   fields        : list of (name, (type_str, opts_pairs))
 --   associations  : list of (kind, name, target, opts_pairs)
 --   primary_key   : field name string (default "id")
-type Schema = Schema(String, List((String, (String, List((String, String))))), List((String, String, String, List((String, String)))), String)
+--
+-- The opts_pairs values are polymorphic (Bool, Int, Float, String, …) — they
+-- mirror whatever the user writes in the schema record. `a` is the field-opts
+-- value type, `b` is the assoc-opts value type.
+type Schema(a, b) = Schema(String, List((String, (String, List((String, a))))), List((String, String, String, List((String, b)))), String)
 
 -- ---------------------------------------------------------------------------
 -- Private helpers
@@ -42,27 +46,33 @@ type Schema = Schema(String, List((String, (String, List((String, String))))), L
 pfn alist_get(lst, key, default) do
   match lst do
     Nil -> default
-    Cons((k, v), rest) -> if k == key then v else alist_get(rest, key, default)
+    Cons((k, v), rest) -> match k == key do
+      true  -> v
+      false -> alist_get(rest, key, default)
+    end
   end
 end
 
 pfn alist_get_opt(lst, key) do
   match lst do
     Nil -> None
-    Cons((k, v), rest) -> if k == key then Some(v) else alist_get_opt(rest, key)
+    Cons((k, v), rest) -> match k == key do
+      true  -> Some(v)
+      false -> alist_get_opt(rest, key)
+    end
   end
 end
 
 -- Parse a field spec: bare string like "String" becomes ("String", []),
 -- tuple ("Int", { default = 0 }) becomes ("Int", [("default", 0)]).
-pfn parse_field_spec(spec) do
+fn parse_field_spec(spec) do
   match spec do
     (typ, opts) -> (to_string(typ), record_entries(opts))
     other       -> (to_string(other), Nil)
   end
 end
 
-pfn parse_field_entry(entry) do
+fn parse_field_entry(entry) do
   let (n, sp) = entry
   let result = (n, parse_field_spec(sp))
   result
@@ -73,14 +83,14 @@ pfn parse_fields(fields_record) do
   List.map(entries, parse_field_entry)
 end
 
-pfn parse_one_assoc(kind, name, spec) do
+fn parse_one_assoc(kind, name, spec) do
   match spec do
     (target, opts) -> (kind, name, to_string(target), record_entries(opts))
     other          -> (kind, name, to_string(other), Nil)
   end
 end
 
-pfn parse_assoc_entry(kind, entry) do
+fn parse_assoc_entry(kind, entry) do
   let (n, sp) = entry
   parse_one_assoc(kind, n, sp)
 end
@@ -97,48 +107,86 @@ pfn parse_assocs_for(spec, key, kind) do
   end
 end
 
-pfn default_for_type(type_str) do
-  match type_str do
-    "String" -> ""
-    "Int"    -> "0"
-    "Float"  -> "0.0"
-    "Bool"   -> "false"
-    _        -> ""
-  end
-end
-
-pfn compute_default(type_str, opts) do
+-- Populate a single field's default into the record `r`. Uses record_put
+-- to allow heterogeneous field types (Int 0, Float 0.0, Bool false, None).
+-- Each type case is a separate pfn because march forbids match arms of
+-- mixed types within a single function return value.
+pfn put_int_default(r, name, opts) do
   match alist_get_opt(opts, "default") do
-    Some(d) -> d
-    None    ->
-      if alist_get(opts, "nullable", "false") == "true" then ""
-      else default_for_type(type_str)
+    Some(d) -> record_put(r, name, d)
+    None    -> record_put(r, name, 0)
   end
 end
 
-pfn is_not_virtual(field_entry) do
+pfn put_float_default(r, name, opts) do
+  match alist_get_opt(opts, "default") do
+    Some(d) -> record_put(r, name, d)
+    None    -> record_put(r, name, 0.0)
+  end
+end
+
+pfn put_bool_default(r, name, opts) do
+  match alist_get_opt(opts, "default") do
+    Some(d) -> record_put(r, name, d)
+    None    -> record_put(r, name, false)
+  end
+end
+
+pfn put_string_default(r, name, opts) do
+  match alist_get_opt(opts, "default") do
+    Some(d) -> record_put(r, name, d)
+    None    -> record_put(r, name, "")
+  end
+end
+
+pfn put_other_default(r, name, opts) do
+  match alist_get_opt(opts, "default") do
+    Some(d) -> record_put(r, name, d)
+    None    -> record_put(r, name, None)
+  end
+end
+
+pfn put_typed_default(r, name, type_str, opts) do
+  match type_str do
+    "Int"    -> put_int_default(r, name, opts)
+    "Float"  -> put_float_default(r, name, opts)
+    "Bool"   -> put_bool_default(r, name, opts)
+    "String" -> put_string_default(r, name, opts)
+    _        -> put_other_default(r, name, opts)
+  end
+end
+
+fn put_default(r, name, type_str, opts) do
+  match alist_get(opts, "nullable", false) do
+    true  -> record_put(r, name, None)
+    false -> put_typed_default(r, name, type_str, opts)
+  end
+end
+
+fn is_not_virtual(field_entry) do
   let (_, spec) = field_entry
   let (_, opts) = spec
-  alist_get(opts, "virtual", "false") != "true"
+  alist_get(opts, "virtual", false) == false
 end
 
-pfn field_entry_name(field_entry) do
+fn field_entry_name(field_entry) do
   let (name, spec) = field_entry
   name
 end
 
-pfn field_entry_default(field_entry) do
+fn put_field_default(r, field_entry) do
   let (n, spec) = field_entry
   let (ts, opts) = spec
-  let result = (n, compute_default(ts, opts))
-  result
+  put_default(r, n, ts, opts)
 end
 
 pfn find_assoc(lst, name) do
   match lst do
     Nil -> None
-    Cons((kind, n, target, opts), rest) ->
-      if n == name then Some((kind, n, target, opts)) else find_assoc(rest, name)
+    Cons((kind, n, target, opts), rest) -> match n == name do
+      true  -> Some((kind, n, target, opts))
+      false -> find_assoc(rest, name)
+    end
   end
 end
 
@@ -194,7 +242,7 @@ end
 
 fn is_virtual(schema, field_name) do
   match field_opts(schema, field_name) do
-    Some(opts) -> alist_get(opts, "virtual", "false") == "true"
+    Some(opts) -> alist_get(opts, "virtual", false)
     None       -> false
   end
 end
@@ -215,8 +263,21 @@ end
 
 fn blank(schema) do
   let fs = fields(schema)
-  let field_pairs = List.map(fs, field_entry_default)
-  record_from_list(field_pairs)
+  blank_fold(fs, empty_record())
+end
+
+pfn empty_record() do
+  record_from_list([])
+end
+
+-- Explicit tail-recursive fold that threads the record through put_field_default
+-- for each field. Avoids List.fold_left, which (in the installed stdlib) has a
+-- runtime non-exhaustive match on non-empty record accumulators.
+pfn blank_fold(fields, acc) do
+  match fields do
+    Nil -> acc
+    Cons(entry, rest) -> blank_fold(rest, put_field_default(acc, entry))
+  end
 end
 
 end -- mod Depot.Schema

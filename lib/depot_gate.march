@@ -169,7 +169,7 @@ end
 
 -- Check if a value is "blank" — empty string or whitespace-only.
 -- For string values, trims whitespace; for non-strings, always non-blank.
-pfn is_blank(v) do
+fn is_blank(v) do
   if v == "" then true
   else String.trim(to_string(v)) == ""
 end
@@ -222,7 +222,7 @@ pfn apply_number_opts(form, field, n, opts) do
   go(opts, form)
 end
 
-pfn change_entry_key(entry) do
+fn change_entry_key(entry) do
   match entry do (k, _) -> k end
 end
 

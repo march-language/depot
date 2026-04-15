@@ -52,14 +52,14 @@ pfn is_active() do
 end
 
 -- Snapshot a single Vault table: returns list of (key, value) pairs.
-pfn snapshot_one(tbl, k) do
+fn snapshot_one(tbl, k) do
   match Vault.get(tbl, k) do
     Some(v) -> (k, v)
     None -> (k, None)
   end
 end
 
-pfn snapshot_table(table_name) do
+fn snapshot_table(table_name) do
   match Vault.whereis(table_name) do
     None -> Nil
     Some(tbl) ->
@@ -148,7 +148,7 @@ fn checkout(tables) do
     Vault.set(t, "snapshots", snaps)
     ()
   else
-    panic("Depot.Test.checkout called but sandbox is not active. Call start_sandbox() first.")
+    assert false
   end
 end
 
@@ -169,7 +169,7 @@ fn checkin() do
     Vault.set(t, "snapshots", Nil)
     ()
   else
-    panic("Depot.Test.checkin called but sandbox is not active. Call start_sandbox() first.")
+    assert false
   end
 end
 

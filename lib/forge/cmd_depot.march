@@ -481,11 +481,15 @@ pfn list_rev_acc(lst, acc) do
 end
 
 pfn take(n, lst) do
-  if n == 0 then []
+  list_rev_acc(take_acc(n, lst, Nil), Nil)
+end
+
+pfn take_acc(n, lst, acc) do
+  if n == 0 then acc
   else
     match lst do
-    Nil           -> []
-    Cons(x, rest) -> Cons(x, take(n - 1, rest))
+    Nil           -> acc
+    Cons(x, rest) -> take_acc(n - 1, rest, Cons(x, acc))
     end
 end
 

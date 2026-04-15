@@ -8,7 +8,7 @@ import Pool
 
 -- ---- Local helpers ----
 
-pfn make_conn_config(host, port, user, db) do
+fn make_conn_config(host, port, user, db) do
   { host = host, port = port, user = user, database = db, password = None }
 end
 

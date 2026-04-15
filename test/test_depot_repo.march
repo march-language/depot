@@ -3,7 +3,7 @@
 mod TestDepotRepo do
 
 -- Helper: define a simple users schema for testing.
-pfn user_schema() do
+fn user_schema() do
   Depot.Schema.define("test_repo_users", {
     fields = {
       name  = "String",
@@ -15,7 +15,7 @@ pfn user_schema() do
 end
 
 -- Helper: unwrap Ok or panic.
-pfn unwrap_ok(result) do
+fn unwrap_ok(result) do
   match result do
     Ok(v) -> v
     Err(_) -> panic("expected Ok, got Err")
@@ -23,7 +23,7 @@ pfn unwrap_ok(result) do
 end
 
 -- Helper: check if result is Err.
-pfn is_err(result) do
+fn is_err(result) do
   match result do
     Ok(_) -> false
     Err(_) -> true
@@ -31,7 +31,7 @@ pfn is_err(result) do
 end
 
 -- Helper: unwrap Err gate.
-pfn unwrap_err(result) do
+fn unwrap_err(result) do
   match result do
     Ok(_) -> panic("expected Err, got Ok")
     Err(g) -> g
@@ -39,7 +39,7 @@ pfn unwrap_err(result) do
 end
 
 -- Helper: unwrap Some or panic.
-pfn unwrap_some(opt) do
+fn unwrap_some(opt) do
   match opt do
     Some(v) -> v
     None -> panic("expected Some, got None")
@@ -47,7 +47,7 @@ pfn unwrap_some(opt) do
 end
 
 -- Helper: check if option is None.
-pfn is_none(opt) do
+fn is_none(opt) do
   match opt do
     Some(_) -> false
     None -> true
@@ -55,7 +55,7 @@ pfn is_none(opt) do
 end
 
 -- Helper: insert a user and return the record.
-pfn insert_user(name, email, age, role) do
+fn insert_user(name, email, age, role) do
   let schema = user_schema()
   let blank = Depot.Schema.blank(schema)
   let params = { name = name, email = email, age = age, role = role }
@@ -64,7 +64,7 @@ pfn insert_user(name, email, age, role) do
 end
 
 -- Helper: clear all test data before each test group.
-pfn clear_users() do
+fn clear_users() do
   Depot.Repo.delete_all(user_schema())
 end
 
@@ -165,7 +165,7 @@ end
 test "get_bang returns record for existing id" do
   clear_users()
   let record = insert_user("Alice", "alice@test.com", 30, "admin")
-  let fetched = Depot.Repo.get_bang(user_schema(), record.id)
+  let fetched = unwrap_ok(Depot.Repo.get_bang(user_schema(), record.id))
   assert fetched.name == "Alice"
 end
 

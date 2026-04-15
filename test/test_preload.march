@@ -10,11 +10,11 @@ import Preload
 
 -- ---- Helpers ----
 
-pfn list_len(lst) do
+fn list_len(lst) do
   match lst do | Nil -> 0 | Cons(_, rest) -> 1 + list_len(rest) end
 end
 
-pfn make_result(cols, rows) do
+fn make_result(cols, rows) do
   { columns = cols, rows = rows, tag = "" }
 end
 

@@ -63,17 +63,17 @@ type ConnState = {
 
 -- ---- Helpers ----
 
-pfn str_lt(a) do
+fn str_lt(a) do
   fn b -> a < b
 end
 
-pfn startup_params(cfg) do
+fn startup_params(cfg) do
   Map.from_list(
     [("user", cfg.user), ("database", cfg.database), ("application_name", "depot")],
     str_lt)
 end
 
-pfn md5_password(password, user, salt) do
+fn md5_password(password, user, salt) do
   let inner = md5(password ++ user)
   let outer = md5("md5" ++ inner ++ Bytes.to_string(salt))
   "md5" ++ outer
@@ -110,7 +110,7 @@ pfn scram_parse_server_first(server_first) do
   parse_fields(server_first, Nil)
 end
 
-pfn parse_kv(field) do
+fn parse_kv(field) do
   match String.split_first(field, "=") do
   None     -> (field, "")
   Some(kv) -> kv
@@ -332,7 +332,7 @@ end
 
 -- ---- Simple query ----
 
-pfn sq_field_name(fd_) do
+fn sq_field_name(fd_) do
   match fd_ do
   FieldDesc(name, _, _, _, _, _, _) -> name
   end
@@ -345,7 +345,7 @@ pfn sq_map_field_names(fields, acc) do
   end
 end
 
-pfn sq_row_to_strings(cells) do
+fn sq_row_to_strings(cells) do
   match cells do
   Nil -> Nil
   Cons(None, rest)    -> Cons(None, sq_row_to_strings(rest))

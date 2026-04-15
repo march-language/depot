@@ -41,7 +41,22 @@ end
 --- "SELECT * FROM \"t\" WHERE \"id\" = 1"
 fn compile_inline(q) do
   match q do
-  Query(f) -> ci_dp(f)
+  Query(f) -> do
+    let dp = if f.distinct_ then "DISTINCT " else ""
+    let from_sql = match f.from_ do
+      FromTable(name) -> quote_ident(name)
+      FromSubquery(_, _) -> "/* FROM subquery not supported in inline mode */"
+    end
+    let sql =
+      "SELECT " ++ dp ++ compile_select_inline(f) ++ " FROM " ++ from_sql
+      ++ compile_joins_inline(f.joins)
+      ++ compile_wheres_inline(f.wheres)
+      ++ compile_group_bys_inline(f.group_bys)
+      ++ compile_havings_inline(f.havings)
+      ++ compile_orders_inline(f.orders)
+      ++ compile_limit(f.limit_) ++ compile_offset(f.offset_)
+    { sql = sql, params = Nil }
+  end
   end
 end
 
@@ -57,7 +72,7 @@ end
 pfn cp_b(f, sel, s1) do
   let from_sql = match f.from_ do
     FromTable(name) -> quote_ident(name)
-    FromSubquery(_, _) -> panic("compile_parameterized: subquery in FROM not yet supported")
+    FromSubquery(_, _) -> "/* FROM subquery not supported in parameterized mode */"
   end
   cp_c(f, sel, from_sql, s1)
 end
@@ -93,33 +108,6 @@ pfn cp_finish(f, sel, frm, jns, whr, grp, hav, ord, s6) do
             ++ jns ++ whr ++ grp ++ hav ++ ord
             ++ compile_limit(f.limit_) ++ compile_offset(f.offset_)
   { sql = sql, params = rev_params(s6.params) }
-end
-
--- ---- compile_inline chain ----
-
-pfn ci_dp(f) do
-  let dp = if f.distinct_ then "DISTINCT " else ""
-  ci_from(f, dp)
-end
-
-pfn ci_from(f, dp) do
-  let from_sql = match f.from_ do
-    FromTable(name) -> quote_ident(name)
-    FromSubquery(_, _) -> panic("compile_inline: subquery in FROM not yet supported")
-  end
-  ci_assemble(f, dp, from_sql)
-end
-
-pfn ci_assemble(f, dp, from_sql) do
-  let sql =
-    "SELECT " ++ dp ++ compile_select_inline(f) ++ " FROM " ++ from_sql
-    ++ compile_joins_inline(f.joins)
-    ++ compile_wheres_inline(f.wheres)
-    ++ compile_group_bys_inline(f.group_bys)
-    ++ compile_havings_inline(f.havings)
-    ++ compile_orders_inline(f.orders)
-    ++ compile_limit(f.limit_) ++ compile_offset(f.offset_)
-  { sql = sql, params = Nil }
 end
 
 -- ---- SELECT ----
@@ -408,77 +396,77 @@ pfn compile_expr(e, st) do
     end
     ("$" ++ int_to_string(nc), { param_count = nc, params = Cons(param, st.params) })
   end
-  Col(name)     -> (quote_ident(name), st)
+  Expr.Col(name)     -> (quote_ident(name), st)
   QCol(t, name) -> (quote_ident(t) ++ "." ++ quote_ident(name), st)
-  Eq(l, r) -> do
+  Expr.Eq(l, r) -> do
     let (ls, s1) = compile_expr(l, st)
     let (rs, s2) = compile_expr(r, s1)
     (ls ++ " = " ++ rs, s2)
   end
-  Neq(l, r) -> do
+  Expr.Neq(l, r) -> do
     let (ls, s1) = compile_expr(l, st)
     let (rs, s2) = compile_expr(r, s1)
     (ls ++ " <> " ++ rs, s2)
   end
-  Lt(l, r) -> do
+  Expr.Lt(l, r) -> do
     let (ls, s1) = compile_expr(l, st)
     let (rs, s2) = compile_expr(r, s1)
     (ls ++ " < " ++ rs, s2)
   end
-  Gt(l, r) -> do
+  Expr.Gt(l, r) -> do
     let (ls, s1) = compile_expr(l, st)
     let (rs, s2) = compile_expr(r, s1)
     (ls ++ " > " ++ rs, s2)
   end
-  Lte(l, r) -> do
+  Expr.Lte(l, r) -> do
     let (ls, s1) = compile_expr(l, st)
     let (rs, s2) = compile_expr(r, s1)
     (ls ++ " <= " ++ rs, s2)
   end
-  Gte(l, r) -> do
+  Expr.Gte(l, r) -> do
     let (ls, s1) = compile_expr(l, st)
     let (rs, s2) = compile_expr(r, s1)
     (ls ++ " >= " ++ rs, s2)
   end
-  And(l, r) -> do
+  Expr.And(l, r) -> do
     let (ls, s1) = compile_expr(l, st)
     let (rs, s2) = compile_expr(r, s1)
     ("(" ++ ls ++ " AND " ++ rs ++ ")", s2)
   end
-  Or(l, r) -> do
+  Expr.Or(l, r) -> do
     let (ls, s1) = compile_expr(l, st)
     let (rs, s2) = compile_expr(r, s1)
     ("(" ++ ls ++ " OR " ++ rs ++ ")", s2)
   end
-  Not(inner) -> do
+  Expr.Not(inner) -> do
     let (s, st2) = compile_expr(inner, st)
     ("NOT (" ++ s ++ ")", st2)
   end
-  Add(l, r) -> do
+  Expr.Add(l, r) -> do
     let (ls, s1) = compile_expr(l, st)
     let (rs, s2) = compile_expr(r, s1)
     (ls ++ " + " ++ rs, s2)
   end
-  Sub(l, r) -> do
+  Expr.Sub(l, r) -> do
     let (ls, s1) = compile_expr(l, st)
     let (rs, s2) = compile_expr(r, s1)
     (ls ++ " - " ++ rs, s2)
   end
-  Mul(l, r) -> do
+  Expr.Mul(l, r) -> do
     let (ls, s1) = compile_expr(l, st)
     let (rs, s2) = compile_expr(r, s1)
     (ls ++ " * " ++ rs, s2)
   end
-  Div(l, r) -> do
+  Expr.Div(l, r) -> do
     let (ls, s1) = compile_expr(l, st)
     let (rs, s2) = compile_expr(r, s1)
     (ls ++ " / " ++ rs, s2)
   end
-  IsNull(inner) -> do
+  Expr.IsNull(inner) -> do
     let (s, st2) = compile_expr(inner, st)
     (s ++ " IS NULL", st2)
   end
-  IsNotNull(inner) -> do
+  Expr.IsNotNull(inner) -> do
     let (s, st2) = compile_expr(inner, st)
     (s ++ " IS NOT NULL", st2)
   end
@@ -522,11 +510,11 @@ pfn compile_expr(e, st) do
      { param_count = st2.param_count + 1,
        params = Cons(ParamText(pat), st2.params) })
   end
-  Count(inner) -> do
+  Expr.Count(inner) -> do
     let (s, st2) = compile_expr(inner, st)
     ("COUNT(" ++ s ++ ")", st2)
   end
-  Sum(inner) -> do
+  Expr.Sum(inner) -> do
     let (s, st2) = compile_expr(inner, st)
     ("SUM(" ++ s ++ ")", st2)
   end
@@ -534,11 +522,11 @@ pfn compile_expr(e, st) do
     let (s, st2) = compile_expr(inner, st)
     ("AVG(" ++ s ++ ")", st2)
   end
-  Min(inner) -> do
+  Expr.Min(inner) -> do
     let (s, st2) = compile_expr(inner, st)
     ("MIN(" ++ s ++ ")", st2)
   end
-  Max(inner) -> do
+  Expr.Max(inner) -> do
     let (s, st2) = compile_expr(inner, st)
     ("MAX(" ++ s ++ ")", st2)
   end
@@ -588,8 +576,8 @@ pfn compile_expr_inline(e) do
     compile_expr_inline(e) ++ " BETWEEN " ++ compile_expr_inline(lo) ++ " AND " ++ compile_expr_inline(hi)
   FnCall(name, args) ->
     name ++ "(" ++ join_strs(compile_exprs_inline(args), ", ") ++ ")"
-  Exists(_)      -> "/* EXISTS subquery not supported in inline mode */"
-  SubqueryExpr(_) -> "/* subquery not supported in inline mode */"
+  Exists(subq)      -> "EXISTS (" ++ compile_subquery_inline(subq) ++ ")"
+  SubqueryExpr(subq) -> "(" ++ compile_subquery_inline(subq) ++ ")"
   Like(inner, pat)  -> compile_expr_inline(inner) ++ " LIKE "  ++ quote_string(pat)
   ILike(inner, pat) -> compile_expr_inline(inner) ++ " ILIKE " ++ quote_string(pat)
   Count(inner)   -> "COUNT(" ++ compile_expr_inline(inner) ++ ")"
@@ -608,6 +596,155 @@ pfn compile_exprs_inline(exprs) do
   match exprs do
   Nil -> Nil
   Cons(e, rest) -> Cons(compile_expr_inline(e), compile_exprs_inline(rest))
+  end
+end
+
+-- Compiles a single-level subquery to inline SQL. Does NOT support nested
+-- subqueries (Exists/SubqueryExpr inside the inner query return a placeholder).
+-- This exists to break the mutual recursion cycle with compile_inline.
+pfn compile_subquery_inline(q) do
+  match q do
+  Query(f) -> do
+    let dp = if f.distinct_ then "DISTINCT " else ""
+    let from_sql = match f.from_ do
+      FromTable(name) -> quote_ident(name)
+      FromSubquery(_, _) -> "/* nested FROM subquery */"
+    end
+    "SELECT " ++ dp ++ subq_select(f.selects) ++ " FROM " ++ from_sql
+      ++ subq_wheres(f.wheres)
+      ++ subq_group_bys(f.group_bys)
+      ++ subq_havings(f.havings)
+      ++ subq_orders(f.orders)
+      ++ compile_limit(f.limit_) ++ compile_offset(f.offset_)
+  end
+  end
+end
+
+pfn subq_select(items) do
+  match items do
+  Nil -> "*"
+  _ -> join_strs(subq_select_items(items), ", ")
+  end
+end
+
+pfn subq_select_items(items) do
+  match items do
+  Nil -> Nil
+  Cons(item, rest) -> do
+    let s = match item do
+      SelectAll -> "*"
+      SelectField(e) -> subq_expr(e)
+      SelectAs(e, a) -> subq_expr(e) ++ " AS " ++ quote_ident(a)
+    end
+    Cons(s, subq_select_items(rest))
+  end
+  end
+end
+
+pfn subq_wheres(wheres) do
+  match wheres do
+  Nil -> ""
+  _ -> " WHERE " ++ join_where_parts(subq_where_parts(wheres))
+  end
+end
+
+pfn subq_where_parts(wheres) do
+  match wheres do
+  Nil -> Nil
+  Cons(w, rest) -> do
+    let pair = match w do
+      Where(e)   -> ("AND", subq_expr(e))
+      OrWhere(e) -> ("OR",  subq_expr(e))
+    end
+    Cons(pair, subq_where_parts(rest))
+  end
+  end
+end
+
+pfn subq_group_bys(exprs) do
+  match exprs do
+  Nil -> ""
+  _ -> " GROUP BY " ++ join_strs(subq_exprs(exprs), ", ")
+  end
+end
+
+pfn subq_havings(havings) do
+  match havings do
+  Nil -> ""
+  _ -> " HAVING " ++ join_where_parts(subq_where_parts(havings))
+  end
+end
+
+pfn subq_orders(orders) do
+  match orders do
+  Nil -> ""
+  _ -> " ORDER BY " ++ join_strs(subq_order_items(orders), ", ")
+  end
+end
+
+pfn subq_order_items(orders) do
+  match orders do
+  Nil -> Nil
+  Cons(OrderExpr(e, dir), rest) -> do
+    let d = match dir do
+      Asc  -> " ASC"
+      Desc -> " DESC"
+      AscNullsFirst  -> " ASC NULLS FIRST"
+      AscNullsLast   -> " ASC NULLS LAST"
+      DescNullsFirst -> " DESC NULLS FIRST"
+      DescNullsLast  -> " DESC NULLS LAST"
+    end
+    Cons(subq_expr(e) ++ d, subq_order_items(rest))
+  end
+  end
+end
+
+pfn subq_exprs(exprs) do
+  match exprs do
+  Nil -> Nil
+  Cons(e, rest) -> Cons(subq_expr(e), subq_exprs(rest))
+  end
+end
+
+-- Self-contained expression compiler for subqueries. Treats nested
+-- subqueries as placeholders.
+pfn subq_expr(e) do
+  match e do
+  Lit(v)         -> sql_value_to_string(v)
+  Col(name)      -> quote_ident(name)
+  QCol(t, name)  -> quote_ident(t) ++ "." ++ quote_ident(name)
+  Eq(l, r)       -> subq_expr(l) ++ " = "   ++ subq_expr(r)
+  Neq(l, r)      -> subq_expr(l) ++ " <> "  ++ subq_expr(r)
+  Lt(l, r)       -> subq_expr(l) ++ " < "   ++ subq_expr(r)
+  Gt(l, r)       -> subq_expr(l) ++ " > "   ++ subq_expr(r)
+  Lte(l, r)      -> subq_expr(l) ++ " <= "  ++ subq_expr(r)
+  Gte(l, r)      -> subq_expr(l) ++ " >= "  ++ subq_expr(r)
+  And(l, r)      -> "(" ++ subq_expr(l) ++ " AND " ++ subq_expr(r) ++ ")"
+  Or(l, r)       -> "(" ++ subq_expr(l) ++ " OR "  ++ subq_expr(r) ++ ")"
+  Not(inner)     -> "NOT (" ++ subq_expr(inner) ++ ")"
+  Add(l, r)      -> subq_expr(l) ++ " + " ++ subq_expr(r)
+  Sub(l, r)      -> subq_expr(l) ++ " - " ++ subq_expr(r)
+  Mul(l, r)      -> subq_expr(l) ++ " * " ++ subq_expr(r)
+  Div(l, r)      -> subq_expr(l) ++ " / " ++ subq_expr(r)
+  IsNull(inner)  -> subq_expr(inner) ++ " IS NULL"
+  IsNotNull(inner) -> subq_expr(inner) ++ " IS NOT NULL"
+  In(inner, vals) -> subq_expr(inner) ++ " IN (" ++ join_strs(subq_exprs(vals), ", ") ++ ")"
+  NotIn(inner, vals) -> subq_expr(inner) ++ " NOT IN (" ++ join_strs(subq_exprs(vals), ", ") ++ ")"
+  Between(e, lo, hi) -> subq_expr(e) ++ " BETWEEN " ++ subq_expr(lo) ++ " AND " ++ subq_expr(hi)
+  FnCall(name, args) -> name ++ "(" ++ join_strs(subq_exprs(args), ", ") ++ ")"
+  Exists(_)      -> "/* nested subquery */"
+  SubqueryExpr(_) -> "/* nested subquery */"
+  Like(inner, pat)  -> subq_expr(inner) ++ " LIKE "  ++ quote_string(pat)
+  ILike(inner, pat) -> subq_expr(inner) ++ " ILIKE " ++ quote_string(pat)
+  Count(inner)   -> "COUNT(" ++ subq_expr(inner) ++ ")"
+  Sum(inner)     -> "SUM("   ++ subq_expr(inner) ++ ")"
+  Avg(inner)     -> "AVG("   ++ subq_expr(inner) ++ ")"
+  Min(inner)     -> "MIN("   ++ subq_expr(inner) ++ ")"
+  Max(inner)     -> "MAX("   ++ subq_expr(inner) ++ ")"
+  CountAll       -> "COUNT(*)"
+  ExprParam(n)   -> "$" ++ int_to_string(n)
+  Raw(sql)       -> sql
+  _              -> "/* unsupported */"
   end
 end
 
@@ -670,8 +807,8 @@ pfn rev_strs_acc(xs, acc) do
   end
 end
 
-pfn rev_params(xs) do rev_params_acc(xs, Nil) end
-pfn rev_params_acc(xs, acc) do
+fn rev_params(xs) do rev_params_acc(xs, Nil) end
+fn rev_params_acc(xs, acc) do
   match xs do
   Nil -> acc
   Cons(x, rest) -> rev_params_acc(rest, Cons(x, acc))

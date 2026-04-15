@@ -13,7 +13,7 @@ import Compile
 
 -- ---- Helpers ----
 
-pfn list_len(lst) do
+fn list_len(lst) do
   match lst do | Nil -> 0 | Cons(_, rest) -> 1 + list_len(rest) end
 end
 
@@ -1143,6 +1143,104 @@ test "compile multiple WHERE params in mutation module" do
   let r = compile(q)
   assert String.contains(r.sql, "WHERE") == true
 
+end
+
+-- ---- compile_expr_m coverage (parameterized mutation expressions) ----
+
+test "mutation UPDATE with all binops" do
+  let u = update("t")
+    |> set_("a", Lit(PInt(1)))
+    |> set_("b", Lit(PFloat(1.5)))
+    |> set_("c", Lit(PBool(true)))
+    |> set_("d", Lit(PNull))
+    |> update_where(Neq(Col("a"), Lit(PInt(0))))
+    |> update_where(Lt(Col("b"), Lit(PInt(10))))
+    |> update_where(Gt(Col("c"), Lit(PInt(0))))
+    |> update_where(Lte(Col("d"), Lit(PInt(100))))
+    |> update_where(Gte(Col("e"), Lit(PInt(5))))
+    |> update_where(And(IsNull(Col("x")), IsNotNull(Col("y"))))
+    |> update_where(Or(Eq(Col("p"), Lit(PInt(1))), Eq(Col("p"), Lit(PInt(2)))))
+    |> update_where(Not(Eq(Col("q"), Lit(PInt(0)))))
+  let r = compile_update(u)
+  assert String.contains(r.sql, "UPDATE") == true
+  assert String.contains(r.sql, "SET") == true
+  assert String.contains(r.sql, "<>") == true
+  assert String.contains(r.sql, "<") == true
+  assert String.contains(r.sql, ">") == true
+  assert String.contains(r.sql, "<=") == true
+  assert String.contains(r.sql, ">=") == true
+  assert String.contains(r.sql, "IS NULL") == true
+  assert String.contains(r.sql, "IS NOT NULL") == true
+  assert String.contains(r.sql, "AND") == true
+  assert String.contains(r.sql, "OR") == true
+  assert String.contains(r.sql, "NOT") == true
+end
+
+test "mutation DELETE with complex where" do
+  let d = delete_from("t")
+    |> delete_where(And(Eq(Col("status"), Lit(PString("deleted"))),
+                        Lt(Col("updated_at"), Lit(PString("2026-01-01")))))
+    |> delete_returning([SelectField(Col("id"))])
+  let r = compile_delete(d)
+  assert String.contains(r.sql, "DELETE FROM") == true
+  assert String.contains(r.sql, "AND") == true
+  assert String.contains(r.sql, "RETURNING") == true
+end
+
+test "mutation DELETE returning all" do
+  let d = delete_from("t")
+    |> delete_where(Eq(Col("id"), Lit(PInt(1))))
+    |> delete_returning_all()
+  let r = compile_delete(d)
+  assert String.contains(r.sql, "RETURNING *") == true
+end
+
+test "mutation INSERT with ON CONFLICT DO NOTHING" do
+  let i = insert_into("t")
+    |> insert_cols(["a", "b"])
+    |> insert_row([PInt(1), PString("x")])
+    |> on_conflict_do_nothing()
+  let r = compile_insert(i)
+  assert String.contains(r.sql, "ON CONFLICT DO NOTHING") == true
+end
+
+test "mutation INSERT with ON CONFLICT DO UPDATE" do
+  let i = insert_into("t")
+    |> insert_cols(["a", "b"])
+    |> insert_row([PInt(1), PString("x")])
+    |> on_conflict_do_update([("a", Col("a")), ("b", Raw("EXCLUDED.b"))])
+  let r = compile_insert(i)
+  assert String.contains(r.sql, "ON CONFLICT DO UPDATE SET") == true
+  assert String.contains(r.sql, "EXCLUDED.b") == true
+end
+
+test "mutation INSERT returning specific" do
+  let i = insert_into("t")
+    |> insert_cols(["a"])
+    |> insert_row([PInt(1)])
+    |> insert_returning([SelectField(Col("id")), SelectField(Col("a"))])
+  let r = compile_insert(i)
+  assert String.contains(r.sql, "RETURNING") == true
+end
+
+test "mutation INSERT returning all" do
+  let i = insert_into("t")
+    |> insert_cols(["a"])
+    |> insert_row([PInt(1)])
+    |> insert_returning_all()
+  let r = compile_insert(i)
+  assert String.contains(r.sql, "RETURNING *") == true
+end
+
+test "mutation INSERT multi-row" do
+  let i = insert_into("t")
+    |> insert_cols(["a", "b"])
+    |> insert_row([PInt(1), PString("x")])
+    |> insert_row([PInt(2), PString("y")])
+    |> insert_row([PInt(3), PString("z")])
+  let r = compile_insert(i)
+  assert String.contains(r.sql, "INSERT INTO") == true
+  assert list_len(r.params) == 6
 end
 
 end -- mod TestMutation

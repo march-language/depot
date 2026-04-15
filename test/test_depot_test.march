@@ -2,7 +2,7 @@
 
 mod TestDepotTest do
 
-pfn user_schema() do
+fn user_schema() do
   Depot.Schema.define("depot_test_users", {
     fields = {
       name = "String",
@@ -11,7 +11,7 @@ pfn user_schema() do
   })
 end
 
-pfn make_gate(name, email) do
+fn make_gate(name, email) do
   Depot.Gate.cast_record(
     Depot.Schema.blank(user_schema()),
     { name = name, email = email },
@@ -19,18 +19,18 @@ pfn make_gate(name, email) do
   )
 end
 
-pfn unwrap_ok(result) do
+fn unwrap_ok(result) do
   match result do
     Ok(v) -> v
     Err(_) -> panic("expected Ok, got Err")
   end
 end
 
-pfn insert_user(name, email) do
+fn insert_user(name, email) do
   unwrap_ok(Depot.Repo.insert(user_schema(), make_gate(name, email)))
 end
 
-pfn clear_users() do
+fn clear_users() do
   Depot.Repo.delete_all(user_schema())
 end
 
@@ -71,7 +71,7 @@ test "checkout preserves pre-existing data" do
   Depot.Test.stop_sandbox()
 end
 
-pfn sandboxed_insert_count() do
+fn sandboxed_insert_count() do
   let _ = insert_user("Temp", "temp@test.com")
   Depot.Repo.count(user_schema())
 end

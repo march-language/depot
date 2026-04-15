@@ -168,12 +168,16 @@ end
 
 -- Take the first n elements from a list.
 pfn take(lst, n) do
+  List.reverse(take_acc(lst, n, Nil))
+end
+
+pfn take_acc(lst, n, acc) do
   if n <= 0 do
-    Nil
+    acc
   else
     match lst do
-      Nil -> Nil
-      Cons(h, t) -> Cons(h, take(t, n - 1))
+      Nil -> acc
+      Cons(h, t) -> take_acc(t, n - 1, Cons(h, acc))
     end
   end
 end

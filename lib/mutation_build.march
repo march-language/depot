@@ -99,47 +99,47 @@ end
 
 --- Creates a new DELETE query for the given table.
 fn delete_from(table) do
-  Delete({ table_ = table, wheres = Nil, returning_ = Nil })
+  Delete.Delete({ table_ = table, wheres = Nil, returning_ = Nil })
 end
 
 --- Appends an AND WHERE predicate.
 fn delete_where(d, expr) do
   match d do
-  Delete(f) -> Delete({ f with wheres = append_where(f.wheres, Where(expr)) })
+  Delete.Delete(f) -> Delete.Delete({ f with wheres = append_where(f.wheres, Where(expr)) })
   end
 end
 
 --- Sets RETURNING * on the DELETE.
 fn delete_returning_all(d) do
   match d do
-  Delete(f) -> Delete({ f with returning_ = [SelectAll] })
+  Delete.Delete(f) -> Delete.Delete({ f with returning_ = [SelectAll] })
   end
 end
 
 --- Sets RETURNING with specific expressions on the DELETE.
 fn delete_returning(d, exprs) do
   match d do
-  Delete(f) -> Delete({ f with returning_ = exprs })
+  Delete.Delete(f) -> Delete.Delete({ f with returning_ = exprs })
   end
 end
 
 -- ---- Private list helpers ----
 
-pfn append_row(rows, row) do
+fn append_row(rows, row) do
   match rows do
   Nil -> Cons(row, Nil)
   Cons(x, rest) -> Cons(x, append_row(rest, row))
   end
 end
 
-pfn append_set(sets, pair) do
+fn append_set(sets, pair) do
   match sets do
   Nil -> Cons(pair, Nil)
   Cons(x, rest) -> Cons(x, append_set(rest, pair))
   end
 end
 
-pfn append_where(wheres, w) do
+fn append_where(wheres, w) do
   match wheres do
   Nil -> Cons(w, Nil)
   Cons(x, rest) -> Cons(x, append_where(rest, w))

@@ -72,7 +72,7 @@ fn build_preload_query(child_table, fk_col, vals) do
     from(child_table) |> where_(Raw("FALSE"))
   _ -> do
     let exprs = map_strings_to_lit(dedup_strings(vals))
-    from(child_table) |> where_(In(Col(fk_col), exprs))
+    from(child_table) |> where_(In(Expr.Col(fk_col), exprs))
   end
   end
 end

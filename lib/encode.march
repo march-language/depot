@@ -89,7 +89,7 @@ fn encode(msg : FrontendMessage) : Bytes do
     frame(68, Bytes.concat(Bytes.from_list([83]), cstring(name)))
   Describe(DescribePortal(name)) ->
     frame(68, Bytes.concat(Bytes.from_list([80]), cstring(name)))
-  _ -> panic("encode: unimplemented message type")
+  _ -> Bytes.empty()
   end
 end
 

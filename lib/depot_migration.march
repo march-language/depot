@@ -59,7 +59,7 @@ pfn log_sql(sql) do
 end
 
 -- Map a March type name to a SQL type.
-pfn sql_type(march_type) do
+fn sql_type(march_type) do
   match march_type do
     "String"      -> "TEXT"
     "Int"         -> "BIGINT"
@@ -78,7 +78,7 @@ end
 -- Parse a column spec into (type_string, opts_alist).
 -- Bare string "String" -> ("String", Nil)
 -- Tuple ("String", { null = false }) -> ("String", [(k,v)...])
-pfn parse_col_spec(spec) do
+fn parse_col_spec(spec) do
   match spec do
     (typ, opts) -> (to_string(typ), record_entries(opts))
     other       -> (to_string(other), Nil)
@@ -86,7 +86,7 @@ pfn parse_col_spec(spec) do
 end
 
 -- Build SQL for a single column definition.
-pfn column_sql(name, spec) do
+fn column_sql(name, spec) do
   let (type_str, opts) = parse_col_spec(spec)
   let base = "\"" ++ name ++ "\" " ++ sql_type(type_str)
   let with_null = match alist_get_opt(opts, "null") do
@@ -117,7 +117,7 @@ pfn column_sql(name, spec) do
   with_ref
 end
 
-pfn col_entry_sql(entry) do
+fn col_entry_sql(entry) do
   let (name, spec) = entry
   column_sql(name, spec)
 end
@@ -169,13 +169,13 @@ changes is a record with optional fields:
       remove = ["legacy_field"]
     })
 """
-pfn alter_add_entry(prefix, entry) do
+fn alter_add_entry(prefix, entry) do
   let (col_name, spec) = entry
   let col = column_sql(col_name, spec)
   prefix ++ "ADD COLUMN " ++ col
 end
 
-pfn alter_modify_entry(prefix, entry) do
+fn alter_modify_entry(prefix, entry) do
   let (col_name, spec) = entry
   let (type_str, _opts) = parse_col_spec(spec)
   prefix ++ "ALTER COLUMN \"" ++ col_name ++ "\" TYPE " ++ sql_type(type_str)
@@ -234,7 +234,7 @@ fn create_index(table, columns, opts) do
       let col_part = join_strings(columns, "_")
       table ++ "_" ++ col_part ++ "_index"
   end
-  let unique_str = if is_unique == true do "UNIQUE " else "" end
+  let unique_str = if is_unique do "UNIQUE " else "" end
   let col_list = join_strings(List.map(columns, fn c -> "\"" ++ to_string(c) ++ "\""), ", ")
   let sql = "CREATE " ++ unique_str ++ "INDEX \"" ++ idx_name ++ "\" ON \"" ++ table ++ "\" (" ++ col_list ++ ")"
   log_sql(sql)

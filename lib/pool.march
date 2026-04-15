@@ -40,21 +40,21 @@ type PoolStats = {
 
 -- ---- Pool actor helper pfns ----
 
-pfn list_len(lst) do
+fn list_len(lst) do
   match lst do
   Nil -> 0
   Cons(_, rest) -> 1 + list_len(rest)
   end
 end
 
-pfn rev_conns_acc(lst, acc) do
+fn rev_conns_acc(lst, acc) do
   match lst do
   Nil -> acc
   Cons(x, rest) -> rev_conns_acc(rest, Cons(x, acc))
   end
 end
 
-pfn warm_up(conn_cfg, target, acc, count) do
+fn warm_up(conn_cfg, target, acc, count) do
   if count >= target then acc
   else
     match connect(conn_cfg) do
@@ -63,7 +63,7 @@ pfn warm_up(conn_cfg, target, acc, count) do
     end
 end
 
-pfn ping_conns(conns, acc) do
+fn ping_conns(conns, acc) do
   match conns do
   Nil -> rev_conns_acc(acc, Nil)
   Cons(conn, rest) ->
@@ -77,7 +77,7 @@ pfn ping_conns(conns, acc) do
   end
 end
 
-pfn close_all(conns) do
+fn close_all(conns) do
   match conns do
   Nil -> ()
   Cons(conn, rest) -> do
@@ -87,7 +87,7 @@ pfn close_all(conns) do
   end
 end
 
-pfn replenish_idle(cfg_opt, healthy) do
+fn replenish_idle(cfg_opt, healthy) do
   match cfg_opt do
   None -> healthy
   Some(cfg) -> do
@@ -107,6 +107,14 @@ end
 --   3: idle_count  : Int
 --   4: last_conn   : Option(ConnState)
 
+type PoolState = {
+  checked_out : Int,
+  config      : Option(PoolConfig),
+  idle        : List(ConnState),
+  idle_count  : Int,
+  last_conn   : Option(ConnState)
+}
+
 actor Pool do
   state {
     checked_out : Int,
@@ -125,37 +133,12 @@ actor Pool do
 
   -- Initialises the pool with a config and pre-connects min_size connections.
   on PoolInit(cfg : PoolConfig) do
-    match state.config do
-    Some(_) -> state
-    None -> do
-      let conns = warm_up(cfg.conn_config, cfg.min_size, Nil, 0)
-      let n = list_len(conns)
-      { state with config = Some(cfg), idle = conns, idle_count = n, last_conn = None }
-    end
-    end
+    handle_pool_init(state, cfg)
   end
 
   -- Checks out a connection; result is readable via get_actor_field(pool, "last_conn").
   on Checkout() do
-    match state.config do
-    None -> { state with last_conn = None }
-    Some(cfg) ->
-      match state.idle do
-      Cons(conn, rest) ->
-        { state with idle = rest, idle_count = state.idle_count - 1,
-                     checked_out = state.checked_out + 1, last_conn = Some(conn) }
-      Nil ->
-        if state.checked_out < cfg.max_size then
-          match connect(cfg.conn_config) do
-          Ok(new_conn) ->
-            { state with checked_out = state.checked_out + 1, last_conn = Some(new_conn) }
-          Err(_) ->
-            { state with last_conn = None }
-          end
-        else
-          { state with last_conn = None }
-      end
-    end
+    handle_checkout(state)
   end
 
   -- Returns a connection to the idle pool.
@@ -179,6 +162,39 @@ actor Pool do
   on Shutdown() do
     let _ = close_all(state.idle)
     { state with idle = Nil, idle_count = 0, last_conn = None }
+  end
+end
+
+fn handle_pool_init(state : PoolState, cfg : PoolConfig) do
+  match state.config do
+  Some(_) -> state
+  None -> do
+    let conns = warm_up(cfg.conn_config, cfg.min_size, Nil, 0)
+    let n = list_len(conns)
+    { state with config = Some(cfg), idle = conns, idle_count = n, last_conn = None }
+  end
+  end
+end
+
+fn handle_checkout(state : PoolState) do
+  match state.config do
+  None -> { state with last_conn = None }
+  Some(cfg) ->
+    match state.idle do
+    Cons(conn, rest) ->
+      { state with idle = rest, idle_count = state.idle_count - 1,
+                   checked_out = state.checked_out + 1, last_conn = Some(conn) }
+    Nil ->
+      if state.checked_out < cfg.max_size then
+        match connect(cfg.conn_config) do
+        Ok(new_conn) ->
+          { state with checked_out = state.checked_out + 1, last_conn = Some(new_conn) }
+        Err(_) ->
+          { state with last_conn = None }
+        end
+      else
+        { state with last_conn = None }
+    end
   end
 end
 
