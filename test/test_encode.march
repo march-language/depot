@@ -5,86 +5,148 @@ mod TestEncode do
 
 import Encode
 
--- ---- Tests ----
-
-fn test_i32_be_zero() do
+test "i32_be zero" do
   let b = i32_be(0)
-  assert(Bytes.length(b) == 4)
-  assert(Bytes.get(b, 0) == 0)
-  assert(Bytes.get(b, 1) == 0)
-  assert(Bytes.get(b, 2) == 0)
-  assert(Bytes.get(b, 3) == 0)
+  assert Bytes.length(b) == 4
+  assert Bytes.get(b, 0) == 0
+  assert Bytes.get(b, 1) == 0
+  assert Bytes.get(b, 2) == 0
+  assert Bytes.get(b, 3) == 0
 end
 
-fn test_i32_be_256() do
+test "i32_be 256" do
   let b = i32_be(256)
-  assert(Bytes.length(b) == 4)
-  assert(Bytes.get(b, 0) == 0)
-  assert(Bytes.get(b, 1) == 0)
-  assert(Bytes.get(b, 2) == 1)
-  assert(Bytes.get(b, 3) == 0)
+  assert Bytes.length(b) == 4
+  assert Bytes.get(b, 0) == 0
+  assert Bytes.get(b, 1) == 0
+  assert Bytes.get(b, 2) == 1
+  assert Bytes.get(b, 3) == 0
 end
 
-fn test_i32_be_one() do
+test "i32_be one" do
   let b = i32_be(1)
-  assert(Bytes.get(b, 3) == 1)
-  assert(Bytes.get(b, 0) == 0)
+  assert Bytes.get(b, 3) == 1
+  assert Bytes.get(b, 0) == 0
 end
 
-fn test_i16_be_zero() do
+test "i16_be zero" do
   let b = i16_be(0)
-  assert(Bytes.length(b) == 2)
-  assert(Bytes.get(b, 0) == 0)
-  assert(Bytes.get(b, 1) == 0)
+  assert Bytes.length(b) == 2
+  assert Bytes.get(b, 0) == 0
+  assert Bytes.get(b, 1) == 0
 end
 
-fn test_i16_be_256() do
+test "i16_be 256" do
   let b = i16_be(256)
-  assert(Bytes.get(b, 0) == 1)
-  assert(Bytes.get(b, 1) == 0)
+  assert Bytes.get(b, 0) == 1
+  assert Bytes.get(b, 1) == 0
 end
 
-fn test_cstring_empty() do
+test "cstring empty" do
   let b = cstring("")
-  assert(Bytes.length(b) == 1)
-  assert(Bytes.get(b, 0) == 0)
+  assert Bytes.length(b) == 1
+  assert Bytes.get(b, 0) == 0
 end
 
-fn test_cstring_hello() do
+test "cstring hello" do
   let b = cstring("hi")
-  assert(Bytes.length(b) == 3)
-  assert(Bytes.get(b, 2) == 0)
+  assert Bytes.length(b) == 3
+  assert Bytes.get(b, 2) == 0
 end
 
-fn test_length_prefix() do
+test "length_prefix" do
   let payload = Bytes.from_list([65, 66])
   let framed = length_prefix(payload)
   -- length field = payload_length + 4 = 2 + 4 = 6
-  assert(Bytes.get(framed, 3) == 6)
-  assert(Bytes.get(framed, 4) == 65)
-  assert(Bytes.get(framed, 5) == 66)
+  assert Bytes.get(framed, 3) == 6
+  assert Bytes.get(framed, 4) == 65
+  assert Bytes.get(framed, 5) == 66
 end
 
-fn test_frame() do
+test "frame" do
   let payload = Bytes.from_list([1, 2])
   let f = frame(81, payload)
   -- type byte, then 4-byte length (6), then payload
-  assert(Bytes.get(f, 0) == 81)
-  assert(Bytes.get(f, 4) == 6)
-  assert(Bytes.get(f, 5) == 1)
+  assert Bytes.get(f, 0) == 81
+  assert Bytes.get(f, 4) == 6
+  assert Bytes.get(f, 5) == 1
 end
 
-fn main() : Unit do
-  test_i32_be_zero()
-  test_i32_be_256()
-  test_i32_be_one()
-  test_i16_be_zero()
-  test_i16_be_256()
-  test_cstring_empty()
-  test_cstring_hello()
-  test_length_prefix()
-  test_frame()
-  println("test_encode: all tests passed")
+test "i32_be 65536" do
+  let b = i32_be(65536)
+  assert Bytes.get(b, 0) == 0
+  assert Bytes.get(b, 1) == 1
+  assert Bytes.get(b, 2) == 0
+  assert Bytes.get(b, 3) == 0
 end
 
+-- ---- encode FrontendMessage tests ----
+
+test "encode Sync is 5 bytes starting with 83" do
+  let b = encode(Sync)
+  assert Bytes.length(b) == 5
+  assert Bytes.get(b, 0) == 83
 end
+
+test "encode Flush starts with 72" do
+  let b = encode(Flush)
+  assert Bytes.length(b) == 5
+  assert Bytes.get(b, 0) == 72
+end
+
+test "encode Terminate starts with 88" do
+  let b = encode(Terminate)
+  assert Bytes.length(b) == 5
+  assert Bytes.get(b, 0) == 88
+end
+
+test "encode SimpleQuery starts with 81" do
+  let b = encode(SimpleQuery("SELECT 1"))
+  assert Bytes.get(b, 0) == 81
+  -- 1 type + 4 length + len("SELECT 1") + 1 null = 1 + 4 + 8 + 1 = 14
+  assert Bytes.length(b) == 14
+end
+
+test "encode PasswordMessage starts with 112" do
+  let b = encode(PasswordMessage("secret"))
+  assert Bytes.get(b, 0) == 112
+end
+
+test "encode Execute starts with 69" do
+  let b = encode(Execute("", 0))
+  assert Bytes.get(b, 0) == 69
+end
+
+test "encode Describe statement starts with 68 then 83" do
+  let b = encode(Describe(DescribeStatement("my_stmt")))
+  assert Bytes.get(b, 0) == 68
+  -- payload[0] = 'S' = 83
+  assert Bytes.get(b, 5) == 83
+end
+
+test "encode Describe portal starts with 68 then 80" do
+  let b = encode(Describe(DescribePortal("my_portal")))
+  assert Bytes.get(b, 0) == 68
+  -- payload[0] = 'P' = 80
+  assert Bytes.get(b, 5) == 80
+end
+
+test "encode_bind starts with 66" do
+  let b = encode_bind("", "", Nil)
+  assert Bytes.get(b, 0) == 66
+end
+
+test "encode_bind with ParamText" do
+  let b = encode_bind("", "", [ParamText("hello")])
+  assert Bytes.get(b, 0) == 66
+  -- just verify it doesn't crash and is non-empty
+  assert Bytes.length(b) > 5
+end
+
+test "encode_bind with ParamNull" do
+  let b = encode_bind("", "", [ParamNull])
+  assert Bytes.get(b, 0) == 66
+  assert Bytes.length(b) > 5
+end
+
+end -- mod TestEncode

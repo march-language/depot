@@ -5,50 +5,40 @@ mod TestConnection do
 
 import Connection
 
--- ---- Tests ----
-
-fn test_default_config() do
+test "default_config" do
   let cfg = default_config("alice", "mydb")
-  assert(cfg.host == "127.0.0.1")
-  assert(cfg.port == 5432)
-  assert(cfg.user == "alice")
-  assert(cfg.database == "mydb")
-  match cfg.password do | None -> () | Some(_) -> assert(false) end
+  assert cfg.host == "127.0.0.1"
+  assert cfg.port == 5432
+  assert cfg.user == "alice"
+  assert cfg.database == "mydb"
+  match cfg.password do | None -> () | Some(_) -> assert false end
 end
 
-fn test_config_with_password() do
+test "config_with_password" do
   let cfg = config_with_password("bob", "testdb", "s3cret")
-  assert(cfg.user == "bob")
-  assert(cfg.database == "testdb")
+  assert cfg.user == "bob"
+  assert cfg.database == "testdb"
   match cfg.password do
-  Some(pw) -> assert(pw == "s3cret")
-  None -> assert(false)
+  Some(pw) -> assert pw == "s3cret"
+  None -> assert false
   end
 end
 
-fn test_full_config() do
+test "full_config with password" do
   let cfg = full_config("db.example.com", 5433, "carol", "prod", Some("pass"))
-  assert(cfg.host == "db.example.com")
-  assert(cfg.port == 5433)
-  assert(cfg.user == "carol")
-  assert(cfg.database == "prod")
+  assert cfg.host == "db.example.com"
+  assert cfg.port == 5433
+  assert cfg.user == "carol"
+  assert cfg.database == "prod"
   match cfg.password do
-  Some(pw) -> assert(pw == "pass")
-  None -> assert(false)
+  Some(pw) -> assert pw == "pass"
+  None -> assert false
   end
 end
 
-fn test_full_config_no_password() do
+test "full_config no password" do
   let cfg = full_config("localhost", 5432, "u", "d", None)
-  match cfg.password do | None -> () | Some(_) -> assert(false) end
+  match cfg.password do | None -> () | Some(_) -> assert false end
 end
 
-fn main() : Unit do
-  test_default_config()
-  test_config_with_password()
-  test_full_config()
-  test_full_config_no_password()
-  println("test_connection: all tests passed")
-end
-
-end
+end -- mod TestConnection

@@ -123,4 +123,169 @@ test "sql type mapping" do
   assert String.contains(sql, "JSONB") == true
 end
 
+test "sql type Date Time Binary" do
+  let sql = Depot.Migration.create_table("type_test2", {
+    a = "Date",
+    b = "Time",
+    c = "Binary"
+  })
+  assert String.contains(sql, "DATE") == true
+  assert String.contains(sql, "TIME") == true
+  assert String.contains(sql, "BYTEA") == true
+end
+
+test "sql type UUID and String" do
+  let sql = Depot.Migration.create_table("type_test3", {
+    id   = "UUID",
+    name = "String"
+  })
+  assert String.contains(sql, "UUID") == true
+  assert String.contains(sql, "TEXT") == true
+end
+
+test "alter_table with modify columns" do
+  let stmts = Depot.Migration.alter_table("users", {
+    modify = { name = "String", age = "Int" }
+  })
+  assert List.length(stmts) == 2
+  let first = List.head(stmts)
+  assert String.contains(first, "ALTER COLUMN") == true
+  assert String.contains(first, "TYPE") == true
+end
+
+test "alter_table modify generates correct type" do
+  let stmts = Depot.Migration.alter_table("t", {
+    modify = { score = "Float" }
+  })
+  assert List.length(stmts) == 1
+  let stmt = List.head(stmts)
+  assert String.contains(stmt, "FLOAT8") == true
+  assert String.contains(stmt, "\"score\"") == true
+end
+
+test "alter_table with add and modify combined" do
+  let stmts = Depot.Migration.alter_table("products", {
+    add    = { description = "String" },
+    modify = { price = "Float" }
+  })
+  assert List.length(stmts) == 2
+end
+
+test "alter_table with add modify remove combined" do
+  let stmts = Depot.Migration.alter_table("items", {
+    add    = { notes = "String" },
+    modify = { quantity = "Int" },
+    remove = ["legacy_col"]
+  })
+  assert List.length(stmts) == 3
+end
+
+test "column_sql with references on_delete CASCADE" do
+  let sql = Depot.Migration.create_table("posts", {
+    user_id = ("UUID", { references = Depot.Migration.references("users", { on_delete = "CASCADE" }) })
+  })
+  assert String.contains(sql, "REFERENCES") == true
+  assert String.contains(sql, "ON DELETE CASCADE") == true
+end
+
+test "column_sql with references on_update SET NULL" do
+  let sql = Depot.Migration.create_table("comments", {
+    post_id = ("UUID", { references = Depot.Migration.references("posts", { on_update = "SET NULL" }) })
+  })
+  assert String.contains(sql, "REFERENCES") == true
+  assert String.contains(sql, "ON UPDATE SET NULL") == true
+end
+
+test "column_sql with references on_delete and on_update" do
+  let sql = Depot.Migration.create_table("items", {
+    order_id = ("UUID", { references = Depot.Migration.references("orders", { on_delete = "CASCADE", on_update = "CASCADE" }) })
+  })
+  assert String.contains(sql, "ON DELETE CASCADE") == true
+  assert String.contains(sql, "ON UPDATE CASCADE") == true
+end
+
+test "create_table with NOT NULL column" do
+  let sql = Depot.Migration.create_table("t", {
+    email = ("String", { null = false })
+  })
+  assert String.contains(sql, "NOT NULL") == true
+end
+
+test "create_table with primary key column" do
+  let sql = Depot.Migration.create_table("t", {
+    id = ("UUID", { primary_key = true })
+  })
+  assert String.contains(sql, "PRIMARY KEY") == true
+end
+
+test "create_table with default and not null" do
+  let sql = Depot.Migration.create_table("t", {
+    role = ("String", { default = "user", null = false })
+  })
+  assert String.contains(sql, "DEFAULT 'user'") == true
+  assert String.contains(sql, "NOT NULL") == true
+end
+
+test "create_index non-unique" do
+  let sql = Depot.Migration.create_index("users", ["name"], { unique = false })
+  assert String.contains(sql, "INDEX") == true
+  assert String.contains(sql, "UNIQUE") == false
+end
+
+test "create_index with multiple columns" do
+  let sql = Depot.Migration.create_index("t", ["a", "b", "c"], { unique = true })
+  assert String.contains(sql, "\"a\"") == true
+  assert String.contains(sql, "\"b\"") == true
+  assert String.contains(sql, "UNIQUE") == true
+end
+
+test "drop_index generates correct SQL" do
+  let sql = Depot.Migration.drop_index("my_index")
+  assert sql == "DROP INDEX \"my_index\""
+end
+
+test "rename_table generates correct SQL" do
+  let sql = Depot.Migration.rename_table("users", "accounts")
+  assert String.contains(sql, "RENAME TO") == true
+  assert String.contains(sql, "\"accounts\"") == true
+end
+
+test "rename_column generates correct SQL" do
+  let sql = Depot.Migration.rename_column("users", "fname", "first_name")
+  assert String.contains(sql, "RENAME COLUMN") == true
+  assert String.contains(sql, "\"first_name\"") == true
+end
+
+test "execute logs arbitrary SQL" do
+  let sql = Depot.Migration.execute("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\"")
+  assert String.contains(sql, "uuid-ossp") == true
+end
+
+test "applied_migrations returns list" do
+  Depot.Migration.record_migration(20250101000001)
+  let vs = Depot.Migration.applied_migrations()
+  assert List.length(vs) > 0
+end
+
+test "is_applied returns true after record" do
+  Depot.Migration.record_migration(20250202000002)
+  assert Depot.Migration.is_applied(20250202000002) == true
+end
+
+test "is_applied returns false for unknown version" do
+  assert Depot.Migration.is_applied(99999999991111) == false
+end
+
+test "migrations_table contains IF NOT EXISTS" do
+  let sql = Depot.Migration.migrations_table()
+  assert String.contains(sql, "IF NOT EXISTS") == true
+end
+
+test "alter_table remove multiple columns" do
+  let stmts = Depot.Migration.alter_table("t", {
+    remove = ["col_a", "col_b", "col_c"]
+  })
+  assert List.length(stmts) == 3
+end
+
 end

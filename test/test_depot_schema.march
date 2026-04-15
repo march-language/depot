@@ -247,4 +247,163 @@ describe "record introspection builtins" do
   end
 end
 
+-- ---------------------------------------------------------------------------
+-- Additional coverage tests
+-- ---------------------------------------------------------------------------
+
+test "bare string field spec (no opts tuple)" do
+  let s = Depot.Schema.define("articles", {
+    fields = {
+      title   = "String",
+      content = "String",
+      views   = "Int"
+    }
+  })
+  assert Depot.Schema.field_names(s) == ["title", "content", "views"]
+  let b = Depot.Schema.blank(s)
+  assert List.member(record_entries(b), ("title", ""))
+  assert List.member(record_entries(b), ("views", 0))
+end
+
+test "Float type default in blank" do
+  let s = Depot.Schema.define("metrics", {
+    fields = {
+      score = ("Float", { default = 0.0 }),
+      ratio = "Float"
+    }
+  })
+  let b = Depot.Schema.blank(s)
+  assert to_string(record_get(b, "ratio")) == "Some(0.)"
+end
+
+test "Bool type default in blank" do
+  let s = Depot.Schema.define("flags", {
+    fields = { enabled = "Bool" }
+  })
+  let b = Depot.Schema.blank(s)
+  assert to_string(record_get(b, "enabled")) == "Some(false)"
+end
+
+test "nullable field defaults to None" do
+  let s = Depot.Schema.define("profiles", {
+    fields = {
+      bio  = ("String", { nullable = true }),
+      name = "String"
+    }
+  })
+  let b = Depot.Schema.blank(s)
+  assert record_get(b, "bio") == Some(None)
+  assert record_get(b, "name") == Some("")
+end
+
+test "field with explicit custom default overrides type default" do
+  let s = Depot.Schema.define("settings", {
+    fields = {
+      theme = ("String", { default = "dark" }),
+      level = ("Int", { default = 5 })
+    }
+  })
+  let b = Depot.Schema.blank(s)
+  assert record_get(b, "theme") == Some("dark")
+  assert record_get(b, "level") == Some(5)
+end
+
+test "virtual fields excluded from db_fields" do
+  let s = Depot.Schema.define("users", {
+    fields = {
+      name          = "String",
+      password      = ("String", { virtual = true }),
+      password_hash = "String"
+    }
+  })
+  let db = Depot.Schema.db_fields(s)
+  assert List.member(db, "name")
+  assert List.member(db, "password_hash")
+  assert List.member(db, "password") == false
+end
+
+test "all-virtual schema yields empty db_fields" do
+  let s = Depot.Schema.define("temp", {
+    fields = {
+      a = ("String", { virtual = true }),
+      b = ("Int", { virtual = true })
+    }
+  })
+  assert Depot.Schema.db_fields(s) == Nil
+end
+
+test "custom primary_key" do
+  let s = Depot.Schema.define("products", {
+    primary_key = "sku",
+    fields = { sku = "String", name = "String" }
+  })
+  assert Depot.Schema.primary_key(s) == "sku"
+end
+
+test "has_one association" do
+  let s = Depot.Schema.define("users", {
+    fields  = { name = "String" },
+    has_one = { profile = "Profile" }
+  })
+  let assoc = Depot.Schema.association(s, "profile")
+  match assoc do
+  Some(("has_one", "profile", "Profile", _)) -> ()
+  end
+end
+
+test "many_to_many association" do
+  let s = Depot.Schema.define("posts", {
+    fields        = { title = "String" },
+    many_to_many  = { tags = ("Tag", { join_through = "posts_tags" }) }
+  })
+  let assoc = Depot.Schema.association(s, "tags")
+  match assoc do
+  Some(("many_to_many", "tags", "Tag", _)) -> ()
+  end
+end
+
+test "associations returns all kinds" do
+  let s = Depot.Schema.define("posts", {
+    fields        = { title = "String" },
+    belongs_to    = { user = "User" },
+    has_many      = { comments = "Comment" },
+    has_one       = { featured_image = "Image" },
+    many_to_many  = { tags = "Tag" }
+  })
+  let assocs = Depot.Schema.associations(s)
+  assert List.length(assocs) == 4
+end
+
+test "field_type returns Some for known field and None for unknown" do
+  let s = Depot.Schema.define("t", {
+    fields = { name = "String", age = "Int" }
+  })
+  assert Depot.Schema.field_type(s, "name") == Some("String")
+  assert Depot.Schema.field_type(s, "age") == Some("Int")
+  assert Depot.Schema.field_type(s, "unknown") == None
+end
+
+test "field_opts returns Some for field with opts and None for unknown" do
+  let s = Depot.Schema.define("t", {
+    fields = { bio = ("String", { nullable = true }) }
+  })
+  match Depot.Schema.field_opts(s, "bio") do
+  Some(_) -> ()
+  None    -> assert false
+  end
+  assert Depot.Schema.field_opts(s, "nonexistent") == None
+end
+
+test "is_virtual returns correct values" do
+  let s = Depot.Schema.define("t", {
+    fields = {
+      pw      = ("String", { virtual = true }),
+      pw_hash = "String"
+    }
+  })
+  assert Depot.Schema.is_virtual(s, "pw") == true
+  assert Depot.Schema.is_virtual(s, "pw_hash") == false
+  assert Depot.Schema.is_virtual(s, "nonexistent") == false
+end
+
 end -- mod TestDepotSchema

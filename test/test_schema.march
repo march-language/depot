@@ -5,141 +5,640 @@ mod TestSchema do
 
 import Schema
 
--- ---- Tests ----
-
-fn test_from_oid_int4() do
-  match from_oid(23) do
-  TInt32 -> ()
-  _ -> assert(false)
-  end
+test "from_oid int4" do
+  assert from_oid(23) == TInt32
 end
 
-fn test_from_oid_text() do
-  match from_oid(25) do
-  TText -> ()
-  _ -> assert(false)
-  end
+test "from_oid text" do
+  assert from_oid(25) == TText
 end
 
-fn test_from_oid_bool() do
-  match from_oid(16) do
-  TBool -> ()
-  _ -> assert(false)
-  end
+test "from_oid bool" do
+  assert from_oid(16) == TBool
 end
 
-fn test_from_oid_array_text() do
-  match from_oid(1009) do
-  TArray(TText) -> ()
-  _ -> assert(false)
-  end
+test "from_oid array text" do
+  assert from_oid(1009) == TArray(TText)
 end
 
-fn test_from_oid_unknown() do
-  match from_oid(9999) do
-  TUnknown(oid) -> assert(oid == 9999)
-  _ -> assert(false)
-  end
+test "from_oid unknown OID" do
+  assert from_oid(9999) == TUnknown(9999)
 end
 
-fn test_to_oid_roundtrip() do
-  assert(to_oid(TInt32) == 23)
-  assert(to_oid(TText) == 25)
-  assert(to_oid(TBool) == 16)
-  assert(to_oid(TFloat64) == 701)
-  assert(to_oid(TUuid) == 2950)
+test "to_oid roundtrip" do
+  assert to_oid(TInt32) == 23
+  assert to_oid(TText) == 25
+  assert to_oid(TBool) == 16
+  assert to_oid(TFloat64) == 701
+  assert to_oid(TUuid) == 2950
 end
 
-fn test_type_name_primitives() do
-  assert(type_name(TInt32) == "int4")
-  assert(type_name(TInt64) == "int8")
-  assert(type_name(TText) == "text")
-  assert(type_name(TBool) == "bool")
-  assert(type_name(TFloat64) == "float8")
+test "type_name primitives" do
+  assert type_name(TInt32) == "int4"
+  assert type_name(TInt64) == "int8"
+  assert type_name(TText) == "text"
+  assert type_name(TBool) == "bool"
+  assert type_name(TFloat64) == "float8"
 end
 
-fn test_type_name_array() do
-  assert(type_name(TArray(TInt32)) == "int4[]")
-  assert(type_name(TArray(TText)) == "text[]")
+test "type_name array" do
+  assert type_name(TArray(TInt32)) == "int4[]"
+  assert type_name(TArray(TText)) == "text[]"
 end
 
-fn test_type_name_unknown() do
-  assert(type_name(TUnknown(42)) == "unknown(42)")
+test "type_name unknown" do
+  assert type_name(TUnknown(42)) == "unknown(42)"
 end
 
-fn test_is_numeric() do
-  assert(is_numeric(TInt32) == true)
-  assert(is_numeric(TFloat64) == true)
-  assert(is_numeric(TText) == false)
-  assert(is_numeric(TBool) == false)
+test "is_numeric" do
+  assert is_numeric(TInt32) == true
+  assert is_numeric(TFloat64) == true
+  assert is_numeric(TText) == false
+  assert is_numeric(TBool) == false
 end
 
-fn test_is_text() do
-  assert(is_text(TText) == true)
-  assert(is_text(TVarchar) == true)
-  assert(is_text(TInt32) == false)
+test "is_text" do
+  assert is_text(TText) == true
+  assert is_text(TVarchar) == true
+  assert is_text(TInt32) == false
 end
 
-fn test_is_temporal() do
-  assert(is_temporal(TDate) == true)
-  assert(is_temporal(TTimestamp) == true)
-  assert(is_temporal(TText) == false)
+test "is_temporal" do
+  assert is_temporal(TDate) == true
+  assert is_temporal(TTimestamp) == true
+  assert is_temporal(TText) == false
 end
 
-fn test_parse_bool_true() do
-  match parse_text_value(TBool, "t") do
-  VBool(b) -> assert(b == true)
-  _ -> assert(false)
-  end
+test "parse_text_value bool true" do
+  assert parse_text_value(TBool, "t") == VBool(true)
 end
 
-fn test_parse_bool_false() do
-  match parse_text_value(TBool, "f") do
-  VBool(b) -> assert(b == false)
-  _ -> assert(false)
-  end
+test "parse_text_value bool false" do
+  assert parse_text_value(TBool, "f") == VBool(false)
 end
 
-fn test_parse_int() do
-  match parse_text_value(TInt32, "42") do
-  VInt(n) -> assert(n == 42)
-  _ -> assert(false)
-  end
+test "parse_text_value int" do
+  assert parse_text_value(TInt32, "42") == VInt(42)
 end
 
-fn test_parse_text() do
-  match parse_text_value(TText, "hello") do
-  VString(s) -> assert(s == "hello")
-  _ -> assert(false)
-  end
+test "parse_text_value text" do
+  assert parse_text_value(TText, "hello") == VString("hello")
 end
 
-fn test_parse_unknown() do
-  match parse_text_value(TUnknown(999), "raw") do
-  VUnparsed(s) -> assert(s == "raw")
-  _ -> assert(false)
-  end
+test "parse_text_value unknown type" do
+  assert parse_text_value(TUnknown(999), "raw") == VUnparsed("raw")
 end
 
-fn main() : Unit do
-  test_from_oid_int4()
-  test_from_oid_text()
-  test_from_oid_bool()
-  test_from_oid_array_text()
-  test_from_oid_unknown()
-  test_to_oid_roundtrip()
-  test_type_name_primitives()
-  test_type_name_array()
-  test_type_name_unknown()
-  test_is_numeric()
-  test_is_text()
-  test_is_temporal()
-  test_parse_bool_true()
-  test_parse_bool_false()
-  test_parse_int()
-  test_parse_text()
-  test_parse_unknown()
-  println("test_schema: all tests passed")
+-- ---------------------------------------------------------------------------
+-- from_oid: all remaining OIDs
+-- ---------------------------------------------------------------------------
+
+test "from_oid bytea" do
+  assert from_oid(17) == TBytea
 end
 
+test "from_oid char" do
+  assert from_oid(18) == TChar
 end
+
+test "from_oid int8" do
+  assert from_oid(20) == TInt64
+end
+
+test "from_oid int2" do
+  assert from_oid(21) == TInt16
+end
+
+test "from_oid json" do
+  assert from_oid(114) == TJson
+end
+
+test "from_oid float4" do
+  assert from_oid(700) == TFloat32
+end
+
+test "from_oid float8" do
+  assert from_oid(701) == TFloat64
+end
+
+test "from_oid varchar" do
+  assert from_oid(1043) == TVarchar
+end
+
+test "from_oid date" do
+  assert from_oid(1082) == TDate
+end
+
+test "from_oid time" do
+  assert from_oid(1083) == TTime
+end
+
+test "from_oid timestamp" do
+  assert from_oid(1114) == TTimestamp
+end
+
+test "from_oid timestamptz" do
+  assert from_oid(1184) == TTimestampTz
+end
+
+test "from_oid interval" do
+  assert from_oid(1186) == TInterval
+end
+
+test "from_oid numeric" do
+  assert from_oid(1700) == TNumeric
+end
+
+test "from_oid uuid" do
+  assert from_oid(2950) == TUuid
+end
+
+test "from_oid jsonb" do
+  assert from_oid(3802) == TJsonb
+end
+
+test "from_oid array bool" do
+  assert from_oid(1000) == TArray(TBool)
+end
+
+test "from_oid array bytea" do
+  assert from_oid(1001) == TArray(TBytea)
+end
+
+test "from_oid array int2" do
+  assert from_oid(1005) == TArray(TInt16)
+end
+
+test "from_oid array int4" do
+  assert from_oid(1007) == TArray(TInt32)
+end
+
+test "from_oid array varchar" do
+  assert from_oid(1015) == TArray(TVarchar)
+end
+
+test "from_oid array int8" do
+  assert from_oid(1016) == TArray(TInt64)
+end
+
+test "from_oid array float4" do
+  assert from_oid(1021) == TArray(TFloat32)
+end
+
+test "from_oid array float8" do
+  assert from_oid(1022) == TArray(TFloat64)
+end
+
+test "from_oid array timestamp" do
+  assert from_oid(1115) == TArray(TTimestamp)
+end
+
+test "from_oid array date" do
+  assert from_oid(1182) == TArray(TDate)
+end
+
+test "from_oid array timestamptz" do
+  assert from_oid(1185) == TArray(TTimestampTz)
+end
+
+test "from_oid array numeric" do
+  assert from_oid(1231) == TArray(TNumeric)
+end
+
+test "from_oid array json" do
+  assert from_oid(199) == TArray(TJson)
+end
+
+test "from_oid array uuid" do
+  assert from_oid(2951) == TArray(TUuid)
+end
+
+test "from_oid array jsonb" do
+  assert from_oid(3807) == TArray(TJsonb)
+end
+
+test "from_oid oid type" do
+  assert from_oid(26) == TInt32
+end
+
+-- ---------------------------------------------------------------------------
+-- to_oid: remaining types
+-- ---------------------------------------------------------------------------
+
+test "to_oid remaining scalar types" do
+  assert to_oid(TBytea) == 17
+  assert to_oid(TChar) == 18
+  assert to_oid(TInt64) == 20
+  assert to_oid(TInt16) == 21
+  assert to_oid(TJson) == 114
+  assert to_oid(TFloat32) == 700
+  assert to_oid(TVarchar) == 1043
+  assert to_oid(TDate) == 1082
+  assert to_oid(TTime) == 1083
+  assert to_oid(TTimestamp) == 1114
+  assert to_oid(TTimestampTz) == 1184
+  assert to_oid(TInterval) == 1186
+  assert to_oid(TNumeric) == 1700
+  assert to_oid(TJsonb) == 3802
+end
+
+test "to_oid TUnknown returns the oid" do
+  assert to_oid(TUnknown(12345)) == 12345
+end
+
+test "to_oid array types" do
+  assert to_oid(TArray(TBool)) == 1000
+  assert to_oid(TArray(TBytea)) == 1001
+  assert to_oid(TArray(TInt16)) == 1005
+  assert to_oid(TArray(TInt32)) == 1007
+  assert to_oid(TArray(TText)) == 1009
+  assert to_oid(TArray(TVarchar)) == 1015
+  assert to_oid(TArray(TInt64)) == 1016
+  assert to_oid(TArray(TFloat32)) == 1021
+  assert to_oid(TArray(TFloat64)) == 1022
+  assert to_oid(TArray(TTimestamp)) == 1115
+  assert to_oid(TArray(TDate)) == 1182
+  assert to_oid(TArray(TTimestampTz)) == 1185
+  assert to_oid(TArray(TNumeric)) == 1231
+  assert to_oid(TArray(TJson)) == 199
+  assert to_oid(TArray(TUuid)) == 2951
+  assert to_oid(TArray(TJsonb)) == 3807
+end
+
+test "to_oid array unknown inner returns 0" do
+  assert to_oid(TArray(TUnknown(99))) == 0
+end
+
+-- ---------------------------------------------------------------------------
+-- type_name: remaining types
+-- ---------------------------------------------------------------------------
+
+test "type_name remaining types" do
+  assert type_name(TBytea) == "bytea"
+  assert type_name(TChar) == "char"
+  assert type_name(TInt16) == "int2"
+  assert type_name(TFloat32) == "float4"
+  assert type_name(TNumeric) == "numeric"
+  assert type_name(TVarchar) == "varchar"
+  assert type_name(TDate) == "date"
+  assert type_name(TTime) == "time"
+  assert type_name(TTimestamp) == "timestamp"
+  assert type_name(TTimestampTz) == "timestamptz"
+  assert type_name(TInterval) == "interval"
+  assert type_name(TJson) == "json"
+  assert type_name(TJsonb) == "jsonb"
+  assert type_name(TUuid) == "uuid"
+end
+
+-- ---------------------------------------------------------------------------
+-- is_numeric: remaining true cases
+-- ---------------------------------------------------------------------------
+
+test "is_numeric int16 int64 float32 numeric" do
+  assert is_numeric(TInt16) == true
+  assert is_numeric(TInt64) == true
+  assert is_numeric(TFloat32) == true
+  assert is_numeric(TNumeric) == true
+end
+
+-- ---------------------------------------------------------------------------
+-- is_text: char
+-- ---------------------------------------------------------------------------
+
+test "is_text char" do
+  assert is_text(TChar) == true
+end
+
+-- ---------------------------------------------------------------------------
+-- is_temporal: time, timestamptz, interval
+-- ---------------------------------------------------------------------------
+
+test "is_temporal time timestamptz interval" do
+  assert is_temporal(TTime) == true
+  assert is_temporal(TTimestampTz) == true
+  assert is_temporal(TInterval) == true
+end
+
+-- ---------------------------------------------------------------------------
+-- parse_text_value: remaining types
+-- ---------------------------------------------------------------------------
+
+test "parse_text_value int16" do
+  assert parse_text_value(TInt16, "100") == VInt(100)
+end
+
+test "parse_text_value int64" do
+  assert parse_text_value(TInt64, "999") == VInt(999)
+end
+
+test "parse_text_value float32" do
+  assert parse_text_value(TFloat32, "1.5") == VFloat(1.5)
+end
+
+test "parse_text_value float64" do
+  assert parse_text_value(TFloat64, "3.14") == VFloat(3.14)
+end
+
+test "parse_text_value numeric" do
+  assert parse_text_value(TNumeric, "2.718") == VFloat(2.718)
+end
+
+test "parse_text_value varchar" do
+  assert parse_text_value(TVarchar, "hello") == VString("hello")
+end
+
+test "parse_text_value char" do
+  assert parse_text_value(TChar, "x") == VString("x")
+end
+
+test "parse_text_value date" do
+  assert parse_text_value(TDate, "2024-01-01") == VString("2024-01-01")
+end
+
+test "parse_text_value time" do
+  assert parse_text_value(TTime, "12:00:00") == VString("12:00:00")
+end
+
+test "parse_text_value timestamp" do
+  assert parse_text_value(TTimestamp, "2024-01-01 12:00:00") == VString("2024-01-01 12:00:00")
+end
+
+test "parse_text_value timestamptz" do
+  assert parse_text_value(TTimestampTz, "2024-01-01 12:00:00+00") == VString("2024-01-01 12:00:00+00")
+end
+
+test "parse_text_value interval" do
+  assert parse_text_value(TInterval, "1 day") == VString("1 day")
+end
+
+test "parse_text_value json" do
+  assert parse_text_value(TJson, "{\"a\":1}") == VString("{\"a\":1}")
+end
+
+test "parse_text_value jsonb" do
+  assert parse_text_value(TJsonb, "{\"b\":2}") == VString("{\"b\":2}")
+end
+
+test "parse_text_value uuid" do
+  assert parse_text_value(TUuid, "550e8400-e29b-41d4-a716-446655440000") == VString("550e8400-e29b-41d4-a716-446655440000")
+end
+
+test "parse_text_value bytea" do
+  assert parse_text_value(TBytea, "\\x68656c6c6f") == VString("\\x68656c6c6f")
+end
+
+test "parse_text_value array" do
+  assert parse_text_value(TArray(TInt32), "{1,2,3}") == VString("{1,2,3}")
+end
+
+-- ---- Additional from_oid/to_oid/type_name coverage ----
+
+test "from_oid int4 repeated" do
+  assert from_oid(23) == TInt32
+  assert from_oid(25) == TText
+  assert from_oid(16) == TBool
+end
+
+test "to_oid TInt16 TInt64 roundtrip" do
+  assert to_oid(TInt16) == 21
+  assert to_oid(TInt64) == 20
+  assert from_oid(21) == TInt16
+  assert from_oid(20) == TInt64
+end
+
+test "to_oid TFloat32 TFloat64 roundtrip" do
+  assert to_oid(TFloat32) == 700
+  assert to_oid(TFloat64) == 701
+  assert from_oid(700) == TFloat32
+  assert from_oid(701) == TFloat64
+end
+
+test "to_oid TDate TTime TTimestamp roundtrip" do
+  assert to_oid(TDate) == 1082
+  assert to_oid(TTime) == 1083
+  assert to_oid(TTimestamp) == 1114
+  assert from_oid(1082) == TDate
+  assert from_oid(1083) == TTime
+  assert from_oid(1114) == TTimestamp
+end
+
+test "to_oid TTimestampTz TInterval roundtrip" do
+  assert to_oid(TTimestampTz) == 1184
+  assert to_oid(TInterval) == 1186
+  assert from_oid(1184) == TTimestampTz
+  assert from_oid(1186) == TInterval
+end
+
+test "to_oid TJson TJsonb roundtrip" do
+  assert to_oid(TJson) == 114
+  assert to_oid(TJsonb) == 3802
+  assert from_oid(114) == TJson
+  assert from_oid(3802) == TJsonb
+end
+
+test "to_oid TBytea TChar TVarchar roundtrip" do
+  assert to_oid(TBytea) == 17
+  assert to_oid(TChar) == 18
+  assert to_oid(TVarchar) == 1043
+  assert from_oid(17) == TBytea
+  assert from_oid(18) == TChar
+  assert from_oid(1043) == TVarchar
+end
+
+test "to_oid TNumeric TUuid roundtrip" do
+  assert to_oid(TNumeric) == 1700
+  assert to_oid(TUuid) == 2950
+  assert from_oid(1700) == TNumeric
+  assert from_oid(2950) == TUuid
+end
+
+test "type_name all primitives" do
+  assert type_name(TInt32) == "int4"
+  assert type_name(TInt64) == "int8"
+  assert type_name(TInt16) == "int2"
+  assert type_name(TText) == "text"
+  assert type_name(TBool) == "bool"
+  assert type_name(TFloat32) == "float4"
+  assert type_name(TFloat64) == "float8"
+  assert type_name(TNumeric) == "numeric"
+end
+
+test "type_name temporal types" do
+  assert type_name(TDate) == "date"
+  assert type_name(TTime) == "time"
+  assert type_name(TTimestamp) == "timestamp"
+  assert type_name(TTimestampTz) == "timestamptz"
+  assert type_name(TInterval) == "interval"
+end
+
+test "type_name text-like types" do
+  assert type_name(TVarchar) == "varchar"
+  assert type_name(TChar) == "char"
+end
+
+test "type_name binary and json" do
+  assert type_name(TBytea) == "bytea"
+  assert type_name(TJson) == "json"
+  assert type_name(TJsonb) == "jsonb"
+  assert type_name(TUuid) == "uuid"
+end
+
+test "type_name array types" do
+  assert type_name(TArray(TInt32)) == "int4[]"
+  assert type_name(TArray(TInt64)) == "int8[]"
+  assert type_name(TArray(TFloat64)) == "float8[]"
+  assert type_name(TArray(TBool)) == "bool[]"
+end
+
+test "type_name array text varchar" do
+  assert type_name(TArray(TText)) == "text[]"
+  assert type_name(TArray(TVarchar)) == "varchar[]"
+end
+
+test "type_name array date timestamp" do
+  assert type_name(TArray(TDate)) == "date[]"
+  assert type_name(TArray(TTimestamp)) == "timestamp[]"
+  assert type_name(TArray(TTimestampTz)) == "timestamptz[]"
+end
+
+test "type_name unknown" do
+  assert type_name(TUnknown(42)) == "unknown(42)"
+  assert type_name(TUnknown(0)) == "unknown(0)"
+  assert type_name(TUnknown(9999)) == "unknown(9999)"
+end
+
+test "is_numeric all numeric types" do
+  assert is_numeric(TInt16) == true
+  assert is_numeric(TInt32) == true
+  assert is_numeric(TInt64) == true
+  assert is_numeric(TFloat32) == true
+  assert is_numeric(TFloat64) == true
+  assert is_numeric(TNumeric) == true
+end
+
+test "is_numeric non-numeric types" do
+  assert is_numeric(TText) == false
+  assert is_numeric(TBool) == false
+  assert is_numeric(TDate) == false
+  assert is_numeric(TUuid) == false
+  assert is_numeric(TJson) == false
+end
+
+test "is_text all text types" do
+  assert is_text(TText) == true
+  assert is_text(TVarchar) == true
+  assert is_text(TChar) == true
+end
+
+test "is_text non-text types" do
+  assert is_text(TInt32) == false
+  assert is_text(TBool) == false
+  assert is_text(TFloat64) == false
+end
+
+test "is_temporal all temporal types" do
+  assert is_temporal(TDate) == true
+  assert is_temporal(TTime) == true
+  assert is_temporal(TTimestamp) == true
+  assert is_temporal(TTimestampTz) == true
+  assert is_temporal(TInterval) == true
+end
+
+test "is_temporal non-temporal types" do
+  assert is_temporal(TText) == false
+  assert is_temporal(TInt32) == false
+  assert is_temporal(TFloat64) == false
+  assert is_temporal(TUuid) == false
+end
+
+test "from_oid array types roundtrip" do
+  assert from_oid(1000) == TArray(TBool)
+  assert from_oid(1001) == TArray(TBytea)
+  assert from_oid(1005) == TArray(TInt16)
+  assert from_oid(1007) == TArray(TInt32)
+  assert from_oid(1009) == TArray(TText)
+  assert from_oid(1015) == TArray(TVarchar)
+end
+
+test "from_oid array numeric uuid json" do
+  assert from_oid(1016) == TArray(TInt64)
+  assert from_oid(1021) == TArray(TFloat32)
+  assert from_oid(1022) == TArray(TFloat64)
+  assert from_oid(1231) == TArray(TNumeric)
+  assert from_oid(2951) == TArray(TUuid)
+  assert from_oid(3807) == TArray(TJsonb)
+end
+
+test "from_oid array temporal types" do
+  assert from_oid(1115) == TArray(TTimestamp)
+  assert from_oid(1182) == TArray(TDate)
+  assert from_oid(1185) == TArray(TTimestampTz)
+end
+
+test "parse_text_value all int types" do
+  assert parse_text_value(TInt16, "10") == VInt(10)
+  assert parse_text_value(TInt32, "42") == VInt(42)
+  assert parse_text_value(TInt64, "999") == VInt(999)
+end
+
+test "parse_text_value all float types" do
+  assert parse_text_value(TFloat32, "1.5") == VFloat(1.5)
+  assert parse_text_value(TFloat64, "3.14") == VFloat(3.14)
+  assert parse_text_value(TNumeric, "2.718") == VFloat(2.718)
+end
+
+test "parse_text_value all string types" do
+  assert parse_text_value(TText, "hello") == VString("hello")
+  assert parse_text_value(TVarchar, "world") == VString("world")
+  assert parse_text_value(TChar, "x") == VString("x")
+end
+
+test "parse_text_value bool" do
+  assert parse_text_value(TBool, "t") == VBool(true)
+  assert parse_text_value(TBool, "f") == VBool(false)
+end
+
+test "parse_text_value temporal types" do
+  assert parse_text_value(TDate, "2024-01-01") == VString("2024-01-01")
+  assert parse_text_value(TTime, "12:00:00") == VString("12:00:00")
+  assert parse_text_value(TTimestamp, "2024-01-01 00:00:00") == VString("2024-01-01 00:00:00")
+  assert parse_text_value(TTimestampTz, "2024-01-01 00:00:00+00") == VString("2024-01-01 00:00:00+00")
+  assert parse_text_value(TInterval, "1 hour") == VString("1 hour")
+end
+
+test "parse_text_value json uuid bytea" do
+  assert parse_text_value(TJson, "{\"k\":1}") == VString("{\"k\":1}")
+  assert parse_text_value(TJsonb, "{\"k\":2}") == VString("{\"k\":2}")
+  assert parse_text_value(TUuid, "abc-123") == VString("abc-123")
+  assert parse_text_value(TBytea, "\\x00") == VString("\\x00")
+end
+
+test "to_oid TArray roundtrip" do
+  assert to_oid(TArray(TBool)) == 1000
+  assert to_oid(TArray(TBytea)) == 1001
+  assert to_oid(TArray(TInt16)) == 1005
+  assert to_oid(TArray(TInt32)) == 1007
+  assert to_oid(TArray(TText)) == 1009
+  assert to_oid(TArray(TVarchar)) == 1015
+  assert to_oid(TArray(TInt64)) == 1016
+  assert to_oid(TArray(TFloat32)) == 1021
+  assert to_oid(TArray(TFloat64)) == 1022
+end
+
+test "to_oid TArray more types" do
+  assert to_oid(TArray(TTimestamp)) == 1115
+  assert to_oid(TArray(TDate)) == 1182
+  assert to_oid(TArray(TTimestampTz)) == 1185
+  assert to_oid(TArray(TNumeric)) == 1231
+  assert to_oid(TArray(TJson)) == 199
+  assert to_oid(TArray(TUuid)) == 2951
+  assert to_oid(TArray(TJsonb)) == 3807
+end
+
+test "to_oid TUnknown preserves oid" do
+  assert to_oid(TUnknown(1)) == 1
+  assert to_oid(TUnknown(100)) == 100
+  assert to_oid(TUnknown(99999)) == 99999
+end
+
+end -- mod TestSchema

@@ -868,4 +868,450 @@ describe "Depot.Gate v2 pipeline" do
   end
 end
 
+-- ---------------------------------------------------------------------------
+-- Additional gap-filling tests
+-- ---------------------------------------------------------------------------
+
+describe "Depot.Gate.base accessor" do
+  test "base returns original params for v1 gate" do
+    let form = cast([("x", "1"), ("y", "2")], ["x", "y"])
+    let b = Depot.Gate.base(form)
+    assert List.member(b, ("x", "1"))
+    assert List.member(b, ("y", "2"))
+  end
+
+  test "base returns base entries for v2 gate" do
+    let base = { name = "Alice", role = "user" }
+    let params = { name = "Alicia", role = "user" }
+    let gate = Depot.Gate.cast_record(base, params, ["name", "role"])
+    let b = Depot.Gate.base(gate)
+    assert List.member(b, ("name", "Alice"))
+  end
+end
+
+describe "LenMessage and NumMessage options" do
+  test "LenMessage is accepted and does not add an error" do
+    let form =
+      cast([("bio", "Hi")], ["bio"])
+      |> Depot.Gate.validate_length("bio", [LenMin(1), LenMessage("too short")])
+    assert (is_valid(form))
+  end
+
+  test "LenMessage does not prevent LenMin from failing" do
+    let form =
+      cast([("bio", "")], ["bio"])
+      |> Depot.Gate.validate_length("bio", [LenMin(1), LenMessage("custom msg")])
+    assert (!is_valid(form))
+  end
+
+  test "NumMessage is accepted and does not add an error" do
+    let form =
+      cast([("score", "50")], ["score"])
+      |> Depot.Gate.validate_number("score", [NumMin(0), NumMessage("must be non-negative")])
+    assert (is_valid(form))
+  end
+
+  test "NumMessage does not prevent NumMin from failing" do
+    let form =
+      cast([("score", "-1")], ["score"])
+      |> Depot.Gate.validate_number("score", [NumMin(0), NumMessage("must be non-negative")])
+    assert (!is_valid(form))
+  end
+end
+
+describe "NumLessThan failure cases" do
+  test "fails NumLessThan at boundary" do
+    let form =
+      cast([("n", "5")], ["n"])
+      |> Depot.Gate.validate_number("n", [NumLessThan(5)])
+    assert (!is_valid(form))
+  end
+
+  test "fails NumLessThan above boundary" do
+    let form =
+      cast([("n", "10")], ["n"])
+      |> Depot.Gate.validate_number("n", [NumLessThan(5)])
+    assert (!is_valid(form))
+  end
+end
+
+describe "alist traversal paths" do
+  test "put_change replaces field in middle of changes list" do
+    -- Build a form with changes [a, b, c] then update b
+    let form =
+      cast([("a", "1"), ("b", "2"), ("c", "3")], ["a", "b", "c"])
+    let form2 = Depot.Gate.put_change(form, "b", "updated")
+    assert (get_change(form2, "a") == Some("1"))
+    assert (get_change(form2, "b") == Some("updated"))
+    assert (get_change(form2, "c") == Some("3"))
+  end
+
+  test "get_errors filters correctly when multiple fields have errors" do
+    let form =
+      cast(Nil, Nil)
+      |> Depot.Gate.add_error("name", "too short")
+      |> Depot.Gate.add_error("email", "invalid format")
+      |> Depot.Gate.add_error("email", "already taken")
+    -- get_errors should return only email errors, skipping name
+    let email_errs = get_errors(form, "email")
+    assert (List.length(email_errs) == 2)
+    let name_errs = get_errors(form, "name")
+    assert (List.length(name_errs) == 1)
+    -- unknown field returns empty
+    assert (get_errors(form, "phone") == Nil)
+  end
+end
+
+describe "constraint opts ordering" do
+  test "ConstraintMessage before ConstraintName is handled" do
+    let form =
+      cast([("email", "a@b.com")], ["email"])
+      |> Depot.Gate.unique_constraint("email",
+           [ConstraintMessage("taken"), ConstraintName("users_email_idx")])
+    let form2 = Depot.Gate.apply_constraint_error(form, "users_email_idx")
+    assert (!is_valid(form2))
+    assert (get_errors(form2, "email") == ["taken"])
+  end
+
+  test "no_assoc_constraint with default opts" do
+    let form =
+      cast(Nil, Nil)
+      |> Depot.Gate.no_assoc_constraint("posts", Nil)
+    -- default constraint name is "posts_fkey"
+    let form2 = Depot.Gate.apply_constraint_error(form, "posts_fkey")
+    assert (!is_valid(form2))
+    assert (get_errors(form2, "posts") == ["is still associated with this entry"])
+  end
+
+  test "check_constraint with default opts" do
+    let form =
+      cast(Nil, Nil)
+      |> Depot.Gate.check_constraint("score", Nil)
+    -- default constraint name is "score_check"
+    let form2 = Depot.Gate.apply_constraint_error(form, "score_check")
+    assert (!is_valid(form2))
+    assert (get_errors(form2, "score") == ["is invalid"])
+  end
+
+  test "foreign_key_constraint with default opts" do
+    let form =
+      cast([("org_id", "42")], ["org_id"])
+      |> Depot.Gate.foreign_key_constraint("org_id", Nil)
+    -- default constraint name is "org_id_fkey"
+    let form2 = Depot.Gate.apply_constraint_error(form, "org_id_fkey")
+    assert (!is_valid(form2))
+    assert (get_errors(form2, "org_id") == ["does not exist"])
+  end
+
+  test "apply_constraint_error with multiple registered constraints" do
+    let form =
+      cast([("email", "a@b.com"), ("user_id", "1")], ["email", "user_id"])
+      |> Depot.Gate.unique_constraint("email",
+           [ConstraintName("users_email_idx"), ConstraintMessage("taken")])
+      |> Depot.Gate.foreign_key_constraint("user_id",
+           [ConstraintName("posts_user_fkey"), ConstraintMessage("not found")])
+    -- trigger the second constraint
+    let form2 = Depot.Gate.apply_constraint_error(form, "posts_user_fkey")
+    assert (!is_valid(form2))
+    assert (get_errors(form2, "user_id") == ["not found"])
+    assert (get_errors(form2, "email") == Nil)
+  end
+end
+
+describe "validate_number combined opts" do
+  test "multiple opts all checked" do
+    let form =
+      cast([("n", "5")], ["n"])
+      |> Depot.Gate.validate_number("n", [NumMin(1), NumMax(10), NumGreaterThan(4), NumLessThan(6)])
+    assert (is_valid(form))
+  end
+
+  test "multiple opts accumulate errors" do
+    let form =
+      cast([("n", "0")], ["n"])
+      |> Depot.Gate.validate_number("n", [NumMin(5), NumGreaterThan(3), NumEqualTo(7)])
+    assert (!is_valid(form))
+    assert (List.length(get_errors(form, "n")) == 3)
+  end
+end
+
+-- ---- cast_record: field in allow-list but NOT in base (covers cast_diff_entry None -> true) ----
+
+test "cast_record field in allow-list but not in base is a change" do
+  let base = { name = "Alice" }
+  let params = { name = "Alice", score = 100 }
+  let gate = Depot.Gate.cast_record(base, params, ["name", "score"])
+  assert Depot.Gate.is_valid(gate) == true
+  let score_change = Depot.Gate.get_change(gate, "score")
+  assert score_change != None
+end
+
+test "cast_record multiple fields not in base all become changes" do
+  let base = { id = "abc" }
+  let params = { id = "abc", name = "Bob", email = "b@test.com" }
+  let gate = Depot.Gate.cast_record(base, params, ["name", "email"])
+  let name_change = Depot.Gate.get_change(gate, "name")
+  let email_change = Depot.Gate.get_change(gate, "email")
+  assert name_change != None
+  assert email_change != None
+end
+
+-- ---- Additional cast tests ----
+
+test "cast with empty params returns valid gate" do
+  let form = cast(Nil, ["name"])
+  assert is_valid(form) == true
+end
+
+test "cast with multiple allowed fields" do
+  let form = cast([("a", "1"), ("b", "2"), ("c", "3")], ["a", "b"])
+  let a = Depot.Gate.get_change(form, "a")
+  let b = Depot.Gate.get_change(form, "b")
+  let c = Depot.Gate.get_change(form, "c")
+  assert a != None
+  assert b != None
+  assert c == None
+end
+
+test "cast_record unchanged field is not a change" do
+  let base = { name = "Alice", age = 30 }
+  let params = { name = "Alice", age = 30 }
+  let gate = Depot.Gate.cast_record(base, params, ["name", "age"])
+  let name_change = Depot.Gate.get_change(gate, "name")
+  let age_change = Depot.Gate.get_change(gate, "age")
+  assert name_change == None
+  assert age_change == None
+end
+
+test "cast_record only changed fields in changes" do
+  let base = { name = "Alice", age = 30, role = "user" }
+  let params = { name = "Alice", age = 31, role = "user" }
+  let gate = Depot.Gate.cast_record(base, params, ["name", "age", "role"])
+  let name_change = Depot.Gate.get_change(gate, "name")
+  let age_change = Depot.Gate.get_change(gate, "age")
+  let role_change = Depot.Gate.get_change(gate, "role")
+  assert name_change == None
+  assert age_change != None
+  assert role_change == None
+end
+
+-- ---- Additional validate_required tests ----
+
+test "validate_required passes when all fields present" do
+  let form = cast([("name", "Bob"), ("email", "b@x.com")], ["name", "email"])
+    |> Depot.Gate.validate_required(["name", "email"])
+  assert is_valid(form) == true
+end
+
+test "validate_required fails for empty string" do
+  let form = cast([("name", "")], ["name"])
+    |> Depot.Gate.validate_required(["name"])
+  assert is_valid(form) == false
+  assert List.length(get_errors(form, "name")) > 0
+end
+
+test "validate_required multiple fields one missing" do
+  let form = cast([("name", "Alice")], ["name", "email"])
+    |> Depot.Gate.validate_required(["name", "email"])
+  assert is_valid(form) == false
+end
+
+-- ---- Additional validate_length tests ----
+
+test "validate_length min pass" do
+  let form = cast([("bio", "hello world")], ["bio"])
+    |> Depot.Gate.validate_length("bio", [LenMin(3)])
+  assert is_valid(form) == true
+end
+
+test "validate_length max pass" do
+  let form = cast([("code", "AB")], ["code"])
+    |> Depot.Gate.validate_length("code", [LenMax(5)])
+  assert is_valid(form) == true
+end
+
+test "validate_length exact pass" do
+  let form = cast([("pin", "1234")], ["pin"])
+    |> Depot.Gate.validate_length("pin", [LenMin(4), LenMax(4)])
+  assert is_valid(form) == true
+end
+
+test "validate_length min fail" do
+  let form = cast([("tag", "a")], ["tag"])
+    |> Depot.Gate.validate_length("tag", [LenMin(3)])
+  assert is_valid(form) == false
+end
+
+test "validate_length max fail" do
+  let form = cast([("tag", "toolongvalue")], ["tag"])
+    |> Depot.Gate.validate_length("tag", [LenMax(5)])
+  assert is_valid(form) == false
+end
+
+-- ---- Additional validate_format tests ----
+
+test "validate_format pass" do
+  let form = cast([("email", "user@example.com")], ["email"])
+    |> Depot.Gate.validate_format("email", "@")
+  assert is_valid(form) == true
+end
+
+test "validate_format fail" do
+  let form = cast([("email", "notanemail")], ["email"])
+    |> Depot.Gate.validate_format("email", "@")
+  assert is_valid(form) == false
+end
+
+-- ---- Additional validate_inclusion tests ----
+
+test "validate_inclusion pass" do
+  let form = cast([("role", "admin")], ["role"])
+    |> Depot.Gate.validate_inclusion("role", ["admin", "user", "mod"])
+  assert is_valid(form) == true
+end
+
+test "validate_inclusion fail" do
+  let form = cast([("role", "superuser")], ["role"])
+    |> Depot.Gate.validate_inclusion("role", ["admin", "user"])
+  assert is_valid(form) == false
+end
+
+-- ---- Additional validate_exclusion tests ----
+
+test "validate_exclusion pass" do
+  let form = cast([("username", "alice")], ["username"])
+    |> Depot.Gate.validate_exclusion("username", ["admin", "root"])
+  assert is_valid(form) == true
+end
+
+test "validate_exclusion fail" do
+  let form = cast([("username", "admin")], ["username"])
+    |> Depot.Gate.validate_exclusion("username", ["admin", "root"])
+  assert is_valid(form) == false
+end
+
+-- ---- validate_acceptance ----
+
+test "validate_acceptance pass" do
+  let form = cast([("terms", "true")], ["terms"])
+    |> Depot.Gate.validate_acceptance("terms")
+  assert is_valid(form) == true
+end
+
+test "validate_acceptance fail" do
+  let form = cast([("terms", "false")], ["terms"])
+    |> Depot.Gate.validate_acceptance("terms")
+  assert is_valid(form) == false
+end
+
+-- ---- validate_confirmation ----
+
+test "validate_confirmation pass" do
+  let form = cast([("pw", "secret"), ("pw_confirmation", "secret")], ["pw", "pw_confirmation"])
+    |> Depot.Gate.validate_confirmation("pw")
+  assert is_valid(form) == true
+end
+
+test "validate_confirmation fail" do
+  let form = cast([("pw", "secret"), ("pw_confirmation", "other")], ["pw", "pw_confirmation"])
+    |> Depot.Gate.validate_confirmation("pw")
+  assert is_valid(form) == false
+end
+
+-- ---- get_field / put_change / delete_change ----
+
+test "get_field returns Some for present field" do
+  let form = cast([("name", "Alice")], ["name"])
+  let v = Depot.Gate.get_field(form, "name")
+  assert v != None
+end
+
+test "get_field returns None for absent field" do
+  let form = cast([("name", "Alice")], ["name"])
+  let v = Depot.Gate.get_field(form, "email")
+  assert v == None
+end
+
+test "put_change then get_change" do
+  let form = cast([("name", "Alice")], ["name"])
+    |> Depot.Gate.put_change("role", "admin")
+  let v = Depot.Gate.get_change(form, "role")
+  assert v != None
+end
+
+test "delete_change removes a change" do
+  let form = cast([("name", "Alice"), ("role", "admin")], ["name", "role"])
+    |> Depot.Gate.delete_change("role")
+  let v = Depot.Gate.get_change(form, "role")
+  assert v == None
+end
+
+-- ---- add_error and get_errors ----
+
+test "add_error makes gate invalid" do
+  let form = cast([("name", "Alice")], ["name"])
+    |> Depot.Gate.add_error("name", "is reserved")
+  assert is_valid(form) == false
+  assert List.length(get_errors(form, "name")) == 1
+end
+
+test "add_error multiple fields accumulate" do
+  let form = cast([("a", "1"), ("b", "2")], ["a", "b"])
+    |> Depot.Gate.add_error("a", "bad a")
+    |> Depot.Gate.add_error("b", "bad b")
+  assert is_valid(form) == false
+  assert List.length(get_errors(form, "a")) == 1
+  assert List.length(get_errors(form, "b")) == 1
+end
+
+-- ---- validate_number edge cases ----
+
+test "validate_number NumMin boundary pass" do
+  let form = cast([("n", "5")], ["n"])
+    |> Depot.Gate.validate_number("n", [NumMin(5)])
+  assert is_valid(form) == true
+end
+
+test "validate_number NumMax boundary pass" do
+  let form = cast([("n", "10")], ["n"])
+    |> Depot.Gate.validate_number("n", [NumMax(10)])
+  assert is_valid(form) == true
+end
+
+test "validate_number NumGreaterThan boundary fail" do
+  let form = cast([("n", "5")], ["n"])
+    |> Depot.Gate.validate_number("n", [NumGreaterThan(5)])
+  assert is_valid(form) == false
+end
+
+test "validate_number NumLessThan boundary fail" do
+  let form = cast([("n", "5")], ["n"])
+    |> Depot.Gate.validate_number("n", [NumLessThan(5)])
+  assert is_valid(form) == false
+end
+
+test "validate_number non-numeric value fails" do
+  let form = cast([("n", "abc")], ["n"])
+    |> Depot.Gate.validate_number("n", [NumMin(0)])
+  assert is_valid(form) == false
+end
+
+-- ---- is_valid / errors ----
+
+test "fresh cast gate is valid" do
+  let form = cast([("name", "Alice")], ["name"])
+  assert is_valid(form) == true
+end
+
+test "errors returns empty list for valid gate" do
+  let form = cast([("name", "Alice")], ["name"])
+  assert List.length(Depot.Gate.errors(form)) == 0
+end
+
+test "errors returns error tuples for invalid gate" do
+  let form = cast([("name", "")], ["name"])
+    |> Depot.Gate.validate_required(["name"])
+  assert List.length(Depot.Gate.errors(form)) > 0
+end
+
 end -- mod TestDepotGate

@@ -5,55 +5,40 @@ mod TestMessage do
 
 import Message
 
--- ---- Tests ----
-
-fn test_param_null() do
-  match ParamNull do | ParamNull -> () | _ -> assert(false) end
+test "ParamNull" do
+  assert ParamNull == ParamNull
 end
 
-fn test_param_text() do
-  match ParamText("hello") do
-  ParamText(s) -> assert(s == "hello")
-  _ -> assert(false)
-  end
+test "ParamText" do
+  assert ParamText("hello") == ParamText("hello")
 end
 
-fn test_param_binary() do
+test "ParamBinary" do
   let b = Bytes.from_list([1, 2, 3])
   match ParamBinary(b) do
-  ParamBinary(data) -> assert(Bytes.length(data) == 3)
-  _ -> assert(false)
+  ParamBinary(data) -> assert Bytes.length(data) == 3
   end
 end
 
-fn test_describe_target_stmt() do
-  match DescribeStatement("my_stmt") do
-  DescribeStatement(n) -> assert(n == "my_stmt")
-  _ -> assert(false)
-  end
+test "DescribeStatement target" do
+  assert DescribeStatement("my_stmt") == DescribeStatement("my_stmt")
 end
 
-fn test_describe_target_portal() do
-  match DescribePortal("my_portal") do
-  DescribePortal(n) -> assert(n == "my_portal")
-  _ -> assert(false)
-  end
+test "DescribePortal target" do
+  assert DescribePortal("my_portal") == DescribePortal("my_portal")
 end
 
-fn test_close_target_stmt() do
-  match CloseStatement("s") do
-  CloseStatement(n) -> assert(n == "s")
-  _ -> assert(false)
-  end
+test "CloseStatement target" do
+  assert CloseStatement("s") == CloseStatement("s")
 end
 
-fn test_transaction_status() do
-  match Idle do | Idle -> () | _ -> assert(false) end
-  match InTransaction do | InTransaction -> () | _ -> assert(false) end
-  match InFailedTransaction do | InFailedTransaction -> () | _ -> assert(false) end
+test "transaction status variants" do
+  assert Idle == Idle
+  assert InTransaction == InTransaction
+  assert InFailedTransaction == InFailedTransaction
 end
 
-fn test_error_fields() do
+test "error fields record" do
   let ef = {
     severity = "ERROR",
     code = "42P01",
@@ -62,13 +47,13 @@ fn test_error_fields() do
     hint = None,
     position = None
   }
-  assert(ef.severity == "ERROR")
-  assert(ef.code == "42P01")
-  assert(ef.message == "relation does not exist")
-  match ef.detail do | None -> () | Some(_) -> assert(false) end
+  assert ef.severity == "ERROR"
+  assert ef.code == "42P01"
+  assert ef.message == "relation does not exist"
+  assert ef.detail == None
 end
 
-fn test_error_fields_with_detail() do
+test "error fields with detail" do
   let ef = {
     severity = "ERROR",
     code = "23505",
@@ -77,23 +62,66 @@ fn test_error_fields_with_detail() do
     hint = None,
     position = None
   }
-  match ef.detail do
-  Some(d) -> assert(d == "Key (id)=(1) already exists.")
-  None -> assert(false)
+  assert ef.detail == Some("Key (id)=(1) already exists.")
+end
+
+test "ClosePortal target" do
+  assert ClosePortal("my_portal") == ClosePortal("my_portal")
+end
+
+test "FieldDesc constructor" do
+  let fd = FieldDesc("col", 0, 1, 23, 4, -1, 0)
+  match fd do
+  FieldDesc(name, toid, anum, tyoid, tysize, tymod, fmt) -> do
+    assert name == "col"
+    assert tyoid == 23
+    assert fmt == 0
+  end
   end
 end
 
-fn main() : Unit do
-  test_param_null()
-  test_param_text()
-  test_param_binary()
-  test_describe_target_stmt()
-  test_describe_target_portal()
-  test_close_target_stmt()
-  test_transaction_status()
-  test_error_fields()
-  test_error_fields_with_detail()
-  println("test_message: all tests passed")
+test "BackendMessage AuthOk" do
+  assert AuthOk == AuthOk
 end
 
+test "BackendMessage ParseComplete" do
+  assert ParseComplete == ParseComplete
 end
+
+test "BackendMessage BindComplete" do
+  assert BindComplete == BindComplete
+end
+
+test "BackendMessage CloseComplete" do
+  assert CloseComplete == CloseComplete
+end
+
+test "BackendMessage NoData" do
+  assert NoData == NoData
+end
+
+test "BackendMessage EmptyQueryResponse" do
+  assert EmptyQueryResponse == EmptyQueryResponse
+end
+
+test "BackendMessage PortalSuspended" do
+  assert PortalSuspended == PortalSuspended
+end
+
+test "BackendMessage CommandComplete" do
+  assert CommandComplete("SELECT 1") == CommandComplete("SELECT 1")
+end
+
+test "BackendMessage BackendKeyData" do
+  assert BackendKeyData(1234, 5678) == BackendKeyData(1234, 5678)
+end
+
+test "BackendMessage ParameterStatus" do
+  assert ParameterStatus("client_encoding", "UTF8") == ParameterStatus("client_encoding", "UTF8")
+end
+
+test "BackendMessage ReadyForQuery" do
+  assert ReadyForQuery(Idle) == ReadyForQuery(Idle)
+end
+
+end -- mod TestMessage
