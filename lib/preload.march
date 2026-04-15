@@ -21,6 +21,7 @@ mod Preload do
 import Ast
 import Build
 import Compile
+import Connection
 import Depot.Query
 import Pool
 

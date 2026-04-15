@@ -61,7 +61,7 @@ end
 fn encode(msg : FrontendMessage) : Bytes do
   match msg do
   Startup(params) -> do
-    let pairs = Map.fold(Bytes.empty(), params, fn acc -> fn k -> fn v ->
+    let pairs = Map.fold(params, Bytes.empty(), fn acc -> fn k -> fn v ->
       Bytes.concat(acc, Bytes.concat(cstring(k), cstring(v)))
     )
     let payload = Bytes.concat(i32_be(196608), Bytes.concat(pairs, Bytes.from_list([0])))
@@ -70,8 +70,7 @@ fn encode(msg : FrontendMessage) : Bytes do
   SimpleQuery(sql) ->
     frame(81, cstring(sql))
   Parse(name, sql, oids) -> do
-    let oid_bytes = List.fold_left(Bytes.empty(), oids, fn (acc, oid) ->
-      Bytes.concat(acc, i32_be(oid)))
+    let oid_bytes = encode_oids(oids, Bytes.empty())
     let payload = Bytes.concat(
       Bytes.concat(cstring(name), cstring(sql)),
       Bytes.concat(i16_be(List.length(oids)), oid_bytes))
@@ -98,19 +97,33 @@ end
 ---
 --- march> Bytes.get(encode_bind("", "", Nil), 0)
 --- 66
+pfn encode_oids(oids, acc) do
+  match oids do
+  Nil -> acc
+  Cons(oid, rest) -> encode_oids(rest, Bytes.concat(acc, i32_be(oid)))
+  end
+end
+
+pfn encode_params(params, acc) do
+  match params do
+  Nil -> acc
+  Cons(p, rest) ->
+    let encoded = match p do
+      ParamNull    -> Bytes.from_list([255, 255, 255, 255])
+      ParamText(s) -> do
+        let b = Bytes.from_string(s)
+        Bytes.concat(i32_be(Bytes.length(b)), b)
+      end
+      ParamBinary(b) ->
+        Bytes.concat(i32_be(Bytes.length(b)), b)
+    end
+    encode_params(rest, Bytes.concat(acc, encoded))
+  end
+end
+
 fn encode_bind(portal, stmt, params) do
   let n = List.length(params)
-  let param_bytes = List.fold_left(Bytes.empty(), params, fn (acc, p) ->
-    match p do
-    ParamNull    -> Bytes.concat(acc, Bytes.from_list([255, 255, 255, 255]))
-    ParamText(s) -> do
-      let b = Bytes.from_string(s)
-      Bytes.concat(acc, Bytes.concat(i32_be(Bytes.length(b)), b))
-    end
-    ParamBinary(b) ->
-      Bytes.concat(acc, Bytes.concat(i32_be(Bytes.length(b)), b))
-    end
-  )
+  let param_bytes = encode_params(params, Bytes.empty())
   let payload = Bytes.concat(
     Bytes.concat(cstring(portal), cstring(stmt)),
     Bytes.concat(i16_be(1), Bytes.concat(i16_be(0),

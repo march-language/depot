@@ -588,14 +588,8 @@ pfn compile_expr_inline(e) do
     compile_expr_inline(e) ++ " BETWEEN " ++ compile_expr_inline(lo) ++ " AND " ++ compile_expr_inline(hi)
   FnCall(name, args) ->
     name ++ "(" ++ join_strs(compile_exprs_inline(args), ", ") ++ ")"
-  Exists(subq) -> do
-    let sub = compile_inline(subq)
-    "EXISTS (" ++ sub.sql ++ ")"
-  end
-  SubqueryExpr(subq) -> do
-    let sub = compile_inline(subq)
-    "(" ++ sub.sql ++ ")"
-  end
+  Exists(_)      -> "/* EXISTS subquery not supported in inline mode */"
+  SubqueryExpr(_) -> "/* subquery not supported in inline mode */"
   Like(inner, pat)  -> compile_expr_inline(inner) ++ " LIKE "  ++ quote_string(pat)
   ILike(inner, pat) -> compile_expr_inline(inner) ++ " ILIKE " ++ quote_string(pat)
   Count(inner)   -> "COUNT(" ++ compile_expr_inline(inner) ++ ")"

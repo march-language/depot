@@ -219,31 +219,25 @@ pfn compare_rows(row_a, row_b, order_bys) do
   end
 end
 
--- Merge sort for rows using order_by clauses. O(n log n).
-pfn merge_sorted_rows(left, right, order_bys) do
-  match left do
-    Nil -> right
-    Cons(a, as_) ->
-      match right do
-        Nil -> left
-        Cons(b, bs) ->
-          if compare_rows(a, b, order_bys) then
-            Cons(a, merge_sorted_rows(as_, right, order_bys))
-          else
-            Cons(b, merge_sorted_rows(left, bs, order_bys))
-      end
+-- Insertion sort for rows using order_by clauses.
+pfn insert_row(row, lst, order_bys) do
+  match lst do
+    Nil -> Cons(row, Nil)
+    Cons(h, rest) ->
+      if compare_rows(row, h, order_bys) then Cons(row, Cons(h, rest))
+      else Cons(h, insert_row(row, rest, order_bys))
+  end
+end
+
+pfn sort_rows_acc(rows, order_bys, acc) do
+  match rows do
+    Nil -> acc
+    Cons(h, rest) -> sort_rows_acc(rest, order_bys, insert_row(h, acc, order_bys))
   end
 end
 
 pfn sort_rows(rows, order_bys) do
-  let n = List.length(rows)
-  if n <= 1 then rows
-  else do
-    let mid   = n / 2
-    let left  = take(rows, mid)
-    let right = drop_rows(rows, mid)
-    merge_sorted_rows(sort_rows(left, order_bys), sort_rows(right, order_bys), order_bys)
-  end
+  sort_rows_acc(rows, order_bys, Nil)
 end
 
 -- ---------------------------------------------------------------------------

@@ -100,10 +100,10 @@ end
 pfn default_for_type(type_str) do
   match type_str do
     "String" -> ""
-    "Int"    -> 0
-    "Float"  -> 0.0
-    "Bool"   -> false
-    _        -> None
+    "Int"    -> "0"
+    "Float"  -> "0.0"
+    "Bool"   -> "false"
+    _        -> ""
   end
 end
 
@@ -111,7 +111,7 @@ pfn compute_default(type_str, opts) do
   match alist_get_opt(opts, "default") do
     Some(d) -> d
     None    ->
-      if to_string(alist_get(opts, "nullable", false)) == "true" then None
+      if alist_get(opts, "nullable", "false") == "true" then ""
       else default_for_type(type_str)
   end
 end
@@ -119,7 +119,7 @@ end
 pfn is_not_virtual(field_entry) do
   let (_, spec) = field_entry
   let (_, opts) = spec
-  to_string(alist_get(opts, "virtual", false)) != "true"
+  alist_get(opts, "virtual", "false") != "true"
 end
 
 pfn field_entry_name(field_entry) do
@@ -194,7 +194,7 @@ end
 
 fn is_virtual(schema, field_name) do
   match field_opts(schema, field_name) do
-    Some(opts) -> to_string(alist_get(opts, "virtual", false)) == "true"
+    Some(opts) -> alist_get(opts, "virtual", "false") == "true"
     None       -> false
   end
 end
