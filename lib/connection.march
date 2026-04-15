@@ -142,7 +142,10 @@ pfn scram_hmac(key_bytes, msg) do
 end
 
 pfn scram_compute_proof(password, salt_b64, iterations, client_first_bare, server_first, client_final_no_proof) do
-  let salt           = base64_decode(salt_b64)
+  let salt           = match base64_decode(salt_b64) do
+    Ok(b)  -> b
+    Err(_) -> Bytes.empty()
+  end
   let salted_pw      = pbkdf2_sha256(password, salt, iterations, 32)
   let client_key     = scram_hmac(salted_pw, "Client Key")
   let stored_key     = sha256(client_key)
@@ -324,6 +327,132 @@ end
 fn close(conn) do
   match send_msg(conn.fd, Terminate) do
   _ -> tcp_close(conn.fd)
+  end
+end
+
+-- ---- Simple query ----
+
+pfn sq_field_name(fd_) do
+  match fd_ do
+  FieldDesc(name, _, _, _, _, _, _) -> name
+  end
+end
+
+pfn sq_map_field_names(fields, acc) do
+  match fields do
+  Nil -> reverse(acc)
+  Cons(fd, rest) -> sq_map_field_names(rest, Cons(sq_field_name(fd), acc))
+  end
+end
+
+pfn sq_row_to_strings(cells) do
+  match cells do
+  Nil -> Nil
+  Cons(None, rest)    -> Cons(None, sq_row_to_strings(rest))
+  Cons(Some(b), rest) -> Cons(Some(Bytes.to_string(b)), sq_row_to_strings(rest))
+  end
+end
+
+pfn sq_recv(fd, columns, rows, tag) do
+  match recv_msg(fd) do
+  Err(e) -> Err(e)
+  Ok(msg) ->
+    match msg do
+    RowDescription(fields) ->
+      sq_recv(fd, sq_map_field_names(fields, Nil), Nil, tag)
+    DataRow(cells) ->
+      sq_recv(fd, columns, Cons(sq_row_to_strings(cells), rows), tag)
+    CommandComplete(t) ->
+      sq_recv(fd, columns, rows, t)
+    EmptyQueryResponse ->
+      sq_recv(fd, columns, rows, "")
+    ErrorResponse(fields) ->
+      sq_drain_error(fd, fields.message)
+    NoticeResponse(_) ->
+      sq_recv(fd, columns, rows, tag)
+    ReadyForQuery(_) ->
+      Ok({ columns = columns, rows = reverse(rows), tag = tag })
+    _ ->
+      sq_recv(fd, columns, rows, tag)
+    end
+  end
+end
+
+pfn sq_drain_error(fd, error_msg) do
+  match recv_msg(fd) do
+  Err(e)               -> Err(e)
+  Ok(ReadyForQuery(_)) -> Err(error_msg)
+  Ok(_)                -> sq_drain_error(fd, error_msg)
+  end
+end
+
+--- Sends a simple SQL query and collects all result rows.
+---
+--- Returns `Ok({ columns, rows, tag })` on success, `Err(String)` on failure.
+--- Use for one-shot statements (e.g. pinging with "SELECT 1").
+fn simple_query(conn, sql) do
+  match send_msg(conn.fd, SimpleQuery(sql)) do
+  Err(e) -> Err("simple_query send: " ++ e)
+  Ok(_)  -> sq_recv(conn.fd, Nil, Nil, "")
+  end
+end
+
+-- ---- Extended query (parameterized) ----
+
+pfn ep_send_all(fd, msgs) do
+  match msgs do
+  Nil -> Ok(())
+  Cons(msg, rest) ->
+    match send_msg(fd, msg) do
+    Err(e) -> Err(e)
+    Ok(_)  -> ep_send_all(fd, rest)
+    end
+  end
+end
+
+pfn ep_recv(fd, columns, rows, tag) do
+  match recv_msg(fd) do
+  Err(e) -> Err(e)
+  Ok(msg) ->
+    match msg do
+    RowDescription(fields) ->
+      ep_recv(fd, sq_map_field_names(fields, Nil), Nil, tag)
+    DataRow(cells) ->
+      ep_recv(fd, columns, Cons(sq_row_to_strings(cells), rows), tag)
+    CommandComplete(t) ->
+      ep_recv(fd, columns, rows, t)
+    EmptyQueryResponse ->
+      ep_recv(fd, columns, rows, "")
+    ErrorResponse(fields) ->
+      sq_drain_error(fd, fields.message)
+    NoticeResponse(_) ->
+      ep_recv(fd, columns, rows, tag)
+    ParseComplete ->
+      ep_recv(fd, columns, rows, tag)
+    BindComplete ->
+      ep_recv(fd, columns, rows, tag)
+    ReadyForQuery(_) ->
+      Ok({ columns = columns, rows = reverse(rows), tag = tag })
+    _ ->
+      ep_recv(fd, columns, rows, tag)
+    end
+  end
+end
+
+--- Executes a parameterized SQL query using the Extended Query Protocol.
+---
+--- Sends Parse + Bind + Execute + Sync and collects all result rows.
+--- Returns `Ok({ columns, rows, tag })` on success, `Err(String)` on failure.
+fn exec_prepared(conn, sql, params) do
+  let msgs = [
+    Parse("", sql, Nil),
+    Bind("", "", params),
+    Execute("", 0),
+    Sync
+  ]
+  match ep_send_all(conn.fd, msgs) do
+  Err(e) -> Err("exec_prepared send: " ++ e)
+  Ok(_)  -> ep_recv(conn.fd, Nil, Nil, "")
   end
 end
 

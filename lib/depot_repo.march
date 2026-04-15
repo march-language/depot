@@ -101,7 +101,7 @@ fn insert(schema, gate) do
   if Depot.Gate.is_valid(gate) do
     let table = ensure_table(schema)
     let merged = Depot.Gate.apply_changes(gate)
-    let id = uuid_v4()
+    let id = to_string(uuid_v7())
     let record = build_record(schema, merged, id)
     Vault.set(table, id, record)
     Ok(record)

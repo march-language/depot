@@ -128,38 +128,22 @@ pfn parse_migration_file(path) do
 end
 
 pfn sort_migrations(migrations : List(MigFile)) : List(MigFile) do
-  sort_migs_merge(migrations)
+  sort_mig_acc(migrations, Nil)
 end
 
-pfn sort_migs_merge(lst : List(MigFile)) : List(MigFile) do
-  let n = list_length(lst)
-  if n <= 1 then lst
-  else do
-    let mid   = n / 2
-    let left  = take(mid, lst)
-    let right = drop_mig_list(mid, lst)
-    merge_mig_lists(sort_migs_merge(left), sort_migs_merge(right))
+pfn sort_mig_acc(lst : List(MigFile), acc : List(MigFile)) : List(MigFile) do
+  match lst do
+  Nil -> acc
+  Cons(h, rest) -> sort_mig_acc(rest, insert_mig(h, acc))
   end
 end
 
-pfn merge_mig_lists(left : List(MigFile), right : List(MigFile)) : List(MigFile) do
-  match left do
-  Nil -> right
-  Cons(a, as_) ->
-    match right do
-    Nil -> left
-    Cons(b, bs) ->
-      if a.version <= b.version then Cons(a, merge_mig_lists(as_, right))
-      else Cons(b, merge_mig_lists(left, bs))
-    end
-  end
-end
-
-pfn drop_mig_list(n, lst : List(MigFile)) : List(MigFile) do
-  if n <= 0 then lst
-  else match lst do
-    Nil           -> []
-    Cons(_, rest) -> drop_mig_list(n - 1, rest)
+pfn insert_mig(item : MigFile, lst : List(MigFile)) : List(MigFile) do
+  match lst do
+  Nil -> Cons(item, Nil)
+  Cons(h, rest) ->
+    if item.version <= h.version then Cons(item, Cons(h, rest))
+    else Cons(h, insert_mig(item, rest))
   end
 end
 
@@ -505,37 +489,21 @@ pfn take(n, lst) do
     end
 end
 
-pfn sort_int_list(lst) do sort_ints_merge(lst) end
+pfn sort_int_list(lst) do sort_int_acc(lst, Nil) end
 
-pfn sort_ints_merge(lst) do
-  let n = list_length(lst)
-  if n <= 1 then lst
-  else do
-    let mid   = n / 2
-    let left  = take(mid, lst)
-    let right = drop_int_list(mid, lst)
-    merge_int_lists(sort_ints_merge(left), sort_ints_merge(right))
+pfn sort_int_acc(lst, acc) do
+  match lst do
+  Nil -> acc
+  Cons(h, rest) -> sort_int_acc(rest, insert_int(h, acc))
   end
 end
 
-pfn merge_int_lists(left, right) do
-  match left do
-  Nil -> right
-  Cons(a, as_) ->
-    match right do
-    Nil -> left
-    Cons(b, bs) ->
-      if a <= b then Cons(a, merge_int_lists(as_, right))
-      else Cons(b, merge_int_lists(left, bs))
-    end
-  end
-end
-
-pfn drop_int_list(n, lst) do
-  if n <= 0 then lst
-  else match lst do
-    Nil           -> []
-    Cons(_, rest) -> drop_int_list(n - 1, rest)
+pfn insert_int(n, lst) do
+  match lst do
+  Nil -> Cons(n, Nil)
+  Cons(h, rest) ->
+    if n <= h then Cons(n, Cons(h, rest))
+    else Cons(h, insert_int(n, rest))
   end
 end
 
