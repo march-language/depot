@@ -1,10 +1,10 @@
--- Depot.Query: composable, lazy query builder for in-memory data.
+-- Depot.Query: composable query builder for in-memory and SQL execution.
 --
 -- Builds a query value from a Depot.Schema that accumulates operations
--- (where, select, order_by, limit, offset). The query is lazy — no
--- filtering happens until `execute/2` is called with a list of rows.
+-- (where, select, order_by, limit, offset). The query is lazy — no work
+-- happens until `execute/2` (in-memory) or `exec_sql/2` (PostgreSQL) is called.
 --
--- Usage:
+-- ## In-memory usage (tests / in-memory Repo)
 --
 --   let q = Depot.Query.from(schema())
 --     |> Depot.Query.where_(fn row -> record_get(row, "age") > Some(18))
@@ -13,12 +13,29 @@
 --
 --   let results = Depot.Query.execute(q, all_rows)
 --
--- Multiple `where_` calls are AND-combined. Order of operations in execute:
---   1. Filter (where predicates, AND-combined)
+-- ## SQL usage (PostgreSQL via Connection)
+--
+--   let q = Depot.Query.from(schema())
+--     |> Depot.Query.where_gt("age", "18")
+--     |> Depot.Query.order_asc("name")
+--     |> Depot.Query.limit(10)
+--
+--   match Depot.Query.exec_sql(q, db_conn) do
+--   Ok(rows)  -> rows   -- List of record-like assoc lists
+--   Err(msg)  -> []
+--   end
+--
+-- SQL conditions are added with `where_eq`, `where_ne`, `where_gt`, etc.
+-- These are orthogonal to `where_` (in-memory predicates) — use whichever
+-- suits the execution path.
+--
+-- Multiple `where_` / `where_eq` etc. calls are AND-combined.
+-- Order of operations in execute/exec_sql:
+--   1. Filter (where predicates AND sql conditions, AND-combined)
 --   2. Sort (order_by fields)
 --   3. Offset (drop N rows)
 --   4. Limit (take N rows)
---   5. Project (select mapping)
+--   5. Project (select mapping — in-memory only)
 
 mod Depot.Query do
 
@@ -26,14 +43,17 @@ mod Depot.Query do
 -- Types
 -- ---------------------------------------------------------------------------
 
--- Query(schema, wheres, select_fn, order_bys, limit_val, offset_val)
+-- Query(schema, wheres, select_fn, order_bys, limit_val, offset_val, sql_conds)
 --   schema     : the Depot.Schema value
 --   wheres     : list of predicate functions (each: row -> Bool), AND-combined
 --   select_fn  : None or Some(fn) for projection (row -> projected_row)
 --   order_bys  : list of (field_name, direction) pairs, direction = "asc" | "desc"
 --   limit_val  : None or Some(Int)
 --   offset_val : None or Some(Int)
-type Query = Query(a, List(b), c, List((String, String)), d, e)
+--   sql_conds  : list of (field, op, value) triples for SQL WHERE generation
+--               op ∈ {"=","<>",">","<",">=","<=","LIKE","ILIKE","IS NULL","IS NOT NULL"}
+--               value = "" for IS NULL / IS NOT NULL (no parameter)
+type Query = Query(a, List(b), c, List((String, String)), d, e, List((String, String, String)))
 
 -- ---------------------------------------------------------------------------
 -- Construction
@@ -45,7 +65,7 @@ Wrap a Depot.Schema into a fresh query with no operations.
     let q = Depot.Query.from(schema())
 """
 fn from(s) do
-  Query(s, Nil, None, Nil, None, None)
+  Query(s, Nil, None, Nil, None, None, Nil)
 end
 
 -- ---------------------------------------------------------------------------
@@ -61,8 +81,8 @@ The predicate receives a row (record) and must return a Bool.
 """
 fn where_(query, predicate) do
   match query do
-    Query(s, ws, sel, obs, lim, off) ->
-      Query(s, List.append(ws, Cons(predicate, Nil)), sel, obs, lim, off)
+    Query(s, ws, sel, obs, lim, off, scs) ->
+      Query(s, List.append(ws, Cons(predicate, Nil)), sel, obs, lim, off, scs)
   end
 end
 
@@ -77,8 +97,8 @@ The projection receives a row (record) and returns a new value.
 """
 fn select(query, projection) do
   match query do
-    Query(s, ws, _, obs, lim, off) ->
-      Query(s, ws, Some(projection), obs, lim, off)
+    Query(s, ws, _, obs, lim, off, scs) ->
+      Query(s, ws, Some(projection), obs, lim, off, scs)
   end
 end
 
@@ -92,8 +112,8 @@ Multiple calls accumulate: earlier calls have higher priority.
 """
 fn order_by(query, field, direction) do
   match query do
-    Query(s, ws, sel, obs, lim, off) ->
-      Query(s, ws, sel, List.append(obs, Cons((field, direction), Nil)), lim, off)
+    Query(s, ws, sel, obs, lim, off, scs) ->
+      Query(s, ws, sel, List.append(obs, Cons((field, direction), Nil)), lim, off, scs)
   end
 end
 
@@ -122,8 +142,8 @@ Set a limit on the number of results. Replaces any previous limit.
 """
 fn limit(query, n) do
   match query do
-    Query(s, ws, sel, obs, _, off) ->
-      Query(s, ws, sel, obs, Some(n), off)
+    Query(s, ws, sel, obs, _, off, scs) ->
+      Query(s, ws, sel, obs, Some(n), off, scs)
   end
 end
 
@@ -134,8 +154,8 @@ Set an offset (skip N rows). Replaces any previous offset.
 """
 fn offset(query, n) do
   match query do
-    Query(s, ws, sel, obs, lim, _) ->
-      Query(s, ws, sel, obs, lim, Some(n))
+    Query(s, ws, sel, obs, lim, _, scs) ->
+      Query(s, ws, sel, obs, lim, Some(n), scs)
   end
 end
 
@@ -149,7 +169,7 @@ Returns the schema associated with this query.
     Depot.Query.schema(q)
 """
 fn schema(query) do
-  match query do Query(s, _, _, _, _, _) -> s end
+  match query do Query(s, _, _, _, _, _, _) -> s end
 end
 
 -- ---------------------------------------------------------------------------
@@ -262,7 +282,7 @@ Applies operations in order:
 """
 fn execute(query, rows) do
   match query do
-    Query(_, wheres, sel, order_bys, lim, off) ->
+    Query(_, wheres, sel, order_bys, lim, off, _) ->
       -- 1. Filter
       let filtered = apply_wheres(rows, wheres)
       -- 2. Sort
@@ -296,7 +316,7 @@ Only applies where predicates (ignores order_by, limit, offset, select).
 """
 fn count(query, rows) do
   match query do
-    Query(_, wheres, _, _, _, _) ->
+    Query(_, wheres, _, _, _, _, _) ->
       let filtered = apply_wheres(rows, wheres)
       List.length(filtered)
   end
@@ -309,6 +329,246 @@ Returns true if the query would return any results.
 """
 fn exists(query, rows) do
   count(query, rows) > 0
+end
+
+-- ---------------------------------------------------------------------------
+-- SQL conditions (WHERE clauses for exec_sql)
+-- ---------------------------------------------------------------------------
+-- These accumulate (field, operator, value) triples that to_sql/1 serialises
+-- into a parameterised SQL WHERE clause.  They are independent of the
+-- in-memory `where_` predicates; use whichever suits the execution path.
+
+pfn add_sql_cond(query, field, op, value) do
+  match query do
+    Query(s, ws, sel, obs, lim, off, scs) ->
+      Query(s, ws, sel, obs, lim, off, List.append(scs, Cons((field, op, value), Nil)))
+  end
+end
+
+doc "WHERE field = $N"
+fn where_eq(query, field, value) do
+  add_sql_cond(query, field, "=", value)
+end
+
+doc "WHERE field <> $N"
+fn where_ne(query, field, value) do
+  add_sql_cond(query, field, "<>", value)
+end
+
+doc "WHERE field > $N"
+fn where_gt(query, field, value) do
+  add_sql_cond(query, field, ">", value)
+end
+
+doc "WHERE field < $N"
+fn where_lt(query, field, value) do
+  add_sql_cond(query, field, "<", value)
+end
+
+doc "WHERE field >= $N"
+fn where_gte(query, field, value) do
+  add_sql_cond(query, field, ">=", value)
+end
+
+doc "WHERE field <= $N"
+fn where_lte(query, field, value) do
+  add_sql_cond(query, field, "<=", value)
+end
+
+doc "WHERE field LIKE $N  (case-sensitive pattern match)"
+fn where_like(query, field, pattern) do
+  add_sql_cond(query, field, "LIKE", pattern)
+end
+
+doc "WHERE field ILIKE $N  (case-insensitive pattern match, PostgreSQL extension)"
+fn where_ilike(query, field, pattern) do
+  add_sql_cond(query, field, "ILIKE", pattern)
+end
+
+doc "WHERE field IS NULL  (no parameter)"
+fn where_is_null(query, field) do
+  add_sql_cond(query, field, "IS NULL", "")
+end
+
+doc "WHERE field IS NOT NULL  (no parameter)"
+fn where_is_not_null(query, field) do
+  add_sql_cond(query, field, "IS NOT NULL", "")
+end
+
+-- ---------------------------------------------------------------------------
+-- SQL generation
+-- ---------------------------------------------------------------------------
+
+-- Returns true if the operator does not consume a $N parameter.
+pfn is_nullary_op(op) do
+  op == "IS NULL" || op == "IS NOT NULL"
+end
+
+-- Build the WHERE clause and collect parameters in order.
+-- Returns (where_clause_string, params_list).
+-- Param $N numbers are assigned only to non-nullary conditions.
+pfn build_where_clause(conds, param_index) do
+  match conds do
+  Nil -> ("", Nil)
+  _ ->
+    fn go(cs, idx, clauses, params) do
+      match cs do
+      Nil -> (String.join(List.reverse(clauses), " AND "), List.reverse(params))
+      Cons((field, op, value), rest) ->
+        if is_nullary_op(op) then
+          let frag = field ++ " " ++ op
+          go(rest, idx, Cons(frag, clauses), params)
+        else
+          let frag = field ++ " " ++ op ++ " $" ++ int_to_string(idx)
+          go(rest, idx + 1, Cons(frag, clauses), Cons(value, params))
+        end
+      end
+    end
+    let (clause, params) = go(conds, param_index, Nil, Nil)
+    (clause, params)
+  end
+end
+
+-- Build the ORDER BY clause.
+pfn build_order_clause(order_bys) do
+  match order_bys do
+  Nil -> ""
+  _   ->
+    let parts = List.map(order_bys, fn (field, dir) ->
+      let direction = if dir == "desc" then "DESC" else "ASC" end
+      field ++ " " ++ direction
+    )
+    " ORDER BY " ++ String.join(parts, ", ")
+  end
+end
+
+doc """
+Generate a parameterised SQL SELECT string from the query.
+
+Uses the schema's table name and db_fields (non-virtual columns).
+SQL conditions added via `where_eq` / `where_gt` etc. become the WHERE clause.
+
+The `$N` placeholders match the list returned by `to_params/1` — pass both
+to `Connection.exec_prepared/3`:
+
+    let sql    = Depot.Query.to_sql(q)
+    let params = Depot.Query.to_params(q)
+    Connection.exec_prepared(db_conn, sql, params)
+
+Or use `exec_sql/2` which does this in one step.
+"""
+fn to_sql(query) : String do
+  match query do
+  Query(s, _, _, obs, lim, off, scs) ->
+    let tbl     = Depot.Schema.table(s)
+    let cols    = Depot.Schema.db_fields(s)
+    let sel_str = String.join(cols, ", ")
+    let base    = "SELECT " ++ sel_str ++ " FROM " ++ tbl
+    let (where_clause, _) = build_where_clause(scs, 1)
+    let where_str = if String.is_empty(where_clause) then ""
+                    else " WHERE " ++ where_clause end
+    let order_str = build_order_clause(obs)
+    let limit_str = match lim do
+      None    -> ""
+      Some(n) -> " LIMIT " ++ int_to_string(n)
+      end
+    let offset_str = match off do
+      None    -> ""
+      Some(n) -> " OFFSET " ++ int_to_string(n)
+      end
+    base ++ where_str ++ order_str ++ limit_str ++ offset_str
+  end
+end
+
+doc """
+Return the ordered list of parameter values for the SQL generated by `to_sql/1`.
+
+Values correspond to `$1`, `$2`, … in the SQL string in left-to-right order.
+IS NULL / IS NOT NULL conditions produce no parameter.
+
+    let params = Depot.Query.to_params(q)
+    -- ["alice@example.com", "18"]
+"""
+fn to_params(query) : List(String) do
+  match query do
+  Query(_, _, _, _, _, _, scs) ->
+    let (_, params) = build_where_clause(scs, 1)
+    params
+  end
+end
+
+doc """
+Execute the query against a live PostgreSQL connection.
+
+Calls `Connection.exec_prepared/3` with the SQL and params from `to_sql/1`
+and `to_params/1`.  Returns a list of rows, where each row is a list of
+`(column_name, Option(String))` pairs (an association list).
+
+    match Depot.Query.exec_sql(q, db_conn) do
+    Ok(rows)  ->
+      List.map(rows, fn row ->
+        match List.assoc(row, "email") do
+        Some(Some(e)) -> e
+        _             -> ""
+        end
+      )
+    Err(msg) -> []
+    end
+"""
+fn exec_sql(query, conn) do
+  let sql    = to_sql(query)
+  let params = to_params(query)
+  match Connection.exec_prepared(conn, sql, params) do
+  Err(e)     -> Err(e)
+  Ok(result) ->
+    let rows = List.map(result.rows, fn row ->
+      zip_cols(result.columns, row)
+    )
+    Ok(rows)
+  end
+end
+
+doc """
+Execute a COUNT(*) query and return the integer count.
+
+Uses a `SELECT count(*) FROM <table> WHERE ...` query.  Ignores `select`,
+`order_by`, `limit`, and `offset` — those don't affect a count.
+
+    match Depot.Query.count_sql(q, db_conn) do
+    Ok(n)    -> n
+    Err(msg) -> 0
+    end
+"""
+fn count_sql(query, conn) do
+  match query do
+  Query(s, _, _, _, _, _, scs) ->
+    let tbl = Depot.Schema.table(s)
+    let (where_clause, params) = build_where_clause(scs, 1)
+    let where_str = if String.is_empty(where_clause) then ""
+                    else " WHERE " ++ where_clause end
+    let sql = "SELECT count(*) FROM " ++ tbl ++ where_str
+    match Connection.exec_prepared(conn, sql, params) do
+    Err(e) -> Err(e)
+    Ok(result) ->
+      match result.rows do
+      Cons(Cons(Some(n_str), _), _) ->
+        match string_to_int(n_str) do
+        Some(n) -> Ok(n)
+        None    -> Ok(0)
+        end
+      _ -> Ok(0)
+      end
+    end
+  end
+end
+
+-- Zip column names with row values into an assoc list.
+pfn zip_cols(cols, vals) do
+  match (cols, vals) do
+  (Nil, _) -> Nil
+  (_, Nil) -> Nil
+  (Cons(c, cr), Cons(v, vr)) -> Cons((c, v), zip_cols(cr, vr))
+  end
 end
 
 doc """
