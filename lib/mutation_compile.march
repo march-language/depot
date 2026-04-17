@@ -73,6 +73,22 @@ fn compile_conflict(opt) do
   Some(DoNothing) -> " ON CONFLICT DO NOTHING"
   Some(DoUpdate(sets)) ->
     " ON CONFLICT DO UPDATE SET " ++ join_strs(map_conflict_sets(sets), ", ")
+  Some(DoNothingOn(target)) ->
+    " ON CONFLICT " ++ compile_conflict_target(target) ++ " DO NOTHING"
+  Some(DoUpdateOn(target, sets)) ->
+    " ON CONFLICT " ++ compile_conflict_target(target)
+      ++ " DO UPDATE SET " ++ join_strs(map_conflict_sets(sets), ", ")
+  end
+end
+
+-- Render the conflict target: either a parenthesized column list
+-- (`("a", "b")`) or a named constraint (`ON CONSTRAINT "name"`).
+fn compile_conflict_target(target) do
+  match target do
+  ConflictCols(cols) ->
+    "(" ++ join_strs(map_quoted(cols), ", ") ++ ")"
+  ConflictConstraint(name) ->
+    "ON CONSTRAINT " ++ quote_ident(name)
   end
 end
 

@@ -18,10 +18,28 @@ type InsertFields = {
 --- `rows` is a list of rows; each row is a list of SqlValue in column order.
 type Insert = Insert(InsertFields)
 
+--- Which index / constraint triggers an ON CONFLICT clause.
+---
+--- PostgreSQL requires an explicit target for `DO UPDATE` (it can be
+--- omitted for `DO NOTHING`, in which case every unique-index conflict
+--- is swallowed). `ConflictCols` names the columns of the unique index
+--- directly; `ConflictConstraint` references the named constraint.
+type ConflictTarget =
+    ConflictCols(List(String))
+  | ConflictConstraint(String)
+
 --- Action to take on INSERT conflict.
+---
+--- The target-less variants (`DoNothing` / `DoUpdate`) predate Phase 2.1
+--- and are kept for back-compat; `DoNothing` is valid without a target
+--- but `DoUpdate` without one will fail at execute time in Postgres. The
+--- target-carrying variants (`DoNothingOn` / `DoUpdateOn`) are the
+--- recommended entry points.
 type ConflictAction =
     DoNothing
-  | DoUpdate(List((String, Expr)))    -- (column, new_value_expr)
+  | DoUpdate(List((String, Expr)))                       -- (column, new_value_expr)
+  | DoNothingOn(ConflictTarget)
+  | DoUpdateOn(ConflictTarget, List((String, Expr)))
 
 --- Fields of an UPDATE query.
 type UpdateFields = {

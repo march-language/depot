@@ -41,6 +41,23 @@ fn on_conflict_do_update(i, sets) do
   end
 end
 
+--- Adds `ON CONFLICT <target> DO NOTHING` — target-specified no-op on conflict.
+fn on_conflict_do_nothing_on(i, target) do
+  match i do
+  Insert(f) -> Insert({ f with on_conflict = Some(DoNothingOn(target)) })
+  end
+end
+
+--- Adds `ON CONFLICT <target> DO UPDATE SET ...` — target + explicit SET list.
+---
+--- The caller controls every assignment; use `Raw("EXCLUDED.col")` (or a
+--- `QCol("excluded", "col")`) to reference the would-be-inserted row.
+fn on_conflict_do_update_on(i, target, sets) do
+  match i do
+  Insert(f) -> Insert({ f with on_conflict = Some(DoUpdateOn(target, sets)) })
+  end
+end
+
 --- Sets RETURNING * on the INSERT.
 fn insert_returning_all(i) do
   match i do
