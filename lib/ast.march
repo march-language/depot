@@ -86,6 +86,14 @@ type Expr =
   | Raw(String)    -- SECURITY: Raw embeds a string verbatim into SQL with NO escaping.
                    -- Never pass user input as a Raw value. Only use for trusted,
                    -- hard-coded SQL fragments (e.g. function calls, casts).
+  | Fragment(String, List(Expr))
+                   -- SECURITY: The template string is embedded verbatim (like Raw).
+                   -- Never put user input in the template string.
+                   -- '?' placeholders are replaced by compiled arg expressions.
+  | InSubquery(Expr, Query)
+                   -- expr IN (SELECT ...) — subquery variant of In.
+  | NotInSubquery(Expr, Query)
+                   -- expr NOT IN (SELECT ...) — subquery variant of NotIn.
 
 --- A literal SQL value.
 type SqlValue =

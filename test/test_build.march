@@ -20,6 +20,7 @@ test "from table" do
   Query(f) -> do
     match f.from_ do
     FromTable(t) -> assert t == "users"
+    _ -> assert false
     end
     assert f.distinct_ == false
     assert f.limit_ == None
@@ -29,7 +30,7 @@ test "from table" do
 end
 
 test "select exprs" do
-  let q = select(from("posts"), [Col("id"), Col("title")])
+  let q = select(from("posts"), [Expr.Col("id"), Expr.Col("title")])
   match q do
   Query(f) ->
     assert list_len(f.selects) == 2
@@ -47,21 +48,20 @@ test "select_all" do
 end
 
 test "WHERE clause" do
-  let q = where_(from("users"), Eq(Col("active"), Lit(PBool(true))))
+  let q = where_(from("users"), Expr.Eq(Expr.Col("active"), Lit(PBool(true))))
   match q do
-  Query(f) -> do
-    assert list_len(f.wheres) == 1
+  Query(f) ->
     match f.wheres do
     Cons(Where(_), Nil) -> ()
+    _ -> assert false
     end
-  end
   end
 end
 
 test "or_where adds clause" do
   let q = from("users")
-         |> where_(Eq(Col("role"), Lit(PString("admin"))))
-         |> or_where(Eq(Col("role"), Lit(PString("superuser"))))
+         |> where_(Expr.Eq(Expr.Col("role"), Lit(PString("admin"))))
+         |> or_where(Expr.Eq(Expr.Col("role"), Lit(PString("superuser"))))
   match q do
   Query(f) -> assert list_len(f.wheres) == 2
   end
@@ -85,29 +85,33 @@ test "distinct" do
 end
 
 test "order_by ASC" do
-  let q = order_by(from("logs"), Col("created_at"), Asc)
+  let q = order_by(from("logs"), Expr.Col("created_at"), Asc)
   match q do
-  Query(f) -> do
-    assert list_len(f.orders) == 1
-    assert f.orders == [OrderExpr(Col("created_at"), Asc)]
-  end
+  Query(f) ->
+    match f.orders do
+    Cons(OrderExpr(e, Asc), Nil) ->
+      match e do
+      Expr.Col(name) -> assert name == "created_at"
+      _ -> assert false
+      end
+    _ -> assert false
+    end
   end
 end
 
 test "INNER JOIN" do
-  let q = join(from("orders"), "users", Eq(QCol("orders", "user_id"), QCol("users", "id")))
+  let q = join(from("orders"), "users", Expr.Eq(QCol("orders", "user_id"), QCol("users", "id")))
   match q do
-  Query(f) -> do
-    assert list_len(f.joins) == 1
+  Query(f) ->
     match f.joins do
     Cons(JoinClause(Inner, "users", _), Nil) -> ()
+    _ -> assert false
     end
-  end
   end
 end
 
 test "group_by" do
-  let q = group_by(from("sales"), [Col("category"), Col("year")])
+  let q = group_by(from("sales"), [Expr.Col("category"), Expr.Col("year")])
   match q do
   Query(f) ->
     assert list_len(f.group_bys) == 2
@@ -115,33 +119,34 @@ test "group_by" do
 end
 
 test "LEFT JOIN" do
-  let q = left_join(from("orders"), "users", Eq(QCol("orders", "user_id"), QCol("users", "id")))
+  let q = left_join(from("orders"), "users", Expr.Eq(QCol("orders", "user_id"), QCol("users", "id")))
   match q do
-  Query(f) -> do
-    assert list_len(f.joins) == 1
+  Query(f) ->
     match f.joins do
     Cons(JoinClause(Left, "users", _), Nil) -> ()
+    _ -> assert false
     end
-  end
   end
 end
 
 test "RIGHT JOIN" do
-  let q = right_join(from("orders"), "users", Eq(QCol("orders", "user_id"), QCol("users", "id")))
+  let q = right_join(from("orders"), "users", Expr.Eq(QCol("orders", "user_id"), QCol("users", "id")))
   match q do
   Query(f) ->
     match f.joins do
     Cons(JoinClause(Right, "users", _), Nil) -> ()
+    _ -> assert false
     end
   end
 end
 
 test "FULL OUTER JOIN" do
-  let q = full_join(from("a"), "b", Eq(Col("a.id"), Col("b.a_id")))
+  let q = full_join(from("a"), "b", Expr.Eq(Expr.Col("a.id"), Expr.Col("b.a_id")))
   match q do
   Query(f) ->
     match f.joins do
     Cons(JoinClause(FullOuter, "b", _), Nil) -> ()
+    _ -> assert false
     end
   end
 end
@@ -152,54 +157,75 @@ test "CROSS JOIN" do
   Query(f) ->
     match f.joins do
     Cons(JoinClause(Cross, "b", _), Nil) -> ()
+    _ -> assert false
     end
   end
 end
 
 test "having clause" do
-  let q = having(from("sales"), Gt(Count(Col("id")), Lit(PInt(1))))
+  let q = having(from("sales"), Expr.Gt(Expr.Count(Expr.Col("id")), Lit(PInt(1))))
   match q do
-  Query(f) -> do
-    assert list_len(f.havings) == 1
+  Query(f) ->
     match f.havings do
     Cons(Where(_), Nil) -> ()
+    _ -> assert false
     end
-  end
   end
 end
 
 test "order_by DESC" do
-  let q = order_by(from("logs"), Col("created_at"), Desc)
+  let q = order_by(from("logs"), Expr.Col("created_at"), Desc)
   match q do
   Query(f) ->
-    assert f.orders == [OrderExpr(Col("created_at"), Desc)]
+    match f.orders do
+    Cons(OrderExpr(e, Desc), Nil) ->
+      match e do
+      Expr.Col(name) -> assert name == "created_at"
+      _ -> assert false
+      end
+    _ -> assert false
+    end
   end
 end
 
 test "from_subquery" do
-  let sub = from("events") |> where_(Eq(Col("active"), Lit(PBool(true))))
+  let sub = from("events") |> where_(Expr.Eq(Expr.Col("active"), Lit(PBool(true))))
   let q = from_subquery(sub, "e")
   match q do
   Query(f) ->
     match f.from_ do
     FromSubquery(_, alias_name) -> assert alias_name == "e"
+    _ -> assert false
     end
   end
 end
 
 test "select_as" do
-  let q = select_as(from("posts"), Count(Col("id")), "total")
+  let q = select_as(from("posts"), Expr.Count(Expr.Col("id")), "total")
   match q do
   Query(f) ->
-    assert f.selects == [SelectAs(Count(Col("id")), "total")]
+    match f.selects do
+    Cons(SelectAs(e, alias_), Nil) -> do
+      assert alias_ == "total"
+      match e do
+      Expr.Count(inner) ->
+        match inner do
+        Expr.Col(name) -> assert name == "id"
+        _ -> assert false
+        end
+      _ -> assert false
+      end
+    end
+    _ -> assert false
+    end
   end
 end
 
 test "chained builder" do
   let q = from("users")
-         |> select([Col("id"), Col("name")])
-         |> where_(Eq(Col("active"), Lit(PBool(true))))
-         |> order_by(Col("name"), Asc)
+         |> select([Expr.Col("id"), Expr.Col("name")])
+         |> where_(Expr.Eq(Expr.Col("active"), Lit(PBool(true))))
+         |> order_by(Expr.Col("name"), Asc)
          |> limit(50)
   match q do
   Query(f) -> do
@@ -212,26 +238,40 @@ test "chained builder" do
 end
 
 test "order_asc shorthand" do
-  let q = order_asc(from("logs"), Col("created_at"))
+  let q = order_asc(from("logs"), Expr.Col("created_at"))
   match q do
   Query(f) ->
-    assert f.orders == [OrderExpr(Col("created_at"), Asc)]
+    match f.orders do
+    Cons(OrderExpr(e, Asc), Nil) ->
+      match e do
+      Expr.Col(name) -> assert name == "created_at"
+      _ -> assert false
+      end
+    _ -> assert false
+    end
   end
 end
 
 test "order_desc shorthand" do
-  let q = order_desc(from("scores"), Col("points"))
+  let q = order_desc(from("scores"), Expr.Col("points"))
   match q do
   Query(f) ->
-    assert f.orders == [OrderExpr(Col("points"), Desc)]
+    match f.orders do
+    Cons(OrderExpr(e, Desc), Nil) ->
+      match e do
+      Expr.Col(name) -> assert name == "points"
+      _ -> assert false
+      end
+    _ -> assert false
+    end
   end
 end
 
 test "multiple where_ and or_where" do
   let q = from("events")
-         |> where_(Eq(Col("active"), Lit(PBool(true))))
-         |> where_(Gt(Col("score"), Lit(PInt(0))))
-         |> or_where(Eq(Col("featured"), Lit(PBool(true))))
+         |> where_(Expr.Eq(Expr.Col("active"), Lit(PBool(true))))
+         |> where_(Expr.Gt(Expr.Col("score"), Lit(PInt(0))))
+         |> or_where(Expr.Eq(Expr.Col("featured"), Lit(PBool(true))))
   match q do
   Query(f) -> assert list_len(f.wheres) == 3
   end
@@ -239,7 +279,7 @@ end
 
 test "multiple group_by accumulates" do
   let q = from("sales")
-         |> group_by([Col("region"), Col("year"), Col("quarter")])
+         |> group_by([Expr.Col("region"), Expr.Col("year"), Expr.Col("quarter")])
   match q do
   Query(f) -> assert list_len(f.group_bys) == 3
   end
@@ -247,8 +287,8 @@ end
 
 test "chained joins" do
   let q = from("orders")
-         |> join("users", Eq(QCol("orders", "user_id"), QCol("users", "id")))
-         |> left_join("products", Eq(QCol("orders", "product_id"), QCol("products", "id")))
+         |> join("users", Expr.Eq(QCol("orders", "user_id"), QCol("users", "id")))
+         |> left_join("products", Expr.Eq(QCol("orders", "product_id"), QCol("products", "id")))
   match q do
   Query(f) -> assert list_len(f.joins) == 2
   end
@@ -262,12 +302,13 @@ test "from creates query with correct table" do
   Query(f) ->
     match f.from_ do
     FromTable(t) -> assert t == "products"
+    _ -> assert false
     end
   end
 end
 
 test "where_ appends to wheres list" do
-  let q = from("t") |> where_(Eq(Col("a"), Lit(PInt(1))))
+  let q = from("t") |> where_(Expr.Eq(Expr.Col("a"), Lit(PInt(1))))
   match q do
   Query(f) -> assert list_len(f.wheres) == 1
   end
@@ -275,16 +316,16 @@ end
 
 test "multiple where_ calls accumulate" do
   let q = from("t")
-    |> where_(Eq(Col("a"), Lit(PInt(1))))
-    |> where_(Eq(Col("b"), Lit(PInt(2))))
-    |> where_(Eq(Col("c"), Lit(PInt(3))))
+    |> where_(Expr.Eq(Expr.Col("a"), Lit(PInt(1))))
+    |> where_(Expr.Eq(Expr.Col("b"), Lit(PInt(2))))
+    |> where_(Expr.Eq(Expr.Col("c"), Lit(PInt(3))))
   match q do
   Query(f) -> assert list_len(f.wheres) == 3
   end
 end
 
 test "select clears and sets selects" do
-  let q = from("t") |> select([Col("id"), Col("name"), Col("email")])
+  let q = from("t") |> select([Expr.Col("id"), Expr.Col("name"), Expr.Col("email")])
   match q do
   Query(f) -> assert list_len(f.selects) == 3
   end
@@ -293,26 +334,29 @@ end
 test "select_all sets SelectAll" do
   let q = from("t") |> select_all
   match q do
-  Query(f) -> assert f.selects == [SelectAll]
+  Query(f) -> do
+    assert list_len(f.selects) == 1
+    assert f.selects == [SelectAll]
+  end
   end
 end
 
 test "join adds inner join" do
-  let q = from("t") |> join("other", Eq(Col("id"), Col("other_id")))
+  let q = from("t") |> join("other", Expr.Eq(Expr.Col("id"), Expr.Col("other_id")))
   match q do
   Query(f) -> assert list_len(f.joins) == 1
   end
 end
 
 test "left_join adds left join" do
-  let q = from("t") |> left_join("other", Eq(Col("id"), Col("other_id")))
+  let q = from("t") |> left_join("other", Expr.Eq(Expr.Col("id"), Expr.Col("other_id")))
   match q do
   Query(f) -> assert list_len(f.joins) == 1
   end
 end
 
 test "right_join adds right join" do
-  let q = from("t") |> right_join("other", Eq(Col("id"), Col("other_id")))
+  let q = from("t") |> right_join("other", Expr.Eq(Expr.Col("id"), Expr.Col("other_id")))
   match q do
   Query(f) -> assert list_len(f.joins) == 1
   end
@@ -340,35 +384,35 @@ test "distinct sets distinct flag" do
 end
 
 test "order_asc adds asc order" do
-  let q = from("t") |> order_asc(Col("name"))
+  let q = from("t") |> order_asc(Expr.Col("name"))
   match q do
   Query(f) -> assert list_len(f.orders) == 1
   end
 end
 
 test "order_desc adds desc order" do
-  let q = from("t") |> order_desc(Col("created_at"))
+  let q = from("t") |> order_desc(Expr.Col("created_at"))
   match q do
   Query(f) -> assert list_len(f.orders) == 1
   end
 end
 
 test "multiple orders accumulate" do
-  let q = from("t") |> order_asc(Col("a")) |> order_desc(Col("b")) |> order_asc(Col("c"))
+  let q = from("t") |> order_asc(Expr.Col("a")) |> order_desc(Expr.Col("b")) |> order_asc(Expr.Col("c"))
   match q do
   Query(f) -> assert list_len(f.orders) == 3
   end
 end
 
 test "group_by adds group by" do
-  let q = from("t") |> group_by([Col("status")])
+  let q = from("t") |> group_by([Expr.Col("status")])
   match q do
   Query(f) -> assert list_len(f.group_bys) == 1
   end
 end
 
 test "having adds having clause" do
-  let q = from("t") |> having(Gt(CountAll, Lit(PInt(1))))
+  let q = from("t") |> having(Expr.Gt(CountAll, Lit(PInt(1))))
   match q do
   Query(f) -> assert list_len(f.havings) == 1
   end
@@ -376,11 +420,11 @@ end
 
 test "complex chained query" do
   let q = from("orders")
-    |> join("users", Eq(QCol("orders", "user_id"), QCol("users", "id")))
-    |> where_(Eq(Col("status"), Lit(PString("active"))))
-    |> group_by([Col("user_id")])
-    |> having(Gt(Count(Col("id")), Lit(PInt(2))))
-    |> order_desc(Col("user_id"))
+    |> join("users", Expr.Eq(QCol("orders", "user_id"), QCol("users", "id")))
+    |> where_(Expr.Eq(Expr.Col("status"), Lit(PString("active"))))
+    |> group_by([Expr.Col("user_id")])
+    |> having(Expr.Gt(Expr.Count(Expr.Col("id")), Lit(PInt(2))))
+    |> order_desc(Expr.Col("user_id"))
     |> limit(10)
     |> offset(0)
   match q do
@@ -447,8 +491,8 @@ end
 
 test "order_asc with multiple columns" do
   let q = from("users")
-    |> order_asc(Col("last_name"))
-    |> order_asc(Col("first_name"))
+    |> order_asc(Expr.Col("last_name"))
+    |> order_asc(Expr.Col("first_name"))
   match q do
   Query(f) -> assert list_len(f.orders) == 2
   end
@@ -456,7 +500,7 @@ end
 
 test "group_by multiple columns" do
   let q = from("sales")
-    |> group_by([Col("year"), Col("month"), Col("product_id")])
+    |> group_by([Expr.Col("year"), Expr.Col("month"), Expr.Col("product_id")])
   match q do
   Query(f) -> assert list_len(f.group_bys) == 3
   end
@@ -469,6 +513,310 @@ test "limit then offset" do
     assert f.limit_ == Some(5)
     assert f.offset_ == Some(10)
   end
+  end
+end
+
+-- ---- Phase 1.2: where_in / where_not_in ----
+
+test "where_in adds IN where clause" do
+  let q = from("users")
+    |> where_in(Expr.Col("id"), [Lit(PInt(1)), Lit(PInt(2)), Lit(PInt(3))])
+  match q do
+  Query(f) -> assert list_len(f.wheres) == 1
+  end
+end
+
+test "where_in empty list adds WHERE FALSE clause" do
+  let q = from("users") |> where_in(Expr.Col("id"), Nil)
+  match q do
+  Query(f) -> assert list_len(f.wheres) == 1
+  end
+end
+
+test "where_in empty list clause is Where(Raw)" do
+  let q = from("users") |> where_in(Expr.Col("id"), Nil)
+  match q do
+  Query(f) ->
+    match f.wheres do
+    Cons(Where(Raw(_)), Nil) -> ()
+    _ -> assert false
+    end
+  end
+end
+
+test "where_not_in adds NOT IN where clause" do
+  let q = from("users")
+    |> where_not_in(Expr.Col("id"), [Lit(PInt(1)), Lit(PInt(2))])
+  match q do
+  Query(f) -> assert list_len(f.wheres) == 1
+  end
+end
+
+test "where_not_in empty list adds no clause" do
+  let q = from("users") |> where_not_in(Expr.Col("id"), Nil)
+  match q do
+  Query(f) -> assert f.wheres == Nil
+  end
+end
+
+test "where_in chains with other conditions" do
+  let q = from("users")
+    |> where_(Expr.Eq(Expr.Col("active"), Lit(PBool(true))))
+    |> where_in(Expr.Col("role"), [Lit(PString("admin")), Lit(PString("mod"))])
+  match q do
+  Query(f) -> assert list_len(f.wheres) == 2
+  end
+end
+
+test "where_not_in chains with conditions" do
+  let q = from("users")
+    |> where_(Expr.Eq(Expr.Col("active"), Lit(PBool(true))))
+    |> where_not_in(Expr.Col("status"), [Lit(PString("banned")), Lit(PString("suspended"))])
+  match q do
+  Query(f) -> assert list_len(f.wheres) == 2
+  end
+end
+
+test "where_in single value" do
+  let q = from("users") |> where_in(Expr.Col("id"), [Lit(PInt(42))])
+  match q do
+  Query(f) -> assert list_len(f.wheres) == 1
+  end
+end
+
+-- ---- Phase 1.3: where_or / OR condition grouping ----
+
+test "where_or single condition is equivalent to where_" do
+  let q = from("users") |> where_or([Expr.Eq(Expr.Col("active"), Lit(PBool(true)))])
+  match q do
+  Query(f) -> assert list_len(f.wheres) == 1
+  end
+end
+
+test "where_or two conditions adds one OR clause" do
+  let q = from("users")
+    |> where_or([Expr.Eq(Expr.Col("role"), Lit(PString("admin"))),
+                 Expr.Eq(Expr.Col("role"), Lit(PString("mod")))])
+  match q do
+  Query(f) -> assert list_len(f.wheres) == 1
+  end
+end
+
+test "where_or stores Where(Or(...))" do
+  let q = from("users")
+    |> where_or([Expr.Eq(Expr.Col("role"), Lit(PString("admin"))),
+                 Expr.Eq(Expr.Col("role"), Lit(PString("mod")))])
+  match q do
+  Query(f) ->
+    match f.wheres do
+    Cons(Where(e), Nil) ->
+      match e do
+      Expr.Or(_, _) -> ()
+      _ -> assert false
+      end
+    _ -> assert false
+    end
+  end
+end
+
+test "where_or empty list adds FALSE clause" do
+  let q = from("users") |> where_or(Nil)
+  match q do
+  Query(f) -> assert list_len(f.wheres) == 1
+  end
+end
+
+test "where_or chains with AND conditions" do
+  let q = from("users")
+    |> where_(Expr.Eq(Expr.Col("active"), Lit(PBool(true))))
+    |> where_or([Expr.Eq(Expr.Col("role"), Lit(PString("admin"))),
+                 Expr.Eq(Expr.Col("role"), Lit(PString("mod")))])
+  match q do
+  Query(f) -> assert list_len(f.wheres) == 2
+  end
+end
+
+test "where_or three conditions" do
+  let q = from("users")
+    |> where_or([Expr.Eq(Expr.Col("a"), Lit(PInt(1))),
+                 Expr.Eq(Expr.Col("b"), Lit(PInt(2))),
+                 Expr.Eq(Expr.Col("c"), Lit(PInt(3)))])
+  match q do
+  Query(f) -> assert list_len(f.wheres) == 1
+  end
+end
+
+-- ---- Phase 1.4: fragment/2 ----
+
+test "fragment adds WHERE Fragment clause" do
+  let q = from("users") |> fragment("lower(?) = lower(?)", [Expr.Col("email"), Expr.Col("email")])
+  match q do
+  Query(f) ->
+    match f.wheres do
+    Cons(Where(e), Nil) ->
+      match e do
+      Fragment(_, _) -> ()
+      _ -> assert false
+      end
+    _ -> assert false
+    end
+  end
+end
+
+test "fragment stores template string" do
+  let q = from("users") |> fragment("lower(?) = ?", [Expr.Col("email"), Lit(PString("a@b.com"))])
+  match q do
+  Query(f) ->
+    match f.wheres do
+    Cons(Where(Fragment(tmpl, _)), Nil) -> assert tmpl == "lower(?) = ?"
+    _ -> assert false
+    end
+  end
+end
+
+test "fragment stores args list" do
+  let q = from("users") |> fragment("? > ?", [Expr.Col("age"), Lit(PInt(18))])
+  match q do
+  Query(f) ->
+    match f.wheres do
+    Cons(Where(Fragment(_, args)), Nil) -> assert list_len(args) == 2
+    _ -> assert false
+    end
+  end
+end
+
+test "fragment chains with where_ conditions" do
+  let q = from("users")
+    |> where_(Expr.Eq(Expr.Col("active"), Lit(PBool(true))))
+    |> fragment("lower(?) = ?", [Expr.Col("email"), Lit(PString("alice@test.com"))])
+  match q do
+  Query(f) -> assert list_len(f.wheres) == 2
+  end
+end
+
+test "fragment with no placeholders stores empty args" do
+  let q = from("users") |> fragment("1 = 1", Nil)
+  match q do
+  Query(f) ->
+    match f.wheres do
+    Cons(Where(Fragment(tmpl, _)), Nil) -> assert tmpl == "1 = 1"
+    _ -> assert false
+    end
+  end
+end
+
+-- ---- Phase 1.5: subquery predicates ----
+
+test "select_col adds SelectField to selects" do
+  let q = from("t") |> select_col("id")
+  match q do
+  Query(f) ->
+    match f.selects do
+    Cons(SelectField(_), Nil) -> ()
+    _ -> assert false
+    end
+  end
+end
+
+test "where_in_subquery adds InSubquery WHERE clause" do
+  let subq = from("admins")
+  let q = from("users") |> where_in_subquery("id", subq)
+  match q do
+  Query(f) ->
+    match f.wheres do
+    Cons(Where(e), Nil) ->
+      match e do
+      InSubquery(_, _) -> ()
+      _ -> assert false
+      end
+    _ -> assert false
+    end
+  end
+end
+
+test "where_in_subquery column name is Col expr" do
+  let q = from("users") |> where_in_subquery("dept_id", from("depts"))
+  match q do
+  Query(f) ->
+    match f.wheres do
+    Cons(Where(InSubquery(col_expr, _)), Nil) ->
+      match col_expr do
+      Expr.Col(name) -> assert name == "dept_id"
+      _ -> assert false
+      end
+    _ -> assert false
+    end
+  end
+end
+
+test "where_in_subquery stores the subquery" do
+  let subq = from("admins") |> select_col("user_id")
+  let q = from("users") |> where_in_subquery("id", subq)
+  match q do
+  Query(f) ->
+    match f.wheres do
+    Cons(Where(InSubquery(_, sq)), Nil) ->
+      match sq do
+      Query(sf) ->
+        match sf.from_ do
+        FromTable(t) -> assert t == "admins"
+        _ -> assert false
+        end
+      end
+    _ -> assert false
+    end
+  end
+end
+
+test "where_exists adds Exists WHERE clause" do
+  let q = from("users") |> where_exists(from("admins"))
+  match q do
+  Query(f) ->
+    match f.wheres do
+    Cons(Where(e), Nil) ->
+      match e do
+      Exists(_) -> ()
+      _ -> assert false
+      end
+    _ -> assert false
+    end
+  end
+end
+
+test "where_not_exists adds NOT(Exists) WHERE clause" do
+  let q = from("users") |> where_not_exists(from("admins"))
+  match q do
+  Query(f) ->
+    match f.wheres do
+    Cons(Where(e), Nil) ->
+      match e do
+      Expr.Not(inner) ->
+        match inner do
+        Exists(_) -> ()
+        _ -> assert false
+        end
+      _ -> assert false
+      end
+    _ -> assert false
+    end
+  end
+end
+
+test "where_in_subquery chains with other conditions" do
+  let q = from("users")
+    |> where_(Expr.Eq(Expr.Col("active"), Lit(PBool(true))))
+    |> where_in_subquery("id", from("admins"))
+  match q do
+  Query(f) -> assert list_len(f.wheres) == 2
+  end
+end
+
+test "where_exists chains with other conditions" do
+  let q = from("users")
+    |> where_(Expr.Eq(Expr.Col("active"), Lit(PBool(true))))
+    |> where_exists(from("sessions"))
+  match q do
+  Query(f) -> assert list_len(f.wheres) == 2
   end
 end
 

@@ -490,6 +490,10 @@ pfn compile_expr(e, st) do
     let (parts, s2) = compile_expr_list(args, st, Nil)
     (name ++ "(" ++ join_strs(rev_strs(parts), ", ") ++ ")", s2)
   end
+  -- TODO(1.5): subqueries use inline compilation so their literal values appear
+  -- inline rather than as $N params. Full param-counter threading requires
+  -- breaking the mutual-recursion cycle between the pfn cp_X pipeline and
+  -- compile_expr. Until then, keep subquery literals out of user input paths.
   Exists(subq) -> do
     let sub = compile_inline(subq)
     ("EXISTS (" ++ sub.sql ++ ")", st)
@@ -497,6 +501,16 @@ pfn compile_expr(e, st) do
   SubqueryExpr(subq) -> do
     let sub = compile_inline(subq)
     ("(" ++ sub.sql ++ ")", st)
+  end
+  InSubquery(inner, subq) -> do
+    let (s, s1) = compile_expr(inner, st)
+    let sub = compile_inline(subq)
+    (s ++ " IN (" ++ sub.sql ++ ")", s1)
+  end
+  NotInSubquery(inner, subq) -> do
+    let (s, s1) = compile_expr(inner, st)
+    let sub = compile_inline(subq)
+    (s ++ " NOT IN (" ++ sub.sql ++ ")", s1)
   end
   Like(inner, pat) -> do
     let (s, st2) = compile_expr(inner, st)
@@ -533,6 +547,7 @@ pfn compile_expr(e, st) do
   CountAll     -> ("COUNT(*)", st)
   ExprParam(n) -> ("$" ++ int_to_string(n), st)
   Raw(sql)     -> (sql, st)
+  Fragment(tmpl, args) -> compile_frag(tmpl, args, st, "")
   _         -> ("/* unsupported expr */", st)
   end
 end
@@ -578,6 +593,10 @@ pfn compile_expr_inline(e) do
     name ++ "(" ++ join_strs(compile_exprs_inline(args), ", ") ++ ")"
   Exists(subq)      -> "EXISTS (" ++ compile_subquery_inline(subq) ++ ")"
   SubqueryExpr(subq) -> "(" ++ compile_subquery_inline(subq) ++ ")"
+  InSubquery(inner, subq) ->
+    compile_expr_inline(inner) ++ " IN (" ++ compile_subquery_inline(subq) ++ ")"
+  NotInSubquery(inner, subq) ->
+    compile_expr_inline(inner) ++ " NOT IN (" ++ compile_subquery_inline(subq) ++ ")"
   Like(inner, pat)  -> compile_expr_inline(inner) ++ " LIKE "  ++ quote_string(pat)
   ILike(inner, pat) -> compile_expr_inline(inner) ++ " ILIKE " ++ quote_string(pat)
   Count(inner)   -> "COUNT(" ++ compile_expr_inline(inner) ++ ")"
@@ -588,6 +607,7 @@ pfn compile_expr_inline(e) do
   CountAll       -> "COUNT(*)"
   ExprParam(n)   -> "$" ++ int_to_string(n)
   Raw(sql)       -> sql
+  Fragment(tmpl, args) -> compile_frag_inline(tmpl, args, "")
   _              -> "/* unsupported */"
   end
 end
@@ -732,8 +752,10 @@ pfn subq_expr(e) do
   NotIn(inner, vals) -> subq_expr(inner) ++ " NOT IN (" ++ join_strs(subq_exprs(vals), ", ") ++ ")"
   Between(e, lo, hi) -> subq_expr(e) ++ " BETWEEN " ++ subq_expr(lo) ++ " AND " ++ subq_expr(hi)
   FnCall(name, args) -> name ++ "(" ++ join_strs(subq_exprs(args), ", ") ++ ")"
-  Exists(_)      -> "/* nested subquery */"
-  SubqueryExpr(_) -> "/* nested subquery */"
+  Exists(_)           -> "/* nested subquery */"
+  SubqueryExpr(_)     -> "/* nested subquery */"
+  InSubquery(_, _)    -> "/* nested subquery */"
+  NotInSubquery(_, _) -> "/* nested subquery */"
   Like(inner, pat)  -> subq_expr(inner) ++ " LIKE "  ++ quote_string(pat)
   ILike(inner, pat) -> subq_expr(inner) ++ " ILIKE " ++ quote_string(pat)
   Count(inner)   -> "COUNT(" ++ subq_expr(inner) ++ ")"
@@ -744,7 +766,54 @@ pfn subq_expr(e) do
   CountAll       -> "COUNT(*)"
   ExprParam(n)   -> "$" ++ int_to_string(n)
   Raw(sql)       -> sql
+  Fragment(tmpl, args) -> compile_frag_inline(tmpl, args, "")
   _              -> "/* unsupported */"
+  end
+end
+
+-- ---- Fragment helpers ----
+-- Compile a Fragment(template, args) by scanning template bytes for '?' (ASCII 63)
+-- and replacing each with the next compiled arg expression.
+
+pfn compile_frag(bytes_in, args, st, acc) do
+  let bytes = Bytes.to_list(Bytes.from_string(bytes_in))
+  compile_frag_bytes(bytes, args, st, acc)
+end
+
+pfn compile_frag_bytes(bytes, args, st, acc) do
+  match bytes do
+  Nil -> (acc, st)
+  Cons(b, rest) ->
+    if b == 63 then
+      match args do
+      Nil -> compile_frag_bytes(rest, Nil, st, acc ++ "?")
+      Cons(arg, rest_args) -> do
+        let (s, st2) = compile_expr(arg, st)
+        compile_frag_bytes(rest, rest_args, st2, acc ++ s)
+      end
+      end
+    else
+      compile_frag_bytes(rest, args, st, acc ++ Bytes.to_string(Bytes.from_list(Cons(b, Nil))))
+  end
+end
+
+pfn compile_frag_inline(tmpl, args, acc) do
+  let bytes = Bytes.to_list(Bytes.from_string(tmpl))
+  compile_frag_bytes_inline(bytes, args, acc)
+end
+
+pfn compile_frag_bytes_inline(bytes, args, acc) do
+  match bytes do
+  Nil -> acc
+  Cons(b, rest) ->
+    if b == 63 then
+      match args do
+      Nil -> compile_frag_bytes_inline(rest, Nil, acc ++ "?")
+      Cons(arg, rest_args) ->
+        compile_frag_bytes_inline(rest, rest_args, acc ++ compile_expr_inline(arg))
+      end
+    else
+      compile_frag_bytes_inline(rest, args, acc ++ Bytes.to_string(Bytes.from_list(Cons(b, Nil))))
   end
 end
 

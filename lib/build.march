@@ -81,6 +81,40 @@ fn where_(q, expr) do
   end
 end
 
+--- Appends a WHERE expr IN (vals) predicate. Empty vals list produces WHERE FALSE.
+---
+--- march> match where_in(from("t"), Col("id"), [Lit(PInt(1)), Lit(PInt(2))]) do | Query(f) -> match f.wheres do | Cons(Where(_), Nil) -> true | _ -> false end end
+--- true
+fn where_in(q, expr, vals) do
+  match vals do
+  Nil   -> where_(q, Raw("FALSE"))
+  _     -> where_(q, In(expr, vals))
+  end
+end
+
+--- Appends a WHERE expr NOT IN (vals) predicate. Empty vals list is a no-op.
+---
+--- march> match where_not_in(from("t"), Col("id"), [Lit(PInt(1))]) do | Query(f) -> match f.wheres do | Cons(Where(_), Nil) -> true | _ -> false end end
+--- true
+fn where_not_in(q, expr, vals) do
+  match vals do
+  Nil -> q
+  _   -> where_(q, NotIn(expr, vals))
+  end
+end
+
+--- Appends a WHERE (c1 OR c2 OR ...) predicate. Empty list produces WHERE FALSE.
+---
+--- march> match where_or(from("t"), [Eq(Col("a"), Lit(PInt(1))), Eq(Col("b"), Lit(PInt(2)))]) do | Query(f) -> match f.wheres do | Cons(Where(Or(_, _)), Nil) -> true | _ -> false end end
+--- true
+fn where_or(q, exprs) do
+  match exprs do
+  Nil             -> where_(q, Raw("FALSE"))
+  Cons(e, Nil)    -> where_(q, e)
+  _               -> where_(q, fold_or(exprs))
+  end
+end
+
 --- Appends an OR WHERE predicate.
 ---
 --- march> match or_where(from("t"), Col("active")) do | Query(f) -> match f.wheres do | Cons(OrWhere(_), Nil) -> true | _ -> false end end
@@ -203,6 +237,48 @@ fn offset(q, n) do
   end
 end
 
+--- Selects a single column by name (convenience wrapper around select).
+---
+--- march> match select_col(from("t"), "id") do | Query(f) -> match f.selects do | Cons(SelectField(_), Nil) -> true | _ -> false end end
+--- true
+fn select_col(q, col_name) do
+  select(q, [Expr.Col(col_name)])
+end
+
+--- Appends a WHERE expr IN (SELECT ...) predicate.
+---
+--- march> match where_in_subquery(from("users"), "id", from("admins")) do | Query(f) -> match f.wheres do | Cons(Where(InSubquery(_, _)), Nil) -> true | _ -> false end end
+--- true
+fn where_in_subquery(q, col_name, subq) do
+  where_(q, InSubquery(Expr.Col(col_name), subq))
+end
+
+--- Appends a WHERE EXISTS (SELECT ...) predicate.
+---
+--- march> match where_exists(from("users"), from("admins")) do | Query(f) -> match f.wheres do | Cons(Where(Exists(_)), Nil) -> true | _ -> false end end
+--- true
+fn where_exists(q, subq) do
+  where_(q, Exists(subq))
+end
+
+--- Appends a WHERE NOT EXISTS (SELECT ...) predicate.
+---
+--- march> match where_not_exists(from("users"), from("admins")) do | Query(f) -> match f.wheres do | Cons(Where(Not(_)), Nil) -> true | _ -> false end end
+--- true
+fn where_not_exists(q, subq) do
+  where_(q, Expr.Not(Exists(subq)))
+end
+
+--- Appends a WHERE predicate using a SQL fragment template with `?` placeholders.
+--- Each `?` is replaced in order by a compiled expression from `args`.
+--- SECURITY: the template string is embedded verbatim — never put user input there.
+---
+--- march> match fragment(from("t"), "lower(?) = lower(?)", [Col("email"), Col("email")]) do | Query(f) -> match f.wheres do | Cons(Where(Fragment(_, _)), Nil) -> true | _ -> false end end
+--- true
+fn fragment(q, template, args) do
+  where_(q, Fragment(template, args))
+end
+
 --- Adds DISTINCT to the SELECT.
 ---
 --- march> match distinct(from("t")) do | Query(f) -> f.distinct_ end
@@ -210,6 +286,18 @@ end
 fn distinct(q) do
   match q do
     Query(f) -> Query({ f with distinct_ = true })
+  end
+end
+
+-- ---- OR fold helpers ----
+
+-- Folds a non-empty list of Expr values into a right-associated Or tree.
+-- Callers must guarantee the list has at least one element.
+pfn fold_or(exprs) do
+  match exprs do
+  Cons(e, Nil)  -> e
+  Cons(e, rest) -> Expr.Or(e, fold_or(rest))
+  Nil           -> Raw("FALSE")
   end
 end
 
