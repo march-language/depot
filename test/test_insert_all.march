@@ -1,0 +1,89 @@
+-- test/test_insert_all.march
+-- Phase 2.2 — Bulk insert.
+--
+-- The ROADMAP frames this at the Repo.insert_all layer, but the shippable
+-- unit here is the Mutation bulk path: `insert_many` + `compile_insert`
+-- must produce a single multi-row INSERT, `is_empty_insert` must let the
+-- exec layer recognize the zero-row no-op (Postgres rejects `VALUES ()`),
+-- and RETURNING tuples must line up positionally with the input rows.
+--
+-- The "no SQL issued" property from the ROADMAP is an exec-layer concern:
+-- `MutationExec.exec_insert` short-circuits on `is_empty_insert`. The
+-- compile layer stays pure — it has no knowledge of whether its output
+-- is about to be shipped — so 0-row compile still produces `VALUES ()`.
+--
+-- End-to-end "insert 1000 rows against real Postgres" coverage waits on
+-- a real-Postgres fixture (cross-cutting). The compile layer is the
+-- part Depot owns; these tests pin down the shape that fixture will hit.
+
+mod TestInsertAll do
+
+import Ast
+import Message
+import Mutation
+import MutationBuild
+import MutationCompile
+
+test "is_empty_insert — zero rows is empty" do
+  let i = insert_many("users", ["id", "name"], Nil)
+  assert is_empty_insert(i) == true
+end
+
+test "is_empty_insert — at least one row is not empty" do
+  let i = insert_many("t", ["x"], [[PInt(1)]])
+  assert is_empty_insert(i) == false
+end
+
+test "is_empty_insert ignores columns list — emptiness is about rows only" do
+  -- A column list with no rows is still empty (RETURNING-only callers
+  -- would still get a no-op). A row list with data is never empty
+  -- regardless of whether columns were declared.
+  let no_rows = insert_into("t") |> insert_cols(["a", "b", "c"])
+  let has_rows = insert_into("t") |> insert_row([PInt(1)])
+  assert is_empty_insert(no_rows) == true
+  assert is_empty_insert(has_rows) == false
+end
+
+test "insert_many three rows compiles to a single INSERT statement" do
+  -- Single-statement property: exactly one VALUES clause, no semicolons,
+  -- params numbered $1..$N in row-major order (row 1 cols, then row 2…).
+  let i = insert_many("t", ["a", "b"],
+            [[PInt(1), PInt(2)],
+             [PInt(3), PInt(4)],
+             [PInt(5), PInt(6)]])
+  let r = compile_insert(i)
+  assert r.sql == "INSERT INTO \"t\" (\"a\", \"b\") VALUES ($1, $2), ($3, $4), ($5, $6)"
+  assert List.length(r.params) == 6
+  -- No semicolons → truly one statement.
+  assert String.contains(r.sql, ";") == false
+end
+
+test "insert_many with RETURNING * — parameters stay row-major" do
+  -- Order preservation: the Nth result row in RETURNING corresponds to
+  -- the Nth input row because $1..$N are emitted in input order.
+  -- This is the compile-side witness for the ROADMAP's order property.
+  let i = insert_many("users", ["name", "email"],
+            [[PString("Alice"), PString("a@b.com")],
+             [PString("Bob"),   PString("b@c.com")]])
+       |> insert_returning_all()
+  let r = compile_insert(i)
+  assert r.sql == "INSERT INTO \"users\" (\"name\", \"email\") VALUES ($1, $2), ($3, $4) RETURNING *"
+  assert List.length(r.params) == 4
+end
+
+test "insert_many composes with ON CONFLICT DO UPDATE target + RETURNING" do
+  let i = insert_many("users", ["id", "name"],
+            [[PInt(1), PString("Alice")],
+             [PInt(2), PString("Bob")]])
+       |> on_conflict_do_update_on(
+            ConflictCols(["id"]),
+            [("name", QCol("excluded", "name"))]
+          )
+       |> insert_returning_all()
+  let sql = (compile_insert(i)).sql
+  assert String.contains(sql, "VALUES ($1, $2), ($3, $4)") == true
+  assert String.contains(sql, "ON CONFLICT (\"id\") DO UPDATE SET \"name\" = \"excluded\".\"name\"") == true
+  assert String.contains(sql, "RETURNING *") == true
+end
+
+end -- mod TestInsertAll

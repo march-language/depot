@@ -62,4 +62,14 @@ type DeleteFields = {
 --- DELETE query ADT.
 type Delete = Delete(DeleteFields)
 
+--- True iff an `Insert` carries zero VALUES rows — caller should skip
+--- both compile and exec (Postgres rejects `VALUES ()`). Kept in the
+--- Mutation ADT module so both the compile side (for tests / docs) and
+--- the exec side (for the no-op short-circuit) can agree on the shape.
+fn is_empty_insert(i) do
+  match i do
+  Insert(f) -> List.length(f.rows) == 0
+  end
+end
+
 end
