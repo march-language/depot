@@ -11,7 +11,7 @@ import Message
 import Compile
 
 -- Compile state: tracks current $N counter and accumulated params.
-type MutState = { param_count : Int, params : List(Param) }
+type MutState = { param_count : Int, acc_params : List(Param) }
 
 -- ---- INSERT ----
 
@@ -19,30 +19,30 @@ type MutState = { param_count : Int, params : List(Param) }
 ---
 --- march> (compile_insert(Insert({ table_ = "t", columns = ["x"], rows = [[PInt(1)]], on_conflict = None, returning_ = Nil }))).sql
 --- "INSERT INTO \"t\" (\"x\") VALUES ($1)"
-fn compile_insert(i) do
+fn compile_insert(i) : Compile.CompiledQuery do
   match i do
-  Insert(f) -> ci_build(f, { param_count = 0, params = Nil })
+  Insert(f) -> ci_build(f, { param_count = 0, acc_params = Nil })
   end
 end
 
-pfn ci_build(f, st) do
+fn ci_build(f, st) : Compile.CompiledQuery do
   let col_sql = "(" ++ join_strs(map_quoted(f.columns), ", ") ++ ")"
   let (rows_sql, st2) = compile_rows(f.rows, st)
   let conflict_sql = compile_conflict(f.on_conflict)
   let ret_sql = compile_returning(f.returning_)
   let sql = "INSERT INTO " ++ quote_ident(f.table_) ++ " " ++ col_sql
             ++ " VALUES " ++ rows_sql ++ conflict_sql ++ ret_sql
-  { sql = sql, params = rev_params(st2.params) }
+  { sql = sql, params = rev_params(st2.acc_params) }
 end
 
-pfn compile_rows(rows, st) do
+fn compile_rows(rows, st) do
   match rows do
   Nil -> ("()", st)
   _   -> compile_rows_acc(rows, st, Nil)
   end
 end
 
-pfn compile_rows_acc(rows, st, acc) do
+fn compile_rows_acc(rows, st, acc) do
   match rows do
   Nil -> (join_strs(rev_strs(acc), ", "), st)
   Cons(row, rest) ->
@@ -51,23 +51,23 @@ pfn compile_rows_acc(rows, st, acc) do
   end
 end
 
-pfn compile_one_row(vals, st) do
+fn compile_one_row(vals, st) do
   let (parts, st2) = compile_sql_values(vals, st, Nil)
   ("(" ++ join_strs(rev_strs(parts), ", ") ++ ")", st2)
 end
 
-pfn compile_sql_values(vals, st, acc) do
+fn compile_sql_values(vals, st, acc) do
   match vals do
   Nil -> (acc, st)
   Cons(v, rest) -> do
     let nc = st.param_count + 1
     let param = sqlval_to_param(v)
-    compile_sql_values(rest, { param_count = nc, params = Cons(param, st.params) }, Cons("$" ++ int_to_string(nc), acc))
+    compile_sql_values(rest, { param_count = nc, acc_params = Cons(param, st.acc_params) }, Cons("$" ++ int_to_string(nc), acc))
   end
   end
 end
 
-pfn compile_conflict(opt) do
+fn compile_conflict(opt) do
   match opt do
   None -> ""
   Some(DoNothing) -> " ON CONFLICT DO NOTHING"
@@ -76,7 +76,7 @@ pfn compile_conflict(opt) do
   end
 end
 
-pfn map_conflict_sets(sets) do
+fn map_conflict_sets(sets) do
   match sets do
   Nil -> Nil
   Cons((col, expr), rest) ->
@@ -91,29 +91,29 @@ end
 ---
 --- march> (compile_update(Update({ table_ = "t", sets = [("x", Lit(PInt(1)))], wheres = Nil, returning_ = Nil }))).sql
 --- "UPDATE \"t\" SET \"x\" = $1"
-fn compile_update(u) do
+fn compile_update(u) : Compile.CompiledQuery do
   match u do
-  Update(f) -> cu_build(f, { param_count = 0, params = Nil })
+  Update(f) -> cu_build(f, { param_count = 0, acc_params = Nil })
   end
 end
 
-pfn cu_build(f, st) do
+fn cu_build(f, st) : Compile.CompiledQuery do
   let (sets_sql, st2) = compile_sets(f.sets, st)
   let (where_sql, st3) = compile_wheres_m(f.wheres, st2)
   let ret_sql = compile_returning(f.returning_)
   let sql = "UPDATE " ++ quote_ident(f.table_) ++ " SET " ++ sets_sql
             ++ where_sql ++ ret_sql
-  { sql = sql, params = rev_params(st3.params) }
+  { sql = sql, params = rev_params(st3.acc_params) }
 end
 
-pfn compile_sets(sets, st) do
+fn compile_sets(sets, st) do
   match sets do
   Nil -> ("", st)
   _   -> compile_sets_acc(sets, st, Nil)
   end
 end
 
-pfn compile_sets_acc(sets, st, acc) do
+fn compile_sets_acc(sets, st, acc) do
   match sets do
   Nil -> (join_strs(rev_strs(acc), ", "), st)
   Cons((col, expr), rest) ->
@@ -128,22 +128,22 @@ end
 ---
 --- march> (compile_delete(Delete({ table_ = "t", wheres = [Where(Eq(Col("id"), Lit(PInt(1))))], returning_ = Nil }))).sql
 --- "DELETE FROM \"t\" WHERE \"id\" = $1"
-fn compile_delete(d) do
+fn compile_delete(d) : Compile.CompiledQuery do
   match d do
-  Delete.Delete(f) -> cd_build(f, { param_count = 0, params = Nil })
+  Delete.Delete(f) -> cd_build(f, { param_count = 0, acc_params = Nil })
   end
 end
 
-pfn cd_build(f, st) do
+fn cd_build(f, st) : Compile.CompiledQuery do
   let (where_sql, st2) = compile_wheres_m(f.wheres, st)
   let ret_sql = compile_returning(f.returning_)
   let sql = "DELETE FROM " ++ quote_ident(f.table_) ++ where_sql ++ ret_sql
-  { sql = sql, params = rev_params(st2.params) }
+  { sql = sql, params = rev_params(st2.acc_params) }
 end
 
 -- ---- Shared: WHERE, RETURNING, expr ----
 
-pfn compile_wheres_m(wheres, st) do
+fn compile_wheres_m(wheres, st) do
   match wheres do
   Nil -> ("", st)
   _   -> do
@@ -153,7 +153,7 @@ pfn compile_wheres_m(wheres, st) do
   end
 end
 
-pfn compile_where_parts_m(wheres, st, acc) do
+fn compile_where_parts_m(wheres, st, acc) do
   match wheres do
   Nil -> (acc, st)
   Cons(w, rest) ->
@@ -170,28 +170,28 @@ pfn compile_where_parts_m(wheres, st, acc) do
   end
 end
 
-pfn join_where_parts_m(parts) do
+fn join_where_parts_m(parts) do
   match parts do
   Nil -> "TRUE"
   Cons((_, first), rest) -> join_where_rest_m(first, rest)
   end
 end
 
-pfn join_where_rest_m(acc, parts) do
+fn join_where_rest_m(acc, parts) do
   match parts do
   Nil -> acc
   Cons((op, expr), rest) -> join_where_rest_m(acc ++ " " ++ op ++ " " ++ expr, rest)
   end
 end
 
-pfn compile_returning(exprs) do
+fn compile_returning(exprs) do
   match exprs do
   Nil -> ""
   _   -> " RETURNING " ++ join_strs(map_returning(exprs), ", ")
   end
 end
 
-pfn map_returning(exprs) do
+fn map_returning(exprs) do
   match exprs do
   Nil -> Nil
   Cons(e, rest) -> do
@@ -207,64 +207,64 @@ end
 
 -- Parameterized expression compiler for mutation context.
 -- Mirrors compile_expr from Compile but with MutState.
-pfn compile_expr_m(e, st) do
+fn compile_expr_m(e, st) do
   match e do
   Lit(v) -> do
     let nc = st.param_count + 1
     let param = sqlval_to_param(v)
-    ("$" ++ int_to_string(nc), { param_count = nc, params = Cons(param, st.params) })
+    ("$" ++ int_to_string(nc), { param_count = nc, acc_params = Cons(param, st.acc_params) })
   end
-  Expr.Col(name)     -> (quote_ident(name), st)
+  Col(name)     -> (quote_ident(name), st)
   QCol(t, name) -> (quote_ident(t) ++ "." ++ quote_ident(name), st)
-  Expr.Eq(l, r) -> do
+  Eq(l, r) -> do
     let (ls, s1) = compile_expr_m(l, st)
     let (rs, s2) = compile_expr_m(r, s1)
     (ls ++ " = " ++ rs, s2)
   end
-  Expr.Neq(l, r) -> do
+  Neq(l, r) -> do
     let (ls, s1) = compile_expr_m(l, st)
     let (rs, s2) = compile_expr_m(r, s1)
     (ls ++ " <> " ++ rs, s2)
   end
-  Expr.Lt(l, r) -> do
+  Lt(l, r) -> do
     let (ls, s1) = compile_expr_m(l, st)
     let (rs, s2) = compile_expr_m(r, s1)
     (ls ++ " < " ++ rs, s2)
   end
-  Expr.Gt(l, r) -> do
+  Gt(l, r) -> do
     let (ls, s1) = compile_expr_m(l, st)
     let (rs, s2) = compile_expr_m(r, s1)
     (ls ++ " > " ++ rs, s2)
   end
-  Expr.Lte(l, r) -> do
+  Lte(l, r) -> do
     let (ls, s1) = compile_expr_m(l, st)
     let (rs, s2) = compile_expr_m(r, s1)
     (ls ++ " <= " ++ rs, s2)
   end
-  Expr.Gte(l, r) -> do
+  Gte(l, r) -> do
     let (ls, s1) = compile_expr_m(l, st)
     let (rs, s2) = compile_expr_m(r, s1)
     (ls ++ " >= " ++ rs, s2)
   end
-  Expr.And(l, r) -> do
+  And(l, r) -> do
     let (ls, s1) = compile_expr_m(l, st)
     let (rs, s2) = compile_expr_m(r, s1)
     ("(" ++ ls ++ " AND " ++ rs ++ ")", s2)
   end
-  Expr.Or(l, r) -> do
+  Or(l, r) -> do
     let (ls, s1) = compile_expr_m(l, st)
     let (rs, s2) = compile_expr_m(r, s1)
     ("(" ++ ls ++ " OR " ++ rs ++ ")", s2)
   end
-  Expr.Not(inner) -> do
+  Not(inner) -> do
     let (s, st2) = compile_expr_m(inner, st)
     ("NOT (" ++ s ++ ")", st2)
   end
-  Expr.IsNull(inner) -> do
+  IsNull(inner) -> do
     let (s, st2) = compile_expr_m(inner, st)
     (s ++ " IS NULL", st2)
   end
-  Expr.IsNotNull(inner) -> do
+  IsNotNull(inner) -> do
     let (s, st2) = compile_expr_m(inner, st)
     (s ++ " IS NOT NULL", st2)
   end
@@ -297,12 +297,14 @@ pfn compile_expr_m(e, st) do
     (s ++ " ILIKE " ++ quote_str(pat), st2)
   end
   Raw(sql) -> (sql, st)
-  ExprParam(n) -> ("$" ++ int_to_string(n), st)
+  ExprParam(n) -> (expr_param_str(n), st)
   _            -> ("/* unsupported */", st)
   end
 end
 
-pfn compile_expr_list_m(exprs, st, acc) do
+fn expr_param_str(n) do "$" ++ int_to_string(n) end
+
+fn compile_expr_list_m(exprs, st, acc) do
   match exprs do
   Nil -> (acc, st)
   Cons(e, rest) ->
@@ -312,10 +314,10 @@ pfn compile_expr_list_m(exprs, st, acc) do
 end
 
 -- Inline expression compiler (for ON CONFLICT DO UPDATE, no params).
-pfn compile_expr_inline_m(e) do
+fn compile_expr_inline_m(e) do
   match e do
   Lit(v)         -> sql_val_str(v)
-  Expr.Col(name)      -> quote_ident(name)
+  Col(name)      -> quote_ident(name)
   QCol(t, name)  -> quote_ident(t) ++ "." ++ quote_ident(name)
   Raw(sql)       -> sql
   _              -> "/* unsupported */"
@@ -325,7 +327,7 @@ end
 -- ---- String helpers ----
 
 -- Escape single quotes in a string for SQL literal embedding ('' per SQL standard).
-pfn escape_sql_str(s) do
+fn escape_sql_str(s) do
   fn go(bytes, acc) do
     match bytes do
     Nil -> Bytes.to_string(Bytes.from_list(List.reverse(acc)))
@@ -337,9 +339,9 @@ pfn escape_sql_str(s) do
   go(Bytes.to_list(Bytes.from_string(s)), Nil)
 end
 
-pfn quote_str(s) do "'" ++ escape_sql_str(s) ++ "'" end
+fn quote_str(s) do "'" ++ escape_sql_str(s) ++ "'" end
 
-pfn sqlval_to_param(v) do
+fn sqlval_to_param(v) do
   match v do
   PInt(n)    -> ParamText(int_to_string(n))
   PFloat(f_) -> ParamText(float_to_string(f_))
@@ -349,7 +351,7 @@ pfn sqlval_to_param(v) do
   end
 end
 
-pfn sql_val_str(v) do
+fn sql_val_str(v) do
   match v do
   PInt(n)    -> int_to_string(n)
   PFloat(f_) -> float_to_string(f_)
@@ -360,7 +362,7 @@ pfn sql_val_str(v) do
 end
 
 -- Escape double quotes in an identifier by doubling them (SQL standard).
-pfn escape_ident(s) do
+fn escape_ident(s) do
   fn go(bytes, acc) do
     match bytes do
     Nil -> Bytes.to_string(Bytes.from_list(List.reverse(acc)))
@@ -372,16 +374,16 @@ pfn escape_ident(s) do
   go(Bytes.to_list(Bytes.from_string(s)), Nil)
 end
 
-pfn quote_ident(name) do "\"" ++ escape_ident(name) ++ "\"" end
+fn quote_ident(name) do "\"" ++ escape_ident(name) ++ "\"" end
 
-pfn map_quoted(strs) do
+fn map_quoted(strs) do
   match strs do
   Nil -> Nil
   Cons(s, rest) -> Cons(quote_ident(s), map_quoted(rest))
   end
 end
 
-pfn join_strs(parts, sep) do
+fn join_strs(parts, sep) do
   match parts do
   Nil -> ""
   Cons(first, Nil) -> first
@@ -389,8 +391,8 @@ pfn join_strs(parts, sep) do
   end
 end
 
-pfn rev_strs(xs) do rev_strs_acc(xs, Nil) end
-pfn rev_strs_acc(xs, acc) do
+fn rev_strs(xs) do rev_strs_acc(xs, Nil) end
+fn rev_strs_acc(xs, acc) do
   match xs do
   Nil -> acc
   Cons(x, rest) -> rev_strs_acc(rest, Cons(x, acc))
@@ -405,8 +407,8 @@ fn rev_params_acc(xs, acc) do
   end
 end
 
-pfn rev_wp_m(xs) do rev_wp_m_acc(xs, Nil) end
-pfn rev_wp_m_acc(xs, acc) do
+fn rev_wp_m(xs) do rev_wp_m_acc(xs, Nil) end
+fn rev_wp_m_acc(xs, acc) do
   match xs do
   Nil -> acc
   Cons(x, rest) -> rev_wp_m_acc(rest, Cons(x, acc))

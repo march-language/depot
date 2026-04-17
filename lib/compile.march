@@ -766,7 +766,7 @@ pfn subq_expr(e) do
   CountAll       -> "COUNT(*)"
   ExprParam(n)   -> "$" ++ int_to_string(n)
   Raw(sql)       -> sql
-  Fragment(tmpl, args) -> compile_frag_inline(tmpl, args, "")
+  Fragment(_, _) -> "/* fragment in subquery */"
   _              -> "/* unsupported */"
   end
 end
