@@ -66,4 +66,48 @@ fn exec_delete(conn, d) do
   )
 end
 
+--- Parse the affected-row count out of a Postgres CommandComplete tag.
+---
+--- Postgres tags look like `DELETE 5`, `UPDATE 3`, or `INSERT 0 7` — the
+--- trailing integer is always the affected count. (The `INSERT` tag
+--- carries an OID slot first, which has been pinned to zero since
+--- OID-on-user-tables was removed.) Malformed or empty tags yield
+--- `None` rather than `Some(0)` so callers can tell "zero rows affected"
+--- apart from "couldn't parse the tag".
+---
+--- Parses digits by hand via byte inspection — `string_to_int` from the
+--- forge stdlib returns half the value for our test inputs (reproducibly:
+--- `string_to_int("5") == Some(2)`, `string_to_int("42") == Some(21)`).
+--- A local parser sidesteps the bug until the stdlib is fixed.
+fn affected_count(tag) do
+  match last_token(String.split(tag, " ")) do
+  None    -> None
+  Some(s) -> parse_nat(s)
+  end
+end
+
+pfn last_token(xs) do
+  match xs do
+  Nil            -> None
+  Cons(x, Nil)   -> if String.is_empty(x) do None else Some(x) end
+  Cons(_, rest)  -> last_token(rest)
+  end
+end
+
+pfn parse_nat(s) do
+  parse_nat_go(Bytes.to_list(Bytes.from_string(s)), 0, false)
+end
+
+pfn parse_nat_go(bytes, acc, any_digit) do
+  match bytes do
+  Nil           -> if any_digit do Some(acc) else None end
+  Cons(b, rest) ->
+    if b >= 48 && b <= 57 do
+      parse_nat_go(rest, acc * 10 + (b - 48), true)
+    else
+      None
+    end
+  end
+end
+
 end

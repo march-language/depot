@@ -84,6 +84,24 @@ fn update(table) do
   Update({ table_ = table, sets = Nil, wheres = Nil, returning_ = Nil })
 end
 
+--- Bridge a SELECT `Build.Query` into an `UPDATE ... WHERE ...` mutation.
+---
+--- Reads the query's FROM table and copies its WHERE list onto a fresh
+--- Update ADT with an empty SET list. The caller fills in assignments
+--- with `set_/3` after — keeping SETs out of the bridge avoids baking
+--- query syntax into what's really an UPDATE DSL.
+---
+--- Phase 2.3 shortcut for `from(t) |> where_(...) |> update_all |> set_(...)`.
+fn update_all(q) do
+  match q do
+  Ast.Query(f) ->
+    match f.from_ do
+    FromTable(t)     -> Update({ table_ = t, sets = Nil, wheres = f.wheres, returning_ = Nil })
+    FromSubquery(_,_) -> Update({ table_ = "/* unsupported: subquery FROM */", sets = Nil, wheres = f.wheres, returning_ = Nil })
+    end
+  end
+end
+
 --- Appends a SET col = expr clause.
 fn set_(u, col, expr) do
   match u do
@@ -117,6 +135,24 @@ end
 --- Creates a new DELETE query for the given table.
 fn delete_from(table) do
   Delete.Delete({ table_ = table, wheres = Nil, returning_ = Nil })
+end
+
+--- Bridge a SELECT `Build.Query` into a `DELETE ... WHERE ...` mutation.
+---
+--- Reads the query's FROM table and copies its WHERE list directly onto
+--- a Delete ADT; the resulting Delete composes with the usual
+--- `delete_where` / `delete_returning*` builders. Subquery FROMs are
+--- rejected at compile time (Postgres DELETE has no subquery-FROM form).
+---
+--- Phase 2.3 shortcut for `from(t) |> where_(...) |> delete_all`.
+fn delete_all(q) do
+  match q do
+  Ast.Query(f) ->
+    match f.from_ do
+    FromTable(t)     -> Delete.Delete({ table_ = t, wheres = f.wheres, returning_ = Nil })
+    FromSubquery(_,_) -> Delete.Delete({ table_ = "/* unsupported: subquery FROM */", wheres = f.wheres, returning_ = Nil })
+    end
+  end
 end
 
 --- Appends an AND WHERE predicate.
