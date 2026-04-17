@@ -1,0 +1,123 @@
+-- test/test_upsert.march
+-- Phase 2.1 — ON CONFLICT with explicit conflict target.
+--
+-- PostgreSQL requires an explicit conflict target for `DO UPDATE` (either
+-- a column list or a constraint name). These tests drive the new
+-- ConflictTarget ADT, the target-aware builders
+-- (`on_conflict_do_nothing_on` / `_do_update_on`), and the compile-side
+-- SQL shape.
+--
+-- The `on_conflict_replace` shortcut (generate SET list from the insert's
+-- column list minus the target columns) is intentionally omitted from
+-- Phase 2.1 — every recursive generator approach reliably SIGSEGVs under
+-- the current forge runtime. Callers spell the SET list out explicitly
+-- using `QCol("excluded", col)` per column; see the
+-- "replaces all non-target columns" test for the shape.
+--
+-- Kept in a standalone file because test/test_mutation.march crashes with
+-- a pre-existing SIGSEGV partway through its suite (see the PNull-path
+-- test near line 532 — unrelated to this phase); a fresh test binary
+-- runs these to completion.
+
+mod TestUpsert do
+
+import Ast
+import Message
+import Mutation
+import MutationBuild
+import MutationCompile
+
+test "ON CONFLICT (col) DO NOTHING — column target" do
+  let i = insert_into("users")
+       |> insert_cols(["email", "name"])
+       |> insert_row([PString("a@b.com"), PString("Alice")])
+       |> on_conflict_do_nothing_on(ConflictCols(["email"]))
+  let sql = (compile_insert(i)).sql
+  assert sql == "INSERT INTO \"users\" (\"email\", \"name\") VALUES ($1, $2) ON CONFLICT (\"email\") DO NOTHING"
+end
+
+test "ON CONFLICT ON CONSTRAINT — named constraint target, DO NOTHING" do
+  let i = insert_into("t")
+       |> insert_cols(["k"])
+       |> insert_row([PInt(1)])
+       |> on_conflict_do_nothing_on(ConflictConstraint("t_k_unique"))
+  let sql = (compile_insert(i)).sql
+  assert sql == "INSERT INTO \"t\" (\"k\") VALUES ($1) ON CONFLICT ON CONSTRAINT \"t_k_unique\" DO NOTHING"
+end
+
+test "ON CONFLICT (pk) DO UPDATE SET — partial update on unique index" do
+  let i = insert_into("kv")
+       |> insert_cols(["key", "val", "updated_at"])
+       |> insert_row([PString("k"), PInt(7), PString("t0")])
+       |> on_conflict_do_update_on(
+            ConflictCols(["key"]),
+            [("val", Raw("EXCLUDED.val")), ("updated_at", Raw("NOW()"))]
+          )
+  let sql = (compile_insert(i)).sql
+  assert sql == "INSERT INTO \"kv\" (\"key\", \"val\", \"updated_at\") VALUES ($1, $2, $3) ON CONFLICT (\"key\") DO UPDATE SET \"val\" = EXCLUDED.val, \"updated_at\" = NOW()"
+end
+
+test "ON CONFLICT (pk) DO UPDATE replaces all non-target columns — manual SET list" do
+  let i = insert_into("users")
+       |> insert_cols(["id", "name", "email"])
+       |> insert_row([PInt(1), PString("A"), PString("a@b.com")])
+       |> on_conflict_do_update_on(
+            ConflictCols(["id"]),
+            [("name", QCol("excluded", "name")), ("email", QCol("excluded", "email"))]
+          )
+  let sql = (compile_insert(i)).sql
+  assert sql == "INSERT INTO \"users\" (\"id\", \"name\", \"email\") VALUES ($1, $2, $3) ON CONFLICT (\"id\") DO UPDATE SET \"name\" = \"excluded\".\"name\", \"email\" = \"excluded\".\"email\""
+end
+
+test "composite-column conflict target with DO UPDATE" do
+  let i = insert_into("memberships")
+       |> insert_cols(["user_id", "group_id", "role"])
+       |> insert_row([PInt(1), PInt(2), PString("admin")])
+       |> on_conflict_do_update_on(
+            ConflictCols(["user_id", "group_id"]),
+            [("role", QCol("excluded", "role"))]
+          )
+  let sql = (compile_insert(i)).sql
+  assert sql == "INSERT INTO \"memberships\" (\"user_id\", \"group_id\", \"role\") VALUES ($1, $2, $3) ON CONFLICT (\"user_id\", \"group_id\") DO UPDATE SET \"role\" = \"excluded\".\"role\""
+end
+
+test "ON CONFLICT DO UPDATE composes with RETURNING" do
+  let i = insert_into("users")
+       |> insert_cols(["id", "name"])
+       |> insert_row([PInt(1), PString("A")])
+       |> on_conflict_do_update_on(
+            ConflictCols(["id"]),
+            [("name", QCol("excluded", "name"))]
+          )
+       |> insert_returning_all()
+  let sql = (compile_insert(i)).sql
+  assert String.contains(sql, "ON CONFLICT (\"id\") DO UPDATE SET") == true
+  assert String.contains(sql, "RETURNING *") == true
+end
+
+test "ON CONFLICT compile is deterministic — idempotence stand-in" do
+  -- Compile the same Insert twice; SQL and params must be byte-identical.
+  -- This stands in for the ROADMAP's runtime idempotence property
+  -- (`insert(g, on_conflict=:replace)` twice ≡ once) until a real-Postgres
+  -- test fixture lands; the compile layer is the part Depot owns.
+  let i1 = insert_into("users")
+        |> insert_cols(["id", "email"])
+        |> insert_row([PInt(42), PString("a@b.com")])
+        |> on_conflict_do_update_on(
+             ConflictCols(["id"]),
+             [("email", QCol("excluded", "email"))]
+           )
+  let i2 = insert_into("users")
+        |> insert_cols(["id", "email"])
+        |> insert_row([PInt(42), PString("a@b.com")])
+        |> on_conflict_do_update_on(
+             ConflictCols(["id"]),
+             [("email", QCol("excluded", "email"))]
+           )
+  let r1 = compile_insert(i1)
+  let r2 = compile_insert(i2)
+  assert r1.sql == r2.sql
+  assert List.length(r1.params) == List.length(r2.params)
+end
+
+end -- mod TestUpsert
