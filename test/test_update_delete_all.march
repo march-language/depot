@@ -1,0 +1,125 @@
+-- test/test_update_delete_all.march
+-- Phase 2.3 — query-based `update_all` / `delete_all`.
+--
+-- The ROADMAP example is `from("users") |> where_lt("age", 13) |> delete_all`.
+-- Phase 2.3 wires the Query ADT from lib/build.march (the SELECT DSL) into
+-- the Mutation Delete/Update ADTs by reading the query's `from_` table and
+-- copying its `wheres` directly. Everything else (sets, RETURNING) is
+-- layered on with the existing mutation builders.
+--
+-- A second piece is tag parsing: Postgres returns CommandComplete tags
+-- like "DELETE 5" / "UPDATE 3". `MutationExec.affected_count/1` extracts
+-- the integer so callers can satisfy the ROADMAP's "affected count"
+-- contract without re-parsing tag strings.
+--
+-- The ROADMAP's non-match-untouched property and count=count(q)-pre property
+-- are both live-Postgres concerns; the compile- and tag-level tests here
+-- are the parts Depot can own without a real-Postgres fixture.
+
+mod TestUpdateDeleteAll do
+
+import Ast
+import Build
+import Message
+import MutationBuild
+import MutationCompile
+import MutationExec
+
+-- ---- delete_all(query) ----
+
+test "delete_all — table + single Where copied from Query" do
+  let q = Build.from("users")
+       |> Build.where_(Lt(Col("age"), Lit(PInt(13))))
+  let d = delete_all(q)
+  let sql = (compile_delete(d)).sql
+  assert sql == "DELETE FROM \"users\" WHERE \"age\" < $1"
+end
+
+test "delete_all — multiple AND wheres preserved in order" do
+  let q = Build.from("events")
+       |> Build.where_(Eq(Col("kind"), Lit(PString("click"))))
+       |> Build.where_(Lt(Col("created_at"), Lit(PString("2026-01-01"))))
+  let d = delete_all(q)
+  let sql = (compile_delete(d)).sql
+  assert sql == "DELETE FROM \"events\" WHERE \"kind\" = $1 AND \"created_at\" < $2"
+end
+
+test "delete_all — composes with delete_returning_all" do
+  let q = Build.from("tombstones")
+       |> Build.where_(IsNotNull(Col("deleted_at")))
+  let d = delete_all(q) |> delete_returning_all()
+  let sql = (compile_delete(d)).sql
+  assert sql == "DELETE FROM \"tombstones\" WHERE \"deleted_at\" IS NOT NULL RETURNING *"
+end
+
+-- ---- update_all(query) ----
+
+test "update_all — empty SET list is the degenerate UPDATE (caller adds sets)" do
+  -- `update_all` returns an Update with empty sets; the caller follows
+  -- up with `set_/3` for each assignment. Keeping sets out of the
+  -- query-bridge keeps the DSL small and orthogonal.
+  let q = Build.from("users") |> Build.where_(Eq(Col("id"), Lit(PInt(1))))
+  let u = update_all(q)
+  let sql = (compile_update(u)).sql
+  -- Empty SET list is accepted by the compiler (it's tested upstream);
+  -- we only care here that the table + wheres round-tripped.
+  assert String.contains(sql, "UPDATE \"users\"") == true
+  assert String.contains(sql, "WHERE \"id\" = $1") == true
+end
+
+test "update_all — set_/update_returning compose on top of the bridge" do
+  let q = Build.from("users") |> Build.where_(Eq(Col("id"), Lit(PInt(42))))
+  let u = update_all(q)
+       |> set_("name", Lit(PString("Alice")))
+       |> set_("active", Lit(PBool(true)))
+       |> update_returning_all()
+  let sql = (compile_update(u)).sql
+  assert sql == "UPDATE \"users\" SET \"name\" = $1, \"active\" = $2 WHERE \"id\" = $3 RETURNING *"
+end
+
+-- ---- affected_count(tag) ----
+
+-- Destructure with `match` rather than `==` — forge's structural equality
+-- on Option/ADT values is buggy (reproducibly, `Some(5) == Some(5)` is
+-- false), so every affected_count test unwraps the Option by hand.
+
+test "affected_count — 'DELETE 5' parses to 5" do
+  match affected_count("DELETE 5") do
+  Some(n) -> assert n == 5
+  None    -> assert false
+  end
+end
+
+test "affected_count — 'UPDATE 3' parses to 3" do
+  match affected_count("UPDATE 3") do
+  Some(n) -> assert n == 3
+  None    -> assert false
+  end
+end
+
+test "affected_count — 'INSERT 0 7' uses the last int (rows inserted)" do
+  -- Postgres INSERT tag is "INSERT <oid> <count>" — the count is the
+  -- second integer, zero-oid since OID-on-tables is long-obsolete.
+  match affected_count("INSERT 0 7") do
+  Some(n) -> assert n == 7
+  None    -> assert false
+  end
+end
+
+test "affected_count — empty tag yields None" do
+  match affected_count("") do
+  None    -> assert true
+  Some(_) -> assert false
+  end
+end
+
+test "affected_count — malformed tag yields None" do
+  -- Defensive: anything without a trailing integer is None, not 0,
+  -- so callers can distinguish "zero rows" from "couldn't parse".
+  match affected_count("SELECT") do
+  None    -> assert true
+  Some(_) -> assert false
+  end
+end
+
+end -- mod TestUpdateDeleteAll
