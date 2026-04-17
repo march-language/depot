@@ -415,7 +415,7 @@ pfn build_where_clause(conds, param_index) do
       match cs do
       Nil -> (String.join(List.reverse(clauses), " AND "), List.reverse(params))
       Cons((field, op, value), rest) ->
-        if is_nullary_op(op) then
+        if is_nullary_op(op) do
           let frag = field ++ " " ++ op
           go(rest, idx, Cons(frag, clauses), params)
         else
@@ -433,12 +433,16 @@ end
 pfn build_order_clause(order_bys) do
   match order_bys do
   Nil -> ""
-  _   ->
-    let parts = List.map(order_bys, fn (field, dir) ->
-      let direction = if dir == "desc" then "DESC" else "ASC" end
-      field ++ " " ++ direction
-    )
-    " ORDER BY " ++ String.join(parts, ", ")
+  _   -> " ORDER BY " ++ build_order_parts(order_bys, Nil)
+  end
+end
+
+pfn build_order_parts(obs, acc) do
+  match obs do
+  Nil -> String.join(List.reverse(acc), ", ")
+  Cons((field, dir), rest) ->
+    let part = field ++ " " ++ (if dir == "desc" then "DESC" else "ASC")
+    build_order_parts(rest, Cons(part, acc))
   end
 end
 
@@ -466,7 +470,7 @@ fn to_sql(query) : String do
     let base    = "SELECT " ++ sel_str ++ " FROM " ++ tbl
     let (where_clause, _) = build_where_clause(scs, 1)
     let where_str = if String.is_empty(where_clause) then ""
-                    else " WHERE " ++ where_clause end
+                    else " WHERE " ++ where_clause
     let order_str = build_order_clause(obs)
     let limit_str = match lim do
       None    -> ""
@@ -516,8 +520,9 @@ and `to_params/1`.  Returns a list of rows, where each row is a list of
     end
 """
 fn exec_sql(query, conn) do
-  let sql    = to_sql(query)
-  let params = to_params(query)
+  let sql       = to_sql(query)
+  let str_params = to_params(query)
+  let params    = strings_to_pg_params(str_params, Nil)
   match Connection.exec_prepared(conn, sql, params) do
   Err(e)     -> Err(e)
   Ok(result) ->
@@ -543,9 +548,10 @@ fn count_sql(query, conn) do
   match query do
   Query(s, _, _, _, _, _, scs) ->
     let tbl = Depot.Schema.table(s)
-    let (where_clause, params) = build_where_clause(scs, 1)
+    let (where_clause, str_params) = build_where_clause(scs, 1)
+    let params = strings_to_pg_params(str_params, Nil)
     let where_str = if String.is_empty(where_clause) then ""
-                    else " WHERE " ++ where_clause end
+                    else " WHERE " ++ where_clause
     let sql = "SELECT count(*) FROM " ++ tbl ++ where_str
     match Connection.exec_prepared(conn, sql, params) do
     Err(e) -> Err(e)
@@ -562,12 +568,24 @@ fn count_sql(query, conn) do
   end
 end
 
--- Zip column names with row values into an assoc list.
+-- Convert a list of plain strings to PostgreSQL Param values for exec_prepared.
+pfn strings_to_pg_params(strs, acc) do
+  match strs do
+  Nil -> List.reverse(acc)
+  Cons(s, rest) -> strings_to_pg_params(rest, Cons(ParamText(s), acc))
+  end
+end
+
+-- Zip column names with row values into an assoc list (tail-recursive).
 pfn zip_cols(cols, vals) do
+  zip_cols_acc(cols, vals, Nil)
+end
+
+pfn zip_cols_acc(cols, vals, acc) do
   match (cols, vals) do
-  (Nil, _) -> Nil
-  (_, Nil) -> Nil
-  (Cons(c, cr), Cons(v, vr)) -> Cons((c, v), zip_cols(cr, vr))
+  (Nil, _) -> List.reverse(acc)
+  (_, Nil) -> List.reverse(acc)
+  (Cons(c, cr), Cons(v, vr)) -> zip_cols_acc(cr, vr, Cons((c, v), acc))
   end
 end
 
