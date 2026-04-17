@@ -1,0 +1,201 @@
+-- Depot.Telemetry: query-level observability hooks.
+--
+-- A thin callback registry for observing every SQL query that passes
+-- through Depot. Callers register a handler with `attach(name, fn)`;
+-- every subsequent query emits a `QueryEvent` to every registered
+-- handler. Handlers are invoked inside `__try_call`, so a panicking
+-- handler is isolated — other handlers still fire and the calling
+-- query is unaffected.
+--
+-- Handlers are stored in a named Vault table (`__depot_telemetry__`)
+-- so registration is process-global and survives across modules. The
+-- registry key is the user-supplied handler name (a String); re-using
+-- a name overwrites the previous handler.
+--
+-- Usage:
+--
+--   Depot.Telemetry.attach("stdout", fn ev ->
+--     IO.println(ev.sql ++ " (" ++ int_to_string(ev.duration_ms) ++ "ms)")
+--   end)
+--
+--   -- ... later, inside a query-issuing function ...
+--   Depot.Telemetry.instrument(sql, params, fn _ ->
+--     Connection.exec_prepared(conn, sql, params)
+--   )
+--
+--   Depot.Telemetry.detach("stdout")
+
+mod Depot.Telemetry do
+
+--- A completed-query event, delivered to every attached handler.
+---
+--- Wrapped in a single-constructor ADT so handlers destructure with
+--- `QueryEvent(e) -> ...`; this guarantees a consistent field layout
+--- even when the event flows through dynamically-typed storage (Vault).
+---
+--- `ok` is `true` when the query returned `Ok(_)`, `false` on `Err(_)`.
+--- `row_count` is the number of rows in the result set on success and
+--- `0` on failure. `error` carries the error string when `ok = false`.
+type QueryEventFields = {
+  sql         : String,
+  params      : List(Param),
+  duration_ms : Int,
+  row_count   : Int,
+  ok          : Bool,
+  error       : Option(String)
+}
+
+type QueryEvent = QueryEvent(QueryEventFields)
+
+-- ---------------------------------------------------------------------------
+-- Registry plumbing
+-- ---------------------------------------------------------------------------
+
+pfn registry_name() do "__depot_telemetry__" end
+
+-- Get or create the handler-registry Vault table.
+pfn registry() do
+  match Vault.whereis(registry_name()) do
+    Some(t) -> t
+    None    -> Vault.new(registry_name())
+  end
+end
+
+-- ---------------------------------------------------------------------------
+-- Public API
+-- ---------------------------------------------------------------------------
+
+doc """
+Attach a handler to query events. `name` identifies the handler for
+later `detach`; re-attaching with the same name overwrites.
+
+    Depot.Telemetry.attach("log", fn ev -> IO.println(ev.sql) end)
+"""
+fn attach(name, handler) do
+  Vault.set(registry(), name, handler)
+  ()
+end
+
+doc "Remove a handler by name. No-op if the name is not registered."
+fn detach(name) do
+  Vault.drop(registry(), name)
+  ()
+end
+
+doc "Return the list of currently registered handler names."
+fn handler_names() do
+  Vault.keys(registry())
+end
+
+doc "Remove all handlers. Primarily useful for test isolation."
+fn clear() do
+  let t = registry()
+  let ks = Vault.keys(t)
+  clear_keys(t, ks)
+end
+
+pfn clear_keys(t, ks) do
+  match ks do
+    Nil -> ()
+    Cons(k, rest) ->
+      Vault.drop(t, k)
+      clear_keys(t, rest)
+  end
+end
+
+doc """
+Emit a `QueryEvent` to every registered handler.
+
+Each handler runs inside `__try_call`; if one raises, the event is
+still delivered to the remaining handlers and `emit` itself never
+raises.
+"""
+fn emit(event) do
+  let t = registry()
+  let ks = Vault.keys(t)
+  emit_to_all(t, ks, event)
+end
+
+pfn emit_to_all(t, ks, event) do
+  match ks do
+    Nil -> ()
+    Cons(k, rest) ->
+      match Vault.get(t, k) do
+        None -> ()
+        Some(handler) ->
+          -- Isolate handler failures: a panicking listener must not
+          -- cascade into sibling handlers or the calling query.
+          let _ = __try_call(fn _ -> handler(event))
+          ()
+      end
+      emit_to_all(t, rest, event)
+  end
+end
+
+doc """
+Wrap a query-running thunk with timing + event emission.
+
+Calls `thunk()`, measures wall-clock duration via `System.monotonic_time`,
+builds a `QueryEvent` from the result shape, emits it, and returns the
+original result unchanged.
+
+    Depot.Telemetry.instrument(sql, params, fn _ ->
+      Connection.exec_prepared(conn, sql, params)
+    )
+"""
+fn instrument(sql, params, thunk) do
+  let t0 = System.monotonic_time()
+  let result = thunk()
+  let t1 = System.monotonic_time()
+  -- Don't pass `result` into `event_of` — the enclosing pattern match
+  -- in `event_of` consumes it, and returning `result` afterward yields
+  -- a phantom Ok. Build the event off pre-extracted fields instead.
+  let ok_flag = match result do
+    Ok(_)  -> true
+    Err(_) -> false
+  end
+  let row_count = match result do
+    Ok(r)  -> List.length(r.rows)
+    Err(_) -> 0
+  end
+  let err_msg = match result do
+    Ok(_)    -> None
+    Err(msg) -> Some(msg)
+  end
+  emit(QueryEvent({
+    sql         = sql,
+    params      = params,
+    duration_ms = t1 - t0,
+    row_count   = row_count,
+    ok          = ok_flag,
+    error       = err_msg
+  }))
+  result
+end
+
+-- Build a `QueryEvent` from a completed `Connection.exec_prepared` /
+-- `simple_query` result. Kept public so callers that want to emit
+-- manually (e.g. wrapping a custom query path) can build the same
+-- shape the instrument() helper does.
+fn event_of(sql, params, duration_ms, result) do
+  match result do
+    Ok(r) -> QueryEvent({
+      sql         = sql,
+      params      = params,
+      duration_ms = duration_ms,
+      row_count   = List.length(r.rows),
+      ok          = true,
+      error       = None
+    })
+    Err(msg) -> QueryEvent({
+      sql         = sql,
+      params      = params,
+      duration_ms = duration_ms,
+      row_count   = 0,
+      ok          = false,
+      error       = Some(msg)
+    })
+  end
+end
+
+end -- mod Depot.Telemetry
