@@ -19,6 +19,11 @@ type MutState = { param_count : Int, acc_params : List(Param) }
 ---
 --- march> (compile_insert(Insert({ table_ = "t", columns = ["x"], rows = [[PInt(1)]], on_conflict = None, returning_ = Nil }))).sql
 --- "INSERT INTO \"t\" (\"x\") VALUES ($1)"
+---
+--- Callers must check for the zero-row case before compiling — Postgres
+--- rejects `VALUES ()` and the no-op belongs at the exec layer rather
+--- than the compile layer. See `Mutation.is_empty_insert` + the
+--- short-circuit in `MutationExec.exec_insert`.
 fn compile_insert(i) : Compile.CompiledQuery do
   match i do
   Insert(f) -> ci_build(f, { param_count = 0, acc_params = Nil })

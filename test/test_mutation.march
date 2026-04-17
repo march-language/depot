@@ -486,6 +486,9 @@ test "compile INSERT ON CONFLICT DO UPDATE inline expr" do
 end
 
 test "compile INSERT 0-row edge case" do
+  -- Compile stays pure: a zero-row Insert produces `VALUES ()`, which
+  -- Postgres rejects. The no-op short-circuit lives in MutationExec
+  -- (gated on `is_empty_insert`) so compile_insert has no special case.
   let i = Insert({
     table_      = "t",
     columns     = ["x"],
