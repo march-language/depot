@@ -1,0 +1,48 @@
+-- depot/lib/mutation_exec.march
+-- Bridge between Mutation ADTs and a live Postgres Connection.
+--
+-- A caller builds an Insert / Update / Delete with the MutationBuild DSL
+-- (including `insert_returning_all`, `update_returning`, etc. when rows
+-- should come back), then hands the ADT to `exec/2`. This module compiles
+-- the ADT to parameterized SQL and ships it through the Extended Query
+-- Protocol via Connection.exec_prepared, so the RETURNING clause round-trips
+-- as data rows on the wire.
+--
+-- Rows come back as `List(List(Option(String)))` — the raw string form from
+-- the protocol, exactly as simple_query / exec_prepared already emit for
+-- SELECT. Turning those rows back into typed records lives one layer up (at
+-- the Schema / Repo layer) and is out of scope for this module.
+
+mod MutationExec do
+
+import Mutation
+import MutationCompile
+import Connection
+
+--- Execute an `Insert` ADT against a live connection.
+---
+--- Compiles to parameterized SQL via `MutationCompile.compile_insert` and
+--- ships it through the Extended Query Protocol. When the ADT carries a
+--- RETURNING clause (set via `insert_returning` / `insert_returning_all`),
+--- the resulting rows come back in the result's `rows` field.
+---
+--- Returns `Ok({ columns, rows, tag })` on success, `Err(String)` on
+--- protocol / database error.
+fn exec_insert(conn, i) do
+  let compiled = compile_insert(i)
+  exec_prepared(conn, compiled.sql, compiled.params)
+end
+
+--- Execute an `Update` ADT against a live connection. RETURNING-aware.
+fn exec_update(conn, u) do
+  let compiled = compile_update(u)
+  exec_prepared(conn, compiled.sql, compiled.params)
+end
+
+--- Execute a `Delete` ADT against a live connection. RETURNING-aware.
+fn exec_delete(conn, d) do
+  let compiled = compile_delete(d)
+  exec_prepared(conn, compiled.sql, compiled.params)
+end
+
+end

@@ -1,0 +1,67 @@
+-- test/test_mutation_exec.march
+-- Tests for the MutationExec bridge.
+--
+-- These tests stop at the SQL-compile boundary: they verify that the
+-- exec_* entry points build the same SQL + params that MutationCompile
+-- would produce directly, so a caller who uses the RETURNING builders
+-- gets RETURNING in the wire SQL. End-to-end tests that actually ship
+-- bytes over a Postgres connection are deferred to when a real-Postgres
+-- test fixture lands (cross-cutting task on the ROADMAP).
+
+mod TestMutationExec do
+
+import Ast
+import Mutation
+import MutationBuild
+import MutationCompile
+import MutationExec
+
+-- ---- INSERT ----
+
+test "exec_insert compiles INSERT ... RETURNING *" do
+  let i = insert_into("users")
+         |> insert_cols(["name"])
+         |> insert_row([PString("Alice")])
+         |> insert_returning_all
+  let c = MutationCompile.compile_insert(i)
+  assert c.sql == "INSERT INTO \"users\" (\"name\") VALUES ($1) RETURNING *"
+  assert List.length(c.params) == 1
+end
+
+test "exec_insert compiles INSERT ... RETURNING \"id\"" do
+  let i = insert_into("users")
+         |> insert_cols(["name"])
+         |> insert_row([PString("Alice")])
+         |> insert_returning([SelectField(Col("id"))])
+  let c = MutationCompile.compile_insert(i)
+  assert c.sql == "INSERT INTO \"users\" (\"name\") VALUES ($1) RETURNING \"id\""
+end
+
+-- ---- UPDATE ----
+
+test "exec_update compiles UPDATE ... RETURNING *" do
+  let u = Update({
+    table_     = "users",
+    sets       = [("name", Lit(PString("Bob")))],
+    wheres     = [Where(Eq(Col("id"), Lit(PInt(1))))],
+    returning_ = [SelectAll]
+  })
+  let c = MutationCompile.compile_update(u)
+  assert c.sql == "UPDATE \"users\" SET \"name\" = $1 WHERE \"id\" = $2 RETURNING *"
+  assert List.length(c.params) == 2
+end
+
+-- ---- DELETE ----
+
+test "exec_delete compiles DELETE ... RETURNING \"id\"" do
+  let d = Delete({
+    table_     = "users",
+    wheres     = [Where(Eq(Col("id"), Lit(PInt(5))))],
+    returning_ = [SelectField(Col("id"))]
+  })
+  let c = MutationCompile.compile_delete(d)
+  assert c.sql == "DELETE FROM \"users\" WHERE \"id\" = $1 RETURNING \"id\""
+  assert List.length(c.params) == 1
+end
+
+end -- mod TestMutationExec
