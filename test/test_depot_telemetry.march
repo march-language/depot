@@ -1,0 +1,214 @@
+-- test/test_depot_telemetry.march
+-- Tests for Depot.Telemetry: handler registry + emit + instrument.
+--
+-- Handlers prove invocation by appending to a list stored in a per-test
+-- Vault table (list values round-trip through Vault; bare integers do
+-- not, due to a forge runtime bug in the Int boxing path). Event-field
+-- shape is validated inline inside the handler where the event type is
+-- still known; a failed assertion inside a handler bubbles up as a
+-- test failure via the same mechanism as in-body asserts.
+
+mod TestDepotTelemetry do
+
+-- ---- Per-test "was invoked" marker ---------------------------------------
+
+fn marker(name) do
+  let t = match Vault.whereis(name) do
+    Some(t) -> t
+    None    -> Vault.new(name)
+  end
+  Vault.set(t, "hits", Nil)
+  t
+end
+
+fn mark(m, tag) do
+  let cur = match Vault.get(m, "hits") do
+    Some(xs) -> xs
+    None     -> Nil
+  end
+  Vault.set(m, "hits", Cons(tag, cur))
+end
+
+fn hit_count(m) do
+  match Vault.get(m, "hits") do
+    Some(xs) -> List.length(xs)
+    None     -> 0
+  end
+end
+
+-- ---- Handler bodies -------------------------------------------------------
+
+fn check_basic(m, ev) do
+  match ev do
+    QueryEvent(e) ->
+      assert e.sql == "SELECT 1"
+      assert e.row_count == 1
+      assert e.ok == true
+      match e.error do
+        None    -> ()
+        Some(_) -> assert false
+      end
+      mark(m, "basic")
+  end
+end
+
+fn check_err(m, ev) do
+  match ev do
+    QueryEvent(e) ->
+      assert e.ok == false
+      assert e.row_count == 0
+      match e.error do
+        Some(s) -> assert s == "syntax error"
+        None    -> assert false
+      end
+      mark(m, "err")
+  end
+end
+
+fn note(m, _ev) do
+  mark(m, "hit")
+end
+
+fn panicking_handler(_) do
+  panic("boom")
+end
+
+-- ---- Fake result builder for instrument tests ----------------------------
+
+pfn repeat_nil_acc(n, acc) do
+  if n <= 0 do acc
+  else repeat_nil_acc(n - 1, Cons(Nil, acc))
+  end
+end
+
+fn fake_ok_result(row_count) do
+  Ok({ columns = Nil, rows = repeat_nil_acc(row_count, Nil), tag = "FAKE 1" })
+end
+
+-- ---- attach / emit --------------------------------------------------------
+
+test "attach then emit delivers event to the handler" do
+  Depot.Telemetry.clear()
+  let m = marker("tel_basic")
+  Depot.Telemetry.attach("h1", fn ev -> check_basic(m, ev))
+
+  Depot.Telemetry.emit(QueryEvent({
+    sql = "SELECT 1", params = Nil, duration_ms = 0,
+    row_count = 1, ok = true, error = None
+  }))
+
+
+  assert hit_count(m) == 1
+  Depot.Telemetry.clear()
+end
+
+test "two handlers both fire on a single emit" do
+  Depot.Telemetry.clear()
+  let m1 = marker("tel_two_a")
+  let m2 = marker("tel_two_b")
+  Depot.Telemetry.attach("a", fn ev -> note(m1, ev))
+  Depot.Telemetry.attach("b", fn ev -> note(m2, ev))
+
+  Depot.Telemetry.emit(QueryEvent({
+    sql = "SELECT 2", params = Nil, duration_ms = 0,
+    row_count = 0, ok = true, error = None
+  }))
+
+  assert hit_count(m1) == 1
+  assert hit_count(m2) == 1
+  Depot.Telemetry.clear()
+end
+
+test "detach removes a handler" do
+  Depot.Telemetry.clear()
+  let m = marker("tel_detach")
+  Depot.Telemetry.attach("goner", fn ev -> note(m, ev))
+  Depot.Telemetry.detach("goner")
+
+  Depot.Telemetry.emit(QueryEvent({
+    sql = "SELECT 3", params = Nil, duration_ms = 0,
+    row_count = 0, ok = true, error = None
+  }))
+
+  assert hit_count(m) == 0
+  Depot.Telemetry.clear()
+end
+
+test "panicking handler does not block sibling handlers" do
+  Depot.Telemetry.clear()
+  let m = marker("tel_panic")
+  Depot.Telemetry.attach("bad",  panicking_handler)
+  Depot.Telemetry.attach("good", fn ev -> note(m, ev))
+
+  Depot.Telemetry.emit(QueryEvent({
+    sql = "SELECT 4", params = Nil, duration_ms = 0,
+    row_count = 0, ok = true, error = None
+  }))
+
+  assert hit_count(m) == 1
+  Depot.Telemetry.clear()
+end
+
+-- ---- instrument -----------------------------------------------------------
+
+test "instrument emits event and returns the thunk's result unchanged" do
+  Depot.Telemetry.clear()
+  let m = marker("tel_instr_ok")
+  Depot.Telemetry.attach("log", fn ev -> note(m, ev))
+
+  let result = Depot.Telemetry.instrument(
+    "INSERT INTO t VALUES ($1)",
+    [ParamText("v")],
+    fn _ -> fake_ok_result(3)
+  )
+
+  -- Handler fired exactly once.
+  assert hit_count(m) == 1
+  -- Result passed through unchanged in its Ok/Err shape. We don't
+  -- dereference the inner record's `rows` field here because under the
+  -- fake-result path (anonymous record returned from a closure), record
+  -- field access hits a forge codegen bug; the corresponding Err path
+  -- is exercised by the "classifies Err results" test below. Event
+  -- row_count propagation from a real result is covered by the
+  -- MutationExec integration tests.
+  let is_ok = match result do
+    Ok(_)  -> true
+    Err(_) -> false
+  end
+  assert is_ok == true
+  Depot.Telemetry.clear()
+end
+
+test "instrument classifies Err results" do
+  Depot.Telemetry.clear()
+  let m = marker("tel_instr_err")
+  Depot.Telemetry.attach("log", fn ev -> check_err(m, ev))
+
+  let result = Depot.Telemetry.instrument(
+    "SELECT bad", Nil, fn _ -> Err("syntax error")
+  )
+
+  assert hit_count(m) == 1
+  let msg = match result do
+    Err(s) -> s
+    Ok(_)  -> "GOT_OK"
+  end
+  assert msg == "syntax error"
+  Depot.Telemetry.clear()
+end
+
+-- ---- handler_names --------------------------------------------------------
+
+test "handler_names reflects attach / detach / clear" do
+  Depot.Telemetry.clear()
+  assert List.length(Depot.Telemetry.handler_names()) == 0
+  Depot.Telemetry.attach("one", fn _ -> ())
+  Depot.Telemetry.attach("two", fn _ -> ())
+  assert List.length(Depot.Telemetry.handler_names()) == 2
+  Depot.Telemetry.detach("one")
+  assert List.length(Depot.Telemetry.handler_names()) == 1
+  Depot.Telemetry.clear()
+  assert List.length(Depot.Telemetry.handler_names()) == 0
+end
+
+end -- mod TestDepotTelemetry

@@ -26,23 +26,31 @@ import Connection
 --- RETURNING clause (set via `insert_returning` / `insert_returning_all`),
 --- the resulting rows come back in the result's `rows` field.
 ---
+--- Every call emits a `Depot.Telemetry.QueryEvent` to registered handlers.
+---
 --- Returns `Ok({ columns, rows, tag })` on success, `Err(String)` on
 --- protocol / database error.
 fn exec_insert(conn, i) do
   let compiled = compile_insert(i)
-  exec_prepared(conn, compiled.sql, compiled.params)
+  Depot.Telemetry.instrument(compiled.sql, compiled.params, fn _ ->
+    exec_prepared(conn, compiled.sql, compiled.params)
+  )
 end
 
 --- Execute an `Update` ADT against a live connection. RETURNING-aware.
 fn exec_update(conn, u) do
   let compiled = compile_update(u)
-  exec_prepared(conn, compiled.sql, compiled.params)
+  Depot.Telemetry.instrument(compiled.sql, compiled.params, fn _ ->
+    exec_prepared(conn, compiled.sql, compiled.params)
+  )
 end
 
 --- Execute a `Delete` ADT against a live connection. RETURNING-aware.
 fn exec_delete(conn, d) do
   let compiled = compile_delete(d)
-  exec_prepared(conn, compiled.sql, compiled.params)
+  Depot.Telemetry.instrument(compiled.sql, compiled.params, fn _ ->
+    exec_prepared(conn, compiled.sql, compiled.params)
+  )
 end
 
 end
