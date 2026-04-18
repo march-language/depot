@@ -1,0 +1,196 @@
+-- test/test_fragment_subquery_live.march
+-- Phase 1.4 — raw SQL fragments against live Postgres.
+-- Phase 1.5 — where_in_subquery / where_exists against live Postgres.
+
+mod TestFragmentSubqueryLive do
+
+import Connection
+import Ast
+import Build
+import Compile
+
+fn test_config() do
+  default_config("postgres", "depot_test")
+end
+
+pfn with_conn(body) do
+  match connect(test_config()) do
+  Err(e) -> do
+    let _ = println("connect: " ++ e)
+    assert false
+  end
+  Ok(conn) -> do
+    let _ = simple_query(conn, "DROP TABLE IF EXISTS fs_admins")
+    let _ = simple_query(conn, "DROP TABLE IF EXISTS fs_users")
+    let _ = simple_query(conn,
+      "CREATE TABLE fs_users  (id INT PRIMARY KEY, email TEXT NOT NULL)")
+    let _ = simple_query(conn,
+      "CREATE TABLE fs_admins (user_id INT PRIMARY KEY)")
+    let _ = simple_query(conn, "INSERT INTO fs_users VALUES "
+      ++ "(1,'Alice@Example.COM'),(2,'bob@example.com'),(3,'carol@Other.org')")
+    let _ = simple_query(conn, "INSERT INTO fs_admins VALUES (1),(3)")
+    let result = body(conn)
+    let _ = simple_query(conn, "DROP TABLE IF EXISTS fs_admins")
+    let _ = simple_query(conn, "DROP TABLE IF EXISTS fs_users")
+    let _ = close(conn)
+    result
+  end
+  end
+end
+
+pfn run_rows(conn, q) do
+  let c = Compile.compile_parameterized(q)
+  Connection.exec_prepared(conn, c.sql, c.params)
+end
+
+pfn collect_ids(rows, acc) do
+  match rows do
+    Nil -> rev(acc, Nil)
+    Cons(Cons(Some(id_s), _), rest) -> collect_ids(rest, Cons(id_s, acc))
+    Cons(_, rest) -> collect_ids(rest, acc)
+  end
+end
+
+pfn rev(xs, acc) do
+  match xs do
+    Nil -> acc
+    Cons(h, t) -> rev(t, Cons(h, acc))
+  end
+end
+
+pfn contains(xs, target) do
+  match xs do
+    Nil -> false
+    Cons(h, t) -> if h == target do true else contains(t, target) end
+  end
+end
+
+-- ---- Phase 1.4: fragment ----
+
+test "fragment with lower() matches email case-insensitively" do
+  with_conn(fn conn ->
+    -- lower(email) = lower($1) — the '?' placeholder gets parameterised.
+    let q = from("fs_users")
+           |> select([Expr.Col("id")])
+           |> fragment("lower(?) = lower(?)",
+                [Expr.Col("email"), Lit(PString("alice@example.com"))])
+    match run_rows(conn, q) do
+      Err(e) -> do
+        let _ = println("fragment: " ++ e)
+        assert false
+      end
+      Ok(r) ->
+        match collect_ids(r.rows, Nil) do
+          Cons("1", Nil) -> assert true
+          _ -> assert false
+        end
+    end
+  )
+end
+
+-- ---- Phase 1.5: subqueries ----
+
+test "where_in_subquery restricts to ids present in subselect" do
+  with_conn(fn conn ->
+    -- Users whose id is in fs_admins.user_id.
+    let admins = from("fs_admins") |> select([Expr.Col("user_id")])
+    let q = from("fs_users")
+           |> select([Expr.Col("id")])
+           |> where_in_subquery("id", admins)
+           |> order_by(Expr.Col("id"), Asc)
+    match run_rows(conn, q) do
+      Err(e) -> do
+        let _ = println("in subquery: " ++ e)
+        assert false
+      end
+      Ok(r) -> do
+        let ids = collect_ids(r.rows, Nil)
+        let _ = assert contains(ids, "1")
+        let _ = assert contains(ids, "3")
+        assert (contains(ids, "2") == false)
+      end
+    end
+  )
+end
+
+test "where_exists keeps rows with a matching admin record" do
+  with_conn(fn conn ->
+    -- EXISTS (SELECT 1 FROM fs_admins WHERE user_id = fs_users.id)
+    let admins = from("fs_admins")
+                |> select([Lit(PInt(1))])
+                |> where_(Expr.Eq(Expr.QCol("fs_admins", "user_id"),
+                                   Expr.QCol("fs_users",  "id")))
+    let q = from("fs_users")
+           |> select([Expr.Col("id")])
+           |> where_exists(admins)
+           |> order_by(Expr.Col("id"), Asc)
+    match run_rows(conn, q) do
+      Err(e) -> do
+        let _ = println("exists: " ++ e)
+        assert false
+      end
+      Ok(r) -> do
+        let ids = collect_ids(r.rows, Nil)
+        let _ = assert contains(ids, "1")
+        let _ = assert contains(ids, "3")
+        assert (contains(ids, "2") == false)
+      end
+    end
+  )
+end
+
+test "where_not_exists is the complement of where_exists" do
+  with_conn(fn conn ->
+    let admins = from("fs_admins")
+                |> select([Lit(PInt(1))])
+                |> where_(Expr.Eq(Expr.QCol("fs_admins", "user_id"),
+                                   Expr.QCol("fs_users",  "id")))
+    let q = from("fs_users")
+           |> select([Expr.Col("id")])
+           |> where_not_exists(admins)
+    match run_rows(conn, q) do
+      Err(e) -> do
+        let _ = println("not exists: " ++ e)
+        assert false
+      end
+      Ok(r) -> do
+        let ids = collect_ids(r.rows, Nil)
+        let _ = assert contains(ids, "2")
+        let _ = assert (contains(ids, "1") == false)
+        assert (contains(ids, "3") == false)
+      end
+    end
+  )
+end
+
+test "subquery param indices are dense across nesting" do
+  with_conn(fn conn ->
+    -- Outer WHERE id > $? combined with subquery containing its own
+    -- parameterised WHERE — compile must number params 1, 2 with no gaps.
+    let admins = from("fs_admins")
+                |> select([Expr.Col("user_id")])
+                |> where_(Expr.Gt(Expr.Col("user_id"), Lit(PInt(0))))
+    let q = from("fs_users")
+           |> select([Expr.Col("id")])
+           |> where_(Expr.Gt(Expr.Col("id"), Lit(PInt(1))))
+           |> where_in_subquery("id", admins)
+    let c = Compile.compile_parameterized(q)
+    -- Assert SQL uses $1 and $2 with no gap (no "$3" in output).
+    let _ = assert String.contains(c.sql, "$1")
+    let _ = assert String.contains(c.sql, "$2")
+    let _ = assert (String.contains(c.sql, "$3") == false)
+    match run_rows(conn, q) do
+      Err(e) -> do
+        let _ = println("dense params: " ++ e)
+        assert false
+      end
+      Ok(r) ->
+        match collect_ids(r.rows, Nil) do
+          Cons("3", Nil) -> assert true
+          _ -> assert false
+        end
+    end
+  )
+end
+
+end -- mod TestFragmentSubqueryLive
