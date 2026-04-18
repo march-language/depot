@@ -1,0 +1,120 @@
+-- test/test_insert_all_live.march
+-- Phase 2.2 — bulk insert against live Postgres.
+--
+-- Verifies that `insert_many` ships a single multi-row statement, that
+-- RETURNING preserves insertion order, and that the zero-row case
+-- short-circuits without issuing SQL.
+--
+-- Rows are built with explicit Cons cells rather than `[[...]]` list
+-- literals because nested list literals currently trip a compiler
+-- codegen bug (emits `call @_lit_()` for what should be a free
+-- variable — see march-bug tracker).
+
+mod TestInsertAllLive do
+
+import Connection
+import Ast
+import MutationBuild
+import MutationExec
+
+fn test_config() do
+  default_config("postgres", "depot_test")
+end
+
+pfn with_conn(body) do
+  match connect(test_config()) do
+  Err(e) -> do
+    let _ = println("connect: " ++ e)
+    assert false
+  end
+  Ok(conn) -> do
+    let _ = simple_query(conn, "DROP TABLE IF EXISTS bulk_test")
+    let _ = simple_query(conn,
+      "CREATE TABLE bulk_test (id INT PRIMARY KEY, name TEXT NOT NULL)")
+    let result = body(conn)
+    let _ = simple_query(conn, "DROP TABLE IF EXISTS bulk_test")
+    let _ = close(conn)
+    result
+  end
+  end
+end
+
+pfn total_count(conn) do
+  match simple_query(conn, "SELECT COUNT(*)::text FROM bulk_test") do
+    Ok(r) ->
+      match r.rows do
+        Cons(Cons(Some(s), Nil), Nil) -> s
+        _ -> "?"
+      end
+    Err(_) -> "err"
+  end
+end
+
+fn make_row(id, name) do
+  Cons(PInt(id), Cons(PString(name), Nil))
+end
+
+test "insert_many inserts every row in one statement" do
+  with_conn(fn conn ->
+    let rows = Cons(make_row(1, "a"),
+               Cons(make_row(2, "b"),
+               Cons(make_row(3, "c"), Nil)))
+    let i = insert_many("bulk_test", ["id", "name"], rows)
+    match MutationExec.exec_insert(conn, i) do
+      Err(e) -> do
+        let _ = println("exec_insert: " ++ e)
+        assert false
+      end
+      Ok(_) -> assert total_count(conn) == "3"
+    end
+  )
+end
+
+test "insert_many with RETURNING preserves input row order" do
+  with_conn(fn conn ->
+    let rows = Cons(make_row(10, "x"),
+               Cons(make_row(20, "y"),
+               Cons(make_row(30, "z"), Nil)))
+    let i = insert_many("bulk_test", ["id", "name"], rows)
+           |> insert_returning_all
+    match MutationExec.exec_insert(conn, i) do
+      Err(e) -> do
+        let _ = println("exec_insert: " ++ e)
+        assert false
+      end
+      Ok(r) ->
+        match r.rows do
+          Cons(Cons(Some(a), _),
+            Cons(Cons(Some(b), _),
+              Cons(Cons(Some(c), _), Nil))) -> do
+            let _ = assert a == "10"
+            let _ = assert b == "20"
+            assert c == "30"
+          end
+          _ -> assert false
+        end
+    end
+  )
+end
+
+test "insert_many with zero rows is a no-op (no SQL issued)" do
+  with_conn(fn conn ->
+    let i = insert_many("bulk_test", ["id", "name"], Nil)
+    match MutationExec.exec_insert(conn, i) do
+      Err(e) -> do
+        let _ = println("empty exec_insert: " ++ e)
+        assert false
+      end
+      Ok(r) -> do
+        let _ = assert r.tag == "INSERT 0 0"
+        let _ = match r.rows do
+          Nil -> assert true
+          _   -> assert false
+        end
+        assert total_count(conn) == "0"
+      end
+    end
+  )
+end
+
+end -- mod TestInsertAllLive

@@ -1,0 +1,195 @@
+-- test/test_upsert_live.march
+-- Phase 2.1 — INSERT ... ON CONFLICT against live Postgres.
+--
+-- Upsert compile-level tests pin down the SQL shape; this file proves
+-- that the wire-level behaviour matches:
+--   * ON CONFLICT DO NOTHING doesn't error on an existing row
+--   * ON CONFLICT DO UPDATE updates the existing row's columns
+--   * RETURNING rows come back for both conflict and insert paths
+--
+-- Requires Postgres on 127.0.0.1:5432 with a database named `depot_test`.
+
+mod TestUpsertLive do
+
+import Connection
+import Ast
+import Mutation
+import MutationBuild
+import MutationExec
+
+fn test_config() do
+  default_config("postgres", "depot_test")
+end
+
+pfn with_conn(body) do
+  match connect(test_config()) do
+  Err(e) -> do
+    let _ = println("connect: " ++ e)
+    assert false
+  end
+  Ok(conn) -> do
+    let _ = simple_query(conn, "DROP TABLE IF EXISTS up_test")
+    let _ = simple_query(conn,
+      "CREATE TABLE up_test (id INT PRIMARY KEY, name TEXT NOT NULL, "
+      ++ "n INT NOT NULL DEFAULT 0)")
+    let result = body(conn)
+    let _ = simple_query(conn, "DROP TABLE IF EXISTS up_test")
+    let _ = close(conn)
+    result
+  end
+  end
+end
+
+pfn row_count_for(conn, id) do
+  match simple_query(conn,
+      "SELECT COUNT(*)::text FROM up_test WHERE id = " ++ int_to_string(id)) do
+    Ok(r) ->
+      match r.rows do
+        Cons(Cons(Some(s), Nil), Nil) -> s
+        _ -> "?"
+      end
+    Err(_) -> "err"
+  end
+end
+
+pfn name_of(conn, id) do
+  match simple_query(conn,
+      "SELECT name FROM up_test WHERE id = " ++ int_to_string(id)) do
+    Ok(r) ->
+      match r.rows do
+        Cons(Cons(Some(s), Nil), Nil) -> s
+        _ -> "?"
+      end
+    Err(_) -> "err"
+  end
+end
+
+pfn n_of(conn, id) do
+  match simple_query(conn,
+      "SELECT n::text FROM up_test WHERE id = " ++ int_to_string(id)) do
+    Ok(r) ->
+      match r.rows do
+        Cons(Cons(Some(s), Nil), Nil) -> s
+        _ -> "?"
+      end
+    Err(_) -> "err"
+  end
+end
+
+test "ON CONFLICT (id) DO NOTHING leaves the original row intact" do
+  with_conn(fn conn ->
+    -- Seed (1, "Alice", 5).
+    let seed = insert_into("up_test")
+              |> insert_cols(["id", "name", "n"])
+              |> insert_row([PInt(1), PString("Alice"), PInt(5)])
+    match MutationExec.exec_insert(conn, seed) do
+      Err(e) -> do
+        let _ = println("seed: " ++ e)
+        assert false
+      end
+      Ok(_) -> do
+        -- Try to insert (1, "Bob", 99) with DO NOTHING.
+        let up = insert_into("up_test")
+                |> insert_cols(["id", "name", "n"])
+                |> insert_row([PInt(1), PString("Bob"), PInt(99)])
+                |> on_conflict_do_nothing_on(ConflictCols(["id"]))
+        match MutationExec.exec_insert(conn, up) do
+          Err(e) -> do
+            let _ = println("upsert: " ++ e)
+            assert false
+          end
+          Ok(_) -> do
+            let _ = assert row_count_for(conn, 1) == "1"
+            let _ = assert name_of(conn, 1) == "Alice"
+            assert n_of(conn, 1) == "5"
+          end
+        end
+      end
+    end
+  )
+end
+
+test "ON CONFLICT (id) DO UPDATE replaces the conflicting columns" do
+  with_conn(fn conn ->
+    let seed = insert_into("up_test")
+              |> insert_cols(["id", "name", "n"])
+              |> insert_row([PInt(1), PString("Alice"), PInt(5)])
+    match MutationExec.exec_insert(conn, seed) do
+      Err(e) -> do
+        let _ = println("seed: " ++ e)
+        assert false
+      end
+      Ok(_) -> do
+        let up = insert_into("up_test")
+                |> insert_cols(["id", "name", "n"])
+                |> insert_row([PInt(1), PString("Bob"), PInt(99)])
+                |> on_conflict_do_update_on(ConflictCols(["id"]),
+                     [("name", Expr.QCol("excluded", "name")),
+                      ("n",    Expr.QCol("excluded", "n"))])
+                |> insert_returning_all
+        match MutationExec.exec_insert(conn, up) do
+          Err(e) -> do
+            let _ = println("upsert: " ++ e)
+            assert false
+          end
+          Ok(r) -> do
+            -- RETURNING * on the DO UPDATE path returns the merged row.
+            match r.rows do
+              Cons(Cons(Some(id_s), Cons(Some(name_s), Cons(Some(n_s), Nil))), Nil) -> do
+                let _ = assert id_s == "1"
+                let _ = assert name_s == "Bob"
+                assert n_s == "99"
+              end
+              _ -> assert false
+            end
+          end
+        end
+      end
+    end
+  )
+end
+
+test "ON CONFLICT on a fresh key inserts rather than updates" do
+  with_conn(fn conn ->
+    -- No seed — hit the INSERT arm of the upsert.
+    let up = insert_into("up_test")
+            |> insert_cols(["id", "name", "n"])
+            |> insert_row([PInt(2), PString("Carol"), PInt(7)])
+            |> on_conflict_do_update_on(ConflictCols(["id"]),
+                 [("name", Expr.QCol("excluded", "name"))])
+            |> insert_returning_all
+    match MutationExec.exec_insert(conn, up) do
+      Err(e) -> do
+        let _ = println("upsert: " ++ e)
+        assert false
+      end
+      Ok(r) ->
+        match r.rows do
+          Cons(Cons(Some(id_s), Cons(Some(name_s), Cons(Some(n_s), Nil))), Nil) -> do
+            let _ = assert id_s == "2"
+            let _ = assert name_s == "Carol"
+            assert n_s == "7"
+          end
+          _ -> assert false
+        end
+    end
+  )
+end
+
+test "upsert idempotence: two DO UPDATE calls leave the final state equal to one call" do
+  with_conn(fn conn ->
+    let up = insert_into("up_test")
+            |> insert_cols(["id", "name", "n"])
+            |> insert_row([PInt(3), PString("Dave"), PInt(10)])
+            |> on_conflict_do_update_on(ConflictCols(["id"]),
+                 [("name", Expr.QCol("excluded", "name")),
+                  ("n",    Expr.QCol("excluded", "n"))])
+    let _ = MutationExec.exec_insert(conn, up)
+    let _ = MutationExec.exec_insert(conn, up)
+    let _ = assert row_count_for(conn, 3) == "1"
+    let _ = assert name_of(conn, 3) == "Dave"
+    assert n_of(conn, 3) == "10"
+  )
+end
+
+end -- mod TestUpsertLive
