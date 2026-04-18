@@ -22,7 +22,10 @@ test "from table" do
     FromTable(t) -> assert t == "users"
     _ -> assert false
     end
-    assert f.distinct_ == false
+    let _ = match f.distinct_ do
+      NoDistinct -> assert true
+      _          -> assert false
+    end
     assert f.limit_ == None
     assert f.offset_ == None
   end
@@ -80,7 +83,10 @@ end
 test "distinct" do
   let q = distinct(from("tags"))
   match q do
-  Query(f) -> assert f.distinct_ == true
+  Query(f) -> match f.distinct_ do
+    Distinct -> assert true
+    _        -> assert false
+  end
   end
 end
 
@@ -379,7 +385,10 @@ end
 test "distinct sets distinct flag" do
   let q = from("t") |> distinct
   match q do
-  Query(f) -> assert f.distinct_ == true
+  Query(f) -> match f.distinct_ do
+    Distinct -> assert true
+    _        -> assert false
+  end
   end
 end
 

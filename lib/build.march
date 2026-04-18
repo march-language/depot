@@ -22,7 +22,7 @@ fn from(table) do
   Query({
     from_ = FromTable(table), selects = Nil, wheres = Nil,
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false
+    limit_ = None, offset_ = None, distinct_ = NoDistinct
   })
 end
 
@@ -34,7 +34,7 @@ fn from_subquery(subq, alias_name) do
   Query({
     from_ = FromSubquery(subq, alias_name), selects = Nil, wheres = Nil,
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false
+    limit_ = None, offset_ = None, distinct_ = NoDistinct
   })
 end
 
@@ -280,12 +280,18 @@ fn fragment(q, template, args) do
 end
 
 --- Adds DISTINCT to the SELECT.
----
---- march> match distinct(from("t")) do | Query(f) -> f.distinct_ end
---- true
 fn distinct(q) do
   match q do
-    Query(f) -> Query({ f with distinct_ = true })
+    Query(f) -> Query({ f with distinct_ = Distinct })
+  end
+end
+
+--- Adds DISTINCT ON (expr1, expr2, ...) to the SELECT. Postgres-specific:
+--- picks one row per unique combination of `exprs`, with ORDER BY deciding
+--- which one. See https://www.postgresql.org/docs/current/sql-select.html.
+fn distinct_on(q, exprs) do
+  match q do
+    Query(f) -> Query({ f with distinct_ = DistinctOn(exprs) })
   end
 end
 
