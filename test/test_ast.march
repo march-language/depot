@@ -176,7 +176,7 @@ test "SubqueryExpr expr" do
   let sub = Query({
     from_ = FromTable("inner"), selects = Nil, wheres = Nil,
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false
+    limit_ = None, offset_ = None, distinct_ = NoDistinct
   })
   assert SubqueryExpr(sub) == SubqueryExpr(sub)
 end
@@ -185,7 +185,7 @@ test "Exists expr" do
   let sub = Query({
     from_ = FromTable("inner"), selects = Nil, wheres = Nil,
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false
+    limit_ = None, offset_ = None, distinct_ = NoDistinct
   })
   assert Exists(sub) == Exists(sub)
 end
@@ -372,7 +372,7 @@ end
 test "Exists SubqueryExpr" do
   let subq = Query({ from_ = FromTable("t"), selects = Nil, wheres = Nil,
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert Exists(subq) == Exists(subq)
   assert SubqueryExpr(subq) == SubqueryExpr(subq)
 end
@@ -430,14 +430,14 @@ end
 test "FromSubquery" do
   let sub = Query({ from_ = FromTable("events"), selects = Nil, wheres = Nil,
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert FromSubquery(sub, "e") == FromSubquery(sub, "e")
 end
 
 test "Query construction" do
   let q = Query({ from_ = FromTable("t"), selects = Nil, wheres = Nil,
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert q == q
 end
 
@@ -445,7 +445,7 @@ test "Query with selects" do
   let q = Query({ from_ = FromTable("t"),
     selects = [SelectField(Col("id")), SelectField(Col("name"))],
     wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert q == q
 end
 
@@ -453,21 +453,21 @@ test "Query with wheres" do
   let q = Query({ from_ = FromTable("t"),
     wheres = [Where(Eq(Col("active"), Lit(PBool(true)))), Where(Gt(Col("age"), Lit(PInt(18))))],
     selects = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert q == q
 end
 
 test "Query with limit and offset" do
   let q = Query({ from_ = FromTable("t"), selects = Nil, wheres = Nil,
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = Some(10), offset_ = Some(20), distinct_ = false })
+    limit_ = Some(10), offset_ = Some(20), distinct_ = NoDistinct })
   assert q == q
 end
 
 test "Query with distinct" do
   let q = Query({ from_ = FromTable("t"), selects = [SelectAll], wheres = Nil,
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = true })
+    limit_ = None, offset_ = None, distinct_ = Distinct })
   assert q == q
 end
 
@@ -475,7 +475,7 @@ test "Query with joins" do
   let q = Query({ from_ = FromTable("orders"), selects = Nil,
     joins = [JoinClause(Inner, "users", Eq(QCol("orders", "user_id"), QCol("users", "id")))],
     wheres = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert q == q
 end
 
@@ -484,7 +484,7 @@ test "Query with group_bys and havings" do
     group_bys = [Col("status"), Col("region")],
     havings = [Where(Gt(Count(Col("id")), Lit(PInt(1))))],
     wheres = Nil, joins = Nil, orders = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert q == q
 end
 
@@ -492,7 +492,7 @@ test "Query with orders" do
   let q = Query({ from_ = FromTable("t"), selects = Nil,
     orders = [OrderExpr(Col("name"), Asc), OrderExpr(Col("created_at"), Desc)],
     wheres = Nil, joins = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert q == q
 end
 
@@ -541,7 +541,7 @@ end
 test "Subquery expressions" do
   let sub = Query({ from_ = FromTable("orders"), selects = Nil, wheres = Nil,
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert Exists(sub) == Exists(sub)
   assert SubqueryExpr(sub) == SubqueryExpr(sub)
 end
@@ -630,7 +630,7 @@ test "Query all fields populated" do
     havings = [Where(Gt(Count(Col("id")), Lit(PInt(0))))],
     limit_ = Some(100),
     offset_ = Some(0),
-    distinct_ = false
+    distinct_ = NoDistinct
   })
   assert q == q
 end
@@ -1059,19 +1059,19 @@ test "fncall raw expr param batch" do
 end
 
 test "query record full construction batch" do
-  let q1 = Query({ from_ = FromTable("users"), selects = [SelectAll], wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil, limit_ = None, offset_ = None, distinct_ = false })
+  let q1 = Query({ from_ = FromTable("users"), selects = [SelectAll], wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil, limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert q1 == q1
-  let q2 = Query({ from_ = FromTable("orders"), selects = [SelectField(Col("id")), SelectField(Col("total"))], wheres = [Where(Eq(Col("status"), Lit(PString("paid"))))], joins = Nil, orders = [OrderExpr(Col("id"), Desc)], group_bys = Nil, havings = Nil, limit_ = Some(10), offset_ = None, distinct_ = false })
+  let q2 = Query({ from_ = FromTable("orders"), selects = [SelectField(Col("id")), SelectField(Col("total"))], wheres = [Where(Eq(Col("status"), Lit(PString("paid"))))], joins = Nil, orders = [OrderExpr(Col("id"), Desc)], group_bys = Nil, havings = Nil, limit_ = Some(10), offset_ = None, distinct_ = NoDistinct })
   assert q2 == q2
-  let q3 = Query({ from_ = FromTable("products"), selects = [SelectField(Col("id")), SelectAs(Col("name"), "product_name")], wheres = [Where(Eq(Col("active"), Lit(PBool(true)))), Where(Gt(Col("stock"), Lit(PInt(0))))], joins = [JoinClause(Left, "categories", Eq(QCol("products", "cat_id"), QCol("categories", "id")))], orders = [OrderExpr(Col("name"), Asc)], group_bys = Nil, havings = Nil, limit_ = Some(20), offset_ = Some(0), distinct_ = false })
+  let q3 = Query({ from_ = FromTable("products"), selects = [SelectField(Col("id")), SelectAs(Col("name"), "product_name")], wheres = [Where(Eq(Col("active"), Lit(PBool(true)))), Where(Gt(Col("stock"), Lit(PInt(0))))], joins = [JoinClause(Left, "categories", Eq(QCol("products", "cat_id"), QCol("categories", "id")))], orders = [OrderExpr(Col("name"), Asc)], group_bys = Nil, havings = Nil, limit_ = Some(20), offset_ = Some(0), distinct_ = NoDistinct })
   assert q3 == q3
-  let q4 = Query({ from_ = FromTable("sales"), selects = [SelectField(Col("category")), SelectAs(Sum(Col("amount")), "total")], wheres = Nil, joins = Nil, orders = [OrderExpr(Col("category"), Asc)], group_bys = [Col("category")], havings = [Where(Gt(Sum(Col("amount")), Lit(PFloat(1000.0))))], limit_ = None, offset_ = None, distinct_ = false })
+  let q4 = Query({ from_ = FromTable("sales"), selects = [SelectField(Col("category")), SelectAs(Sum(Col("amount")), "total")], wheres = Nil, joins = Nil, orders = [OrderExpr(Col("category"), Asc)], group_bys = [Col("category")], havings = [Where(Gt(Sum(Col("amount")), Lit(PFloat(1000.0))))], limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert q4 == q4
-  let q5 = Query({ from_ = FromTable("events"), selects = [SelectAll], wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil, limit_ = None, offset_ = None, distinct_ = true })
+  let q5 = Query({ from_ = FromTable("events"), selects = [SelectAll], wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil, limit_ = None, offset_ = None, distinct_ = Distinct })
   assert q5 == q5
-  let q6 = Query({ from_ = FromTable("t"), selects = [SelectField(Col("a")), SelectField(Col("b")), SelectField(Col("c"))], wheres = [Where(And(Gte(Col("a"), Lit(PInt(1))), Lte(Col("a"), Lit(PInt(100)))))], joins = Nil, orders = [OrderExpr(Col("b"), Desc), OrderExpr(Col("c"), Asc)], group_bys = Nil, havings = Nil, limit_ = Some(50), offset_ = Some(10), distinct_ = false })
+  let q6 = Query({ from_ = FromTable("t"), selects = [SelectField(Col("a")), SelectField(Col("b")), SelectField(Col("c"))], wheres = [Where(And(Gte(Col("a"), Lit(PInt(1))), Lte(Col("a"), Lit(PInt(100)))))], joins = Nil, orders = [OrderExpr(Col("b"), Desc), OrderExpr(Col("c"), Asc)], group_bys = Nil, havings = Nil, limit_ = Some(50), offset_ = Some(10), distinct_ = NoDistinct })
   assert q6 == q6
-  let q7 = Query({ from_ = FromTable("u"), selects = [SelectAll], wheres = [Where(Or(Eq(Col("role"), Lit(PString("admin"))), Eq(Col("role"), Lit(PString("mod")))))], joins = [JoinClause(Inner, "profiles", Eq(QCol("u", "id"), QCol("profiles", "user_id"))), JoinClause(Left, "settings", Eq(QCol("u", "id"), QCol("settings", "user_id")))], orders = [OrderExpr(Col("created_at"), Desc)], group_bys = Nil, havings = Nil, limit_ = Some(100), offset_ = Some(0), distinct_ = true })
+  let q7 = Query({ from_ = FromTable("u"), selects = [SelectAll], wheres = [Where(Or(Eq(Col("role"), Lit(PString("admin"))), Eq(Col("role"), Lit(PString("mod")))))], joins = [JoinClause(Inner, "profiles", Eq(QCol("u", "id"), QCol("profiles", "user_id"))), JoinClause(Left, "settings", Eq(QCol("u", "id"), QCol("settings", "user_id")))], orders = [OrderExpr(Col("created_at"), Desc)], group_bys = Nil, havings = Nil, limit_ = Some(100), offset_ = Some(0), distinct_ = Distinct })
   assert q7 == q7
   assert FromTable("users") == FromTable("users")
   assert FromTable("orders") == FromTable("orders")
@@ -1261,10 +1261,10 @@ test "multi-column selects and group bys batch" do
 end
 
 test "exists and subquery and fncall batch" do
-  let sub1 = Query({ from_ = FromTable("orders"), selects = [SelectAll], wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil, limit_ = None, offset_ = None, distinct_ = false })
+  let sub1 = Query({ from_ = FromTable("orders"), selects = [SelectAll], wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil, limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert Exists(sub1) == Exists(sub1)
   assert SubqueryExpr(sub1) == SubqueryExpr(sub1)
-  let sub2 = Query({ from_ = FromTable("users"), selects = [SelectField(Col("id"))], wheres = [Where(Eq(Col("active"), Lit(PBool(true))))], joins = Nil, orders = Nil, group_bys = Nil, havings = Nil, limit_ = None, offset_ = None, distinct_ = false })
+  let sub2 = Query({ from_ = FromTable("users"), selects = [SelectField(Col("id"))], wheres = [Where(Eq(Col("active"), Lit(PBool(true))))], joins = Nil, orders = Nil, group_bys = Nil, havings = Nil, limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert Exists(sub2) == Exists(sub2)
   assert SubqueryExpr(sub2) == SubqueryExpr(sub2)
   assert And(IsNotNull(Col("a")), Exists(sub1)) == And(IsNotNull(Col("a")), Exists(sub1))
@@ -1294,17 +1294,17 @@ test "exists and subquery and fncall batch" do
 end
 
 test "multi-join query constructions" do
-  let q1 = Query({ from_ = FromTable("orders"), selects = [SelectField(Col("id")), SelectField(Col("total"))], wheres = [Where(Eq(Col("status"), Lit(PString("paid"))))], joins = [JoinClause(Inner, "users", Eq(QCol("orders", "user_id"), QCol("users", "id"))), JoinClause(Left, "products", Eq(QCol("orders", "product_id"), QCol("products", "id")))], orders = [OrderExpr(Col("total"), Desc)], group_bys = [Col("user_id")], havings = [Where(Gt(Sum(Col("total")), Lit(PFloat(100.0))))], limit_ = Some(50), offset_ = Some(0), distinct_ = false })
+  let q1 = Query({ from_ = FromTable("orders"), selects = [SelectField(Col("id")), SelectField(Col("total"))], wheres = [Where(Eq(Col("status"), Lit(PString("paid"))))], joins = [JoinClause(Inner, "users", Eq(QCol("orders", "user_id"), QCol("users", "id"))), JoinClause(Left, "products", Eq(QCol("orders", "product_id"), QCol("products", "id")))], orders = [OrderExpr(Col("total"), Desc)], group_bys = [Col("user_id")], havings = [Where(Gt(Sum(Col("total")), Lit(PFloat(100.0))))], limit_ = Some(50), offset_ = Some(0), distinct_ = NoDistinct })
   assert q1 == q1
-  let q2 = Query({ from_ = FromTable("users"), selects = [SelectAll], wheres = [Where(Eq(Col("active"), Lit(PBool(true)))), Where(IsNotNull(Col("email")))], joins = Nil, orders = [OrderExpr(Col("name"), Asc), OrderExpr(Col("id"), Desc)], group_bys = Nil, havings = Nil, limit_ = Some(10), offset_ = Some(20), distinct_ = true })
+  let q2 = Query({ from_ = FromTable("users"), selects = [SelectAll], wheres = [Where(Eq(Col("active"), Lit(PBool(true)))), Where(IsNotNull(Col("email")))], joins = Nil, orders = [OrderExpr(Col("name"), Asc), OrderExpr(Col("id"), Desc)], group_bys = Nil, havings = Nil, limit_ = Some(10), offset_ = Some(20), distinct_ = Distinct })
   assert q2 == q2
-  let q3 = Query({ from_ = FromTable("sales"), selects = [SelectField(Col("region")), SelectField(Col("category")), SelectAs(Sum(Col("amount")), "revenue"), SelectAs(Count(Col("id")), "transactions")], wheres = [Where(Gte(Col("date"), Lit(PString("2024-01-01"))))], joins = [JoinClause(Left, "regions", Eq(QCol("sales", "region_id"), QCol("regions", "id"))), JoinClause(Left, "categories", Eq(QCol("sales", "cat_id"), QCol("categories", "id")))], orders = [OrderExpr(Col("revenue"), Desc)], group_bys = [Col("region"), Col("category")], havings = [Where(Gt(Sum(Col("amount")), Lit(PFloat(1000.0))))], limit_ = None, offset_ = None, distinct_ = false })
+  let q3 = Query({ from_ = FromTable("sales"), selects = [SelectField(Col("region")), SelectField(Col("category")), SelectAs(Sum(Col("amount")), "revenue"), SelectAs(Count(Col("id")), "transactions")], wheres = [Where(Gte(Col("date"), Lit(PString("2024-01-01"))))], joins = [JoinClause(Left, "regions", Eq(QCol("sales", "region_id"), QCol("regions", "id"))), JoinClause(Left, "categories", Eq(QCol("sales", "cat_id"), QCol("categories", "id")))], orders = [OrderExpr(Col("revenue"), Desc)], group_bys = [Col("region"), Col("category")], havings = [Where(Gt(Sum(Col("amount")), Lit(PFloat(1000.0))))], limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert q3 == q3
-  let q4 = Query({ from_ = FromTable("log"), selects = [SelectAll], wheres = Nil, joins = Nil, orders = [OrderExpr(Col("ts"), Desc)], group_bys = Nil, havings = Nil, limit_ = Some(100), offset_ = None, distinct_ = false })
+  let q4 = Query({ from_ = FromTable("log"), selects = [SelectAll], wheres = Nil, joins = Nil, orders = [OrderExpr(Col("ts"), Desc)], group_bys = Nil, havings = Nil, limit_ = Some(100), offset_ = None, distinct_ = NoDistinct })
   assert q4 == q4
-  let q5 = Query({ from_ = FromTable("posts"), selects = [SelectField(Col("id")), SelectField(Col("title")), SelectField(Col("author_id"))], wheres = [Where(Eq(Col("published"), Lit(PBool(true)))), OrWhere(Eq(Col("featured"), Lit(PBool(true))))], joins = [JoinClause(Inner, "authors", Eq(QCol("posts", "author_id"), QCol("authors", "id")))], orders = [OrderExpr(Col("created_at"), Desc)], group_bys = Nil, havings = Nil, limit_ = Some(20), offset_ = Some(0), distinct_ = false })
+  let q5 = Query({ from_ = FromTable("posts"), selects = [SelectField(Col("id")), SelectField(Col("title")), SelectField(Col("author_id"))], wheres = [Where(Eq(Col("published"), Lit(PBool(true)))), OrWhere(Eq(Col("featured"), Lit(PBool(true))))], joins = [JoinClause(Inner, "authors", Eq(QCol("posts", "author_id"), QCol("authors", "id")))], orders = [OrderExpr(Col("created_at"), Desc)], group_bys = Nil, havings = Nil, limit_ = Some(20), offset_ = Some(0), distinct_ = NoDistinct })
   assert q5 == q5
-  let q6 = Query({ from_ = FromTable("metrics"), selects = [SelectField(Col("name")), SelectAs(Avg(Col("value")), "avg_val"), SelectAs(Min(Col("value")), "min_val"), SelectAs(Max(Col("value")), "max_val")], wheres = [Where(And(Gte(Col("recorded_at"), Lit(PString("2024-01-01"))), Lte(Col("recorded_at"), Lit(PString("2024-12-31")))))], joins = Nil, orders = [OrderExpr(Col("name"), Asc)], group_bys = [Col("name")], havings = [Where(Gt(Count(Col("id")), Lit(PInt(10))))], limit_ = None, offset_ = None, distinct_ = false })
+  let q6 = Query({ from_ = FromTable("metrics"), selects = [SelectField(Col("name")), SelectAs(Avg(Col("value")), "avg_val"), SelectAs(Min(Col("value")), "min_val"), SelectAs(Max(Col("value")), "max_val")], wheres = [Where(And(Gte(Col("recorded_at"), Lit(PString("2024-01-01"))), Lte(Col("recorded_at"), Lit(PString("2024-12-31")))))], joins = Nil, orders = [OrderExpr(Col("name"), Asc)], group_bys = [Col("name")], havings = [Where(Gt(Count(Col("id")), Lit(PInt(10))))], limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert q6 == q6
 end
 
@@ -1484,10 +1484,10 @@ test "raw and expr param in context batch" do
 end
 
 test "complete query combinations extended" do
-  let qa = Query({ from_ = FromTable("a"), selects = [SelectField(Col("id")), SelectField(Col("val"))], wheres = [Where(Eq(Col("active"), Lit(PBool(true))))], joins = Nil, orders = [OrderExpr(Col("id"), Asc)], group_bys = Nil, havings = Nil, limit_ = Some(100), offset_ = None, distinct_ = false })
-  let qb = Query({ from_ = FromTable("b"), selects = [SelectAll], wheres = [Where(Gt(Col("score"), Lit(PInt(0)))), OrWhere(Eq(Col("bonus"), Lit(PBool(true))))], joins = [JoinClause(Inner, "c", Eq(QCol("b", "c_id"), QCol("c", "id")))], orders = [OrderExpr(Col("score"), Desc)], group_bys = Nil, havings = Nil, limit_ = Some(20), offset_ = Some(5), distinct_ = false })
-  let qc = Query({ from_ = FromTable("sales"), selects = [SelectField(Col("region")), SelectAs(Sum(Col("total")), "revenue"), SelectAs(Count(Col("id")), "txns")], wheres = Nil, joins = Nil, orders = [OrderExpr(Col("revenue"), Desc)], group_bys = [Col("region")], havings = [Where(Gt(Sum(Col("total")), Lit(PFloat(500.0))))], limit_ = None, offset_ = None, distinct_ = false })
-  let qd = Query({ from_ = FromTable("logs"), selects = [SelectAll], wheres = [Where(And(Gte(Col("level"), Lit(PInt(3))), IsNotNull(Col("user_id"))))], joins = Nil, orders = [OrderExpr(Col("created_at"), Desc)], group_bys = Nil, havings = Nil, limit_ = Some(50), offset_ = Some(0), distinct_ = false })
+  let qa = Query({ from_ = FromTable("a"), selects = [SelectField(Col("id")), SelectField(Col("val"))], wheres = [Where(Eq(Col("active"), Lit(PBool(true))))], joins = Nil, orders = [OrderExpr(Col("id"), Asc)], group_bys = Nil, havings = Nil, limit_ = Some(100), offset_ = None, distinct_ = NoDistinct })
+  let qb = Query({ from_ = FromTable("b"), selects = [SelectAll], wheres = [Where(Gt(Col("score"), Lit(PInt(0)))), OrWhere(Eq(Col("bonus"), Lit(PBool(true))))], joins = [JoinClause(Inner, "c", Eq(QCol("b", "c_id"), QCol("c", "id")))], orders = [OrderExpr(Col("score"), Desc)], group_bys = Nil, havings = Nil, limit_ = Some(20), offset_ = Some(5), distinct_ = NoDistinct })
+  let qc = Query({ from_ = FromTable("sales"), selects = [SelectField(Col("region")), SelectAs(Sum(Col("total")), "revenue"), SelectAs(Count(Col("id")), "txns")], wheres = Nil, joins = Nil, orders = [OrderExpr(Col("revenue"), Desc)], group_bys = [Col("region")], havings = [Where(Gt(Sum(Col("total")), Lit(PFloat(500.0))))], limit_ = None, offset_ = None, distinct_ = NoDistinct })
+  let qd = Query({ from_ = FromTable("logs"), selects = [SelectAll], wheres = [Where(And(Gte(Col("level"), Lit(PInt(3))), IsNotNull(Col("user_id"))))], joins = Nil, orders = [OrderExpr(Col("created_at"), Desc)], group_bys = Nil, havings = Nil, limit_ = Some(50), offset_ = Some(0), distinct_ = NoDistinct })
   assert qa == qa
   assert qb == qb
   assert qc == qc

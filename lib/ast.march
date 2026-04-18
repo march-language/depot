@@ -6,6 +6,13 @@ mod Ast do
 --- A complete SELECT query.
 type Query = Query(QueryFields)
 
+--- DISTINCT modifier for a query.
+---
+---   NoDistinct       -- no modifier (default)
+---   Distinct         -- SELECT DISTINCT
+---   DistinctOn(es)   -- SELECT DISTINCT ON (e1, e2, ...)
+type DistinctMode = NoDistinct | Distinct | DistinctOn(List(Expr))
+
 --- All fields of a SELECT query.
 type QueryFields = {
   from_     : FromClause,
@@ -17,7 +24,7 @@ type QueryFields = {
   havings   : List(WhereExpr),
   limit_    : Option(Int),
   offset_   : Option(Int),
-  distinct_ : Bool
+  distinct_ : DistinctMode
 }
 
 --- The FROM clause — either a table name or a subquery with an alias.

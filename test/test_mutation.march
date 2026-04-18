@@ -796,7 +796,7 @@ test "compile ORDER BY NULLS in mutation module" do
   let q = Query({ from_ = FromTable("t"), selects = Nil,
     orders = [OrderExpr(Col("x"), AscNullsFirst)],
     wheres = Nil, joins = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   let r = compile(q)
   let sql = r.sql
   assert String.contains(sql, "ASC NULLS FIRST") == true
@@ -806,7 +806,7 @@ test "compile_inline ORDER BY NULLS in mutation module" do
   let q = Query({ from_ = FromTable("t"), selects = Nil,
     orders = [OrderExpr(Col("x"), DescNullsLast)],
     wheres = Nil, joins = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   let r = compile_inline(q)
   let sql = r.sql
   assert String.contains(sql, "DESC NULLS LAST") == true
@@ -816,7 +816,7 @@ test "compile_inline arithmetic in mutation module" do
   let q = Query({ from_ = FromTable("t"), selects = Nil,
     wheres = [Where(Gt(Add(Col("a"), Col("b")), Lit(PInt(0))))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   let r = compile_inline(q)
   let sql = r.sql
   assert String.contains(sql, "+") == true
@@ -826,17 +826,17 @@ test "compile_inline Sub Mul Div in mutation module" do
   let q1 = Query({ from_ = FromTable("t"), selects = Nil,
     wheres = [Where(Gt(Sub(Col("a"), Col("b")), Lit(PInt(0))))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert String.contains((compile_inline(q1)).sql, "-") == true
   let q2 = Query({ from_ = FromTable("t"), selects = Nil,
     wheres = [Where(Gt(Mul(Col("a"), Col("b")), Lit(PInt(0))))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert String.contains((compile_inline(q2)).sql, "*") == true
   let q3 = Query({ from_ = FromTable("t"), selects = Nil,
     wheres = [Where(Gt(Div(Col("a"), Col("b")), Lit(PInt(0))))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert String.contains((compile_inline(q3)).sql, "/") == true
 end
 
@@ -844,7 +844,7 @@ test "compile_inline boolean ops in mutation module" do
   let q = Query({ from_ = FromTable("t"), selects = Nil,
     wheres = [Where(And(Gt(Col("x"), Lit(PInt(0))), Lt(Col("x"), Lit(PInt(10)))))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   let r = compile_inline(q)
   let sql = r.sql
   assert String.contains(sql, "AND") == true
@@ -854,12 +854,12 @@ test "compile_inline Or Not in mutation module" do
   let q1 = Query({ from_ = FromTable("t"), selects = Nil,
     wheres = [Where(Or(Eq(Col("x"), Lit(PInt(1))), Eq(Col("x"), Lit(PInt(2)))))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert String.contains((compile_inline(q1)).sql, " OR ") == true
   let q2 = Query({ from_ = FromTable("t"), selects = Nil,
     wheres = [Where(Not(Eq(Col("x"), Lit(PInt(0)))))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert String.contains((compile_inline(q2)).sql, "NOT (") == true
 end
 
@@ -867,12 +867,12 @@ test "compile_inline IS NULL IS NOT NULL in mutation module" do
   let q1 = Query({ from_ = FromTable("t"), selects = Nil,
     wheres = [Where(IsNull(Col("x")))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert String.contains((compile_inline(q1)).sql, "IS NULL") == true
   let q2 = Query({ from_ = FromTable("t"), selects = Nil,
     wheres = [Where(IsNotNull(Col("x")))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert String.contains((compile_inline(q2)).sql, "IS NOT NULL") == true
 end
 
@@ -880,17 +880,17 @@ test "compile_inline In NotIn Between in mutation module" do
   let qi = Query({ from_ = FromTable("t"), selects = Nil,
     wheres = [Where(In(Col("id"), [Lit(PInt(1)), Lit(PInt(2))]))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert String.contains((compile_inline(qi)).sql, "IN (1, 2)") == true
   let qni = Query({ from_ = FromTable("t"), selects = Nil,
     wheres = [Where(NotIn(Col("s"), [Lit(PString("a")), Lit(PString("b"))]))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert String.contains((compile_inline(qni)).sql, "NOT IN") == true
   let qb = Query({ from_ = FromTable("t"), selects = Nil,
     wheres = [Where(Between(Col("x"), Lit(PInt(1)), Lit(PInt(10))))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert String.contains((compile_inline(qb)).sql, "BETWEEN 1 AND 10") == true
 end
 
@@ -898,52 +898,52 @@ test "compile_inline FnCall Like ILike in mutation module" do
   let qf = Query({ from_ = FromTable("t"), selects = Nil,
     wheres = [Where(Eq(FnCall("LOWER", [Col("email")]), Lit(PString("x"))))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert String.contains((compile_inline(qf)).sql, "LOWER") == true
   let ql = Query({ from_ = FromTable("t"), selects = Nil,
     wheres = [Where(Like(Col("n"), "%a%"))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert String.contains((compile_inline(ql)).sql, "LIKE") == true
   let qi = Query({ from_ = FromTable("t"), selects = Nil,
     wheres = [Where(ILike(Col("n"), "%a%"))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert String.contains((compile_inline(qi)).sql, "ILIKE") == true
 end
 
 test "compile_inline aggregates in mutation module" do
   let q1 = Query({ from_ = FromTable("t"), selects = Nil, group_bys = [Col("x")],
     havings = [Where(Gt(Sum(Col("v")), Lit(PInt(0))))],
-    wheres = Nil, joins = Nil, orders = Nil, limit_ = None, offset_ = None, distinct_ = false })
+    wheres = Nil, joins = Nil, orders = Nil, limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert String.contains((compile_inline(q1)).sql, "SUM") == true
   let q2 = Query({ from_ = FromTable("t"), selects = Nil, group_bys = [Col("x")],
     havings = [Where(Gt(Avg(Col("v")), Lit(PFloat(0.0))))],
-    wheres = Nil, joins = Nil, orders = Nil, limit_ = None, offset_ = None, distinct_ = false })
+    wheres = Nil, joins = Nil, orders = Nil, limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert String.contains((compile_inline(q2)).sql, "AVG") == true
   let q3 = Query({ from_ = FromTable("t"), selects = Nil, group_bys = [Col("x")],
     havings = [Where(Gt(Min(Col("v")), Lit(PInt(0))))],
-    wheres = Nil, joins = Nil, orders = Nil, limit_ = None, offset_ = None, distinct_ = false })
+    wheres = Nil, joins = Nil, orders = Nil, limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert String.contains((compile_inline(q3)).sql, "MIN") == true
   let q4 = Query({ from_ = FromTable("t"), selects = Nil, group_bys = [Col("x")],
     havings = [Where(Lt(Max(Col("v")), Lit(PInt(1000))))],
-    wheres = Nil, joins = Nil, orders = Nil, limit_ = None, offset_ = None, distinct_ = false })
+    wheres = Nil, joins = Nil, orders = Nil, limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert String.contains((compile_inline(q4)).sql, "MAX") == true
 end
 
 test "compile_inline Exists SubqueryExpr in mutation module" do
   let sub = Query({ from_ = FromTable("orders"), selects = Nil,
     wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   let qe = Query({ from_ = FromTable("users"), selects = Nil,
     wheres = [Where(Exists(sub))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert String.contains((compile_inline(qe)).sql, "EXISTS") == true
   let qs = Query({ from_ = FromTable("t"), selects = Nil,
     wheres = [Where(Gt(Col("score"), SubqueryExpr(sub)))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert String.contains((compile_inline(qs)).sql, "SELECT") == true
 end
 
@@ -951,12 +951,12 @@ test "compile_inline SelectAll SelectAs in mutation module" do
   let q1 = Query({ from_ = FromTable("t"),
     selects = [SelectAll],
     wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert (compile_inline(q1)).sql == "SELECT * FROM \"t\""
   let q2 = Query({ from_ = FromTable("t"),
     selects = [SelectAs(Col("id"), "my_id")],
     wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert String.contains((compile_inline(q2)).sql, "AS \"my_id\"") == true
 end
 
@@ -965,7 +965,7 @@ test "compile_inline OrWhere in mutation module" do
     wheres = [Where(Eq(Col("role"), Lit(PString("a")))),
               OrWhere(Eq(Col("role"), Lit(PString("b"))))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert String.contains((compile_inline(q)).sql, "OR") == true
 end
 
@@ -975,23 +975,23 @@ test "compile HAVING Sum Avg Min Max in mutation module" do
     group_bys = [Col("cat")],
     havings = [Where(Gt(Sum(Col("amt")), Lit(PInt(100))))],
     wheres = Nil, joins = Nil, orders = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert String.contains((compile(q)).sql, "SUM") == true
 end
 
 test "compile Exists SubqueryExpr parameterized in mutation module" do
   let sub = Query({ from_ = FromTable("orders"), selects = Nil,
     wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   let qe = Query({ from_ = FromTable("users"), selects = Nil,
     wheres = [Where(Exists(sub))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert String.contains((compile(qe)).sql, "EXISTS") == true
   let qs = Query({ from_ = FromTable("t"), selects = Nil,
     wheres = [Where(Gt(Col("score"), SubqueryExpr(sub)))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert String.contains((compile(qs)).sql, "SELECT") == true
 end
 
@@ -999,12 +999,12 @@ test "compile Add Sub Mul Div parameterized in mutation module" do
   let q1 = Query({ from_ = FromTable("t"), selects = Nil,
     wheres = [Where(Gt(Add(Col("a"), Col("b")), Lit(PInt(0))))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert String.contains((compile(q1)).sql, "+") == true
   let q2 = Query({ from_ = FromTable("t"), selects = Nil,
     wheres = [Where(Gt(Sub(Col("a"), Col("b")), Lit(PInt(0))))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert String.contains((compile(q2)).sql, "-") == true
 end
 
@@ -1014,7 +1014,7 @@ test "compile_inline PBool false in mutation module" do
   let q = Query({ from_ = FromTable("settings"), selects = Nil,
     wheres = [Where(Eq(Col("enabled"), Lit(PBool(false))))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   let r = compile_inline(q)
   let sql = r.sql
   assert String.contains(sql, "FALSE") == true
@@ -1024,7 +1024,7 @@ test "compile_inline PFloat in mutation module" do
   let q = Query({ from_ = FromTable("t"), selects = Nil,
     wheres = [Where(Gt(Col("score"), Lit(PFloat(0.5))))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   let r = compile_inline(q)
   let sql = r.sql
   assert String.contains(sql, "0.") == true
@@ -1034,7 +1034,7 @@ test "compile_inline PNull in mutation module" do
   let q = Query({ from_ = FromTable("t"), selects = Nil,
     wheres = [Where(IsNull(Col("x")))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   let r = compile_inline(q)
   let sql = r.sql
   assert String.contains(sql, "IS NULL") == true
@@ -1044,7 +1044,7 @@ test "compile Neq in mutation module" do
   let q = Query({ from_ = FromTable("t"), selects = Nil,
     wheres = [Where(Neq(Col("status"), Lit(PString("inactive"))))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   let r = compile(q)
   let sql = r.sql
   assert String.contains(sql, "<>") == true
@@ -1054,7 +1054,7 @@ test "compile Lte in mutation module" do
   let q = Query({ from_ = FromTable("t"), selects = Nil,
     wheres = [Where(Lte(Col("priority"), Lit(PInt(10))))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   let r = compile(q)
   let sql = r.sql
   assert String.contains(sql, "<=") == true
@@ -1064,7 +1064,7 @@ test "compile Gte in mutation module" do
   let q = Query({ from_ = FromTable("t"), selects = Nil,
     wheres = [Where(Gte(Col("age"), Lit(PInt(18))))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   let r = compile(q)
   let sql = r.sql
   assert String.contains(sql, ">=") == true
@@ -1074,7 +1074,7 @@ test "compile And in mutation module" do
   let q = Query({ from_ = FromTable("t"), selects = Nil,
     wheres = [Where(And(Eq(Col("a"), Lit(PInt(1))), Eq(Col("b"), Lit(PInt(2)))))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   let r = compile(q)
   let sql = r.sql
   assert String.contains(sql, "AND") == true
@@ -1084,7 +1084,7 @@ test "compile Or in mutation module" do
   let q = Query({ from_ = FromTable("t"), selects = Nil,
     wheres = [Where(Or(Eq(Col("type"), Lit(PString("a"))), Eq(Col("type"), Lit(PString("b")))))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   let r = compile(q)
   let sql = r.sql
   assert String.contains(sql, "OR") == true
@@ -1094,7 +1094,7 @@ test "compile Not in mutation module" do
   let q = Query({ from_ = FromTable("t"), selects = Nil,
     wheres = [Where(Not(Eq(Col("deleted"), Lit(PBool(true)))))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   let r = compile(q)
   let sql = r.sql
   assert String.contains(sql, "NOT") == true
@@ -1104,7 +1104,7 @@ test "compile Like in mutation module" do
   let q = Query({ from_ = FromTable("t"), selects = Nil,
     wheres = [Where(Like(Col("name"), "A%"))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   let r = compile(q)
   let sql = r.sql
   assert String.contains(sql, "LIKE") == true
@@ -1114,7 +1114,7 @@ test "compile ILike in mutation module" do
   let q = Query({ from_ = FromTable("t"), selects = Nil,
     wheres = [Where(ILike(Col("name"), "a%"))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   let r = compile(q)
   let sql = r.sql
   assert String.contains(sql, "ILIKE") == true
@@ -1124,7 +1124,7 @@ test "compile Between in mutation module" do
   let q = Query({ from_ = FromTable("t"), selects = Nil,
     wheres = [Where(Between(Col("price"), Lit(PInt(10)), Lit(PInt(100))))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   let r = compile(q)
   let sql = r.sql
   assert String.contains(sql, "BETWEEN") == true
@@ -1134,7 +1134,7 @@ test "compile In in mutation module" do
   let q = Query({ from_ = FromTable("t"), selects = Nil,
     wheres = [Where(In(Col("color"), [Lit(PString("red")), Lit(PString("blue"))]))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   let r = compile(q)
   let sql = r.sql
   assert String.contains(sql, "IN") == true
@@ -1144,7 +1144,7 @@ test "compile NotIn in mutation module" do
   let q = Query({ from_ = FromTable("t"), selects = Nil,
     wheres = [Where(NotIn(Col("status"), [Lit(PString("banned"))]))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   let r = compile(q)
   let sql = r.sql
   assert String.contains(sql, "NOT IN") == true
@@ -1154,7 +1154,7 @@ test "compile IsNotNull in mutation module" do
   let q = Query({ from_ = FromTable("t"), selects = Nil,
     wheres = [Where(IsNotNull(Col("email")))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   let r = compile(q)
   let sql = r.sql
   assert String.contains(sql, "IS NOT NULL") == true
@@ -1164,12 +1164,12 @@ test "compile Mul Div in mutation module" do
   let q1 = Query({ from_ = FromTable("t"), selects = Nil,
     wheres = [Where(Gt(Mul(Col("x"), Col("y")), Lit(PInt(0))))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert String.contains((compile(q1)).sql, "*") == true
   let q2 = Query({ from_ = FromTable("t"), selects = Nil,
     wheres = [Where(Gt(Div(Col("x"), Col("y")), Lit(PInt(0))))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   assert String.contains((compile(q2)).sql, "/") == true
 end
 
@@ -1177,7 +1177,7 @@ test "compile SELECT with aggregates in mutation module" do
   let q = Query({ from_ = FromTable("orders"),
     selects = [SelectAs(Sum(Col("amount")), "total"), SelectAs(CountAll, "n")],
     wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   let r = compile(q)
   let sql = r.sql
   assert String.contains(sql, "SUM") == true
@@ -1188,7 +1188,7 @@ end
 test "compile DISTINCT in mutation module" do
   let q = Query({ from_ = FromTable("categories"), selects = [SelectField(Col("name"))],
     wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = true })
+    limit_ = None, offset_ = None, distinct_ = Distinct })
   let r = compile(q)
   let sql = r.sql
   assert String.contains(sql, "DISTINCT") == true
@@ -1197,7 +1197,7 @@ end
 test "compile LIMIT OFFSET in mutation module" do
   let q = Query({ from_ = FromTable("t"), selects = Nil,
     wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = Some(25), offset_ = Some(50), distinct_ = false })
+    limit_ = Some(25), offset_ = Some(50), distinct_ = NoDistinct })
   let r = compile(q)
   let sql = r.sql
   assert String.contains(sql, "LIMIT") == true
@@ -1209,7 +1209,7 @@ test "compile GROUP BY in mutation module" do
   let q = Query({ from_ = FromTable("events"), selects = Nil,
     group_bys = [Col("type"), Col("date")],
     wheres = Nil, joins = Nil, orders = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   let r = compile(q)
   let sql = r.sql
   assert String.contains(sql, "GROUP BY") == true
@@ -1220,7 +1220,7 @@ test "compile HAVING in mutation module" do
     group_bys = [Col("status")],
     havings = [Where(Gte(Count(Col("id")), Lit(PInt(5))))],
     wheres = Nil, joins = Nil, orders = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   let r = compile(q)
   let sql = r.sql
   assert String.contains(sql, "HAVING") == true
@@ -1230,7 +1230,7 @@ test "compile ORDER BY ASC DESC in mutation module" do
   let q = Query({ from_ = FromTable("t"), selects = Nil,
     orders = [OrderExpr(Col("name"), Asc), OrderExpr(Col("created_at"), Desc)],
     wheres = Nil, joins = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   let r = compile(q)
   let sql = r.sql
   assert String.contains(sql, "ASC") == true
@@ -1242,7 +1242,7 @@ test "compile INNER JOIN in mutation module" do
   let q = Query({ from_ = FromTable("a"), selects = Nil,
     joins = [JoinClause(Inner, "b", Eq(QCol("a", "bid"), QCol("b", "id")))],
     wheres = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   let r = compile(q)
   let sql = r.sql
   assert String.contains(sql, "INNER JOIN") == true
@@ -1252,7 +1252,7 @@ test "compile LEFT JOIN in mutation module" do
   let q = Query({ from_ = FromTable("posts"), selects = Nil,
     joins = [JoinClause(Left, "tags", Eq(QCol("posts", "id"), QCol("tags", "post_id")))],
     wheres = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   let r = compile(q)
   let sql = r.sql
   assert String.contains(sql, "LEFT JOIN") == true
@@ -1262,7 +1262,7 @@ test "compile RIGHT JOIN in mutation module" do
   let q = Query({ from_ = FromTable("a"), selects = Nil,
     joins = [JoinClause(Right, "b", Eq(QCol("a", "bid"), QCol("b", "id")))],
     wheres = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   let r = compile(q)
   let sql = r.sql
   assert String.contains(sql, "RIGHT JOIN") == true
@@ -1272,7 +1272,7 @@ test "compile multiple WHERE params in mutation module" do
   let q = Query({ from_ = FromTable("t"), selects = Nil,
     wheres = [Where(Eq(Col("x"), Lit(PInt(1)))), Where(Eq(Col("y"), Lit(PString("z"))))],
     joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = false })
+    limit_ = None, offset_ = None, distinct_ = NoDistinct })
   let r = compile(q)
   let sql = r.sql
   assert String.contains(sql, "WHERE") == true
