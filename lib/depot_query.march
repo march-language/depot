@@ -32,7 +32,7 @@
 -- Multiple `where_` / `where_eq` etc. calls are AND-combined.
 -- Order of operations in execute/exec_sql:
 --   1. Filter (where predicates AND sql conditions, AND-combined)
---   2. Sort (order_by fields)
+--   2. Sort (order_by fields — SQL path only, via order_parts)
 --   3. Offset (drop N rows)
 --   4. Limit (take N rows)
 --   5. Project (select mapping — in-memory only)
@@ -46,16 +46,23 @@ import Build
 -- Types
 -- ---------------------------------------------------------------------------
 
--- Query(schema, wheres, select_fn, order_bys, limit_val, offset_val, ast_query)
---   schema     : the Depot.Schema value
---   wheres     : list of predicate functions (each: row -> Bool), AND-combined
---   select_fn  : None or Some(fn) for projection (row -> projected_row)
---   order_bys  : list of (field_name, direction) pairs, direction = "asc" | "desc"
---                used by the in-memory execution path
---   limit_val  : None or Some(Int) — used by in-memory execution path
---   offset_val : None or Some(Int) — used by in-memory execution path
---   ast_query  : Ast.Query used for SQL generation via Build/Compile
-type Query = Query(a, List(b), c, List((String, String)), d, e, Ast.Query)
+-- Query(schema, wheres, select_fn, limit_val, offset_val, ast_query, order_parts, sql_params)
+--   schema      : the Depot.Schema value (or None for from_table queries)
+--   wheres      : list of predicate functions (each: row -> Bool), AND-combined
+--   select_fn   : None or Some(fn) for projection (row -> projected_row)
+--   limit_val   : None or Some(Int) — used by in-memory execution path
+--   offset_val  : None or Some(Int) — used by in-memory execution path
+--   ast_query   : Ast.Query used for SQL generation via Build/Compile;
+--                 ORDER BY is NOT stored here — use order_parts instead.
+--   order_parts : pre-compiled ORDER BY items as strings, e.g. ["\"age\" ASC"].
+--                 Stored as strings to avoid March RC bugs with user-defined
+--                 nullary constructors (Asc/Desc) inside Ast.SortDir.
+--                 Appended to SQL at query execution time.
+--   sql_params  : accumulated parameter values (in $1, $2, … order) for SQL
+--                 WHERE conditions added via where_eq / where_gt / etc.
+--                 IS NULL / IS NOT NULL conditions contribute nothing.
+--                 Returned by to_params/1 and used by exec_sql/2.
+type Query = Query(a, List(b), c, d, e, Ast.Query, List(String), List(String))
 
 -- ---------------------------------------------------------------------------
 -- Construction
@@ -69,7 +76,22 @@ Wrap a Depot.Schema into a fresh query with no operations.
 fn from(s) do
   let tbl = Depot.Schema.table(s)
   let ast_q = Build.from(tbl)
-  Query(s, Nil, None, Nil, None, None, ast_q)
+  Query(s, Nil, None, None, None, ast_q, Nil, Nil)
+end
+
+doc """
+Create a query from a plain table name string, without a schema.
+
+Useful for unit testing SQL generation or for ad-hoc queries where
+a full Depot.Schema is not available.
+
+    let q = Depot.Query.from_table("users")
+      |> Depot.Query.where_eq("active", "true")
+    Depot.Query.to_sql(q)  -- SELECT * FROM "users" WHERE "active" = $1
+"""
+fn from_table(table) do
+  let ast_q = Build.from(table)
+  Query(None, Nil, None, None, None, ast_q, Nil, Nil)
 end
 
 -- ---------------------------------------------------------------------------
@@ -85,8 +107,8 @@ The predicate receives a row (record) and must return a Bool.
 """
 fn where_(query, predicate) do
   match query do
-    Query(s, ws, sel, obs, lim, off, ast_q) ->
-      Query(s, List.append(ws, Cons(predicate, Nil)), sel, obs, lim, off, ast_q)
+    Query(s, ws, sel, lim, off, ast_q, orders, sps) ->
+      Query(s, List.append(ws, Cons(predicate, Nil)), sel, lim, off, ast_q, orders, sps)
   end
 end
 
@@ -101,13 +123,17 @@ The projection receives a row (record) and returns a new value.
 """
 fn select(query, projection) do
   match query do
-    Query(s, ws, _, obs, lim, off, ast_q) ->
-      Query(s, ws, Some(projection), obs, lim, off, ast_q)
+    Query(s, ws, _, lim, off, ast_q, orders, sps) ->
+      Query(s, ws, Some(projection), lim, off, ast_q, orders, sps)
   end
 end
 
 doc """
 Add an order_by clause with explicit direction ("asc" or "desc").
+
+ORDER BY is stored as a pre-compiled SQL snippet and appended to the
+generated SQL by `to_sql` / `exec_sql`.
+For in-memory execution via `execute/2`, ordering is not applied.
 
 Multiple calls accumulate: earlier calls have higher priority.
 
@@ -115,12 +141,10 @@ Multiple calls accumulate: earlier calls have higher priority.
       |> Depot.Query.order_by("age", "desc")
 """
 fn order_by(query, field, direction) do
-  match query do
-    Query(s, ws, sel, obs, lim, off, ast_q) ->
-      let new_obs = List.append(obs, Cons((field, direction), Nil))
-      let dir_ast = if direction == "desc" then Ast.Desc else Ast.Asc
-      let new_ast_q = Build.order_by(ast_q, Ast.Col(field), dir_ast)
-      Query(s, ws, sel, new_obs, lim, off, new_ast_q)
+  if direction == "desc" do
+    order_desc(query, field)
+  else
+    order_asc(query, field)
   end
 end
 
@@ -130,7 +154,7 @@ Add an ascending order_by clause.
     q |> Depot.Query.order_asc("name")
 """
 fn order_asc(query, field) do
-  order_by(query, field, "asc")
+  add_order_part(query, dq_ident(field) ++ " ASC")
 end
 
 doc """
@@ -139,7 +163,7 @@ Add a descending order_by clause.
     q |> Depot.Query.order_desc("name")
 """
 fn order_desc(query, field) do
-  order_by(query, field, "desc")
+  add_order_part(query, dq_ident(field) ++ " DESC")
 end
 
 doc """
@@ -149,8 +173,8 @@ Set a limit on the number of results. Replaces any previous limit.
 """
 fn limit(query, n) do
   match query do
-    Query(s, ws, sel, obs, _, off, ast_q) ->
-      Query(s, ws, sel, obs, Some(n), off, Build.limit(ast_q, n))
+    Query(s, ws, sel, _, off, ast_q, orders, sps) ->
+      Query(s, ws, sel, Some(n), off, Build.limit(ast_q, n), orders, sps)
   end
 end
 
@@ -161,8 +185,8 @@ Set an offset (skip N rows). Replaces any previous offset.
 """
 fn offset(query, n) do
   match query do
-    Query(s, ws, sel, obs, lim, _, ast_q) ->
-      Query(s, ws, sel, obs, lim, Some(n), Build.offset(ast_q, n))
+    Query(s, ws, sel, lim, _, ast_q, orders, sps) ->
+      Query(s, ws, sel, lim, Some(n), Build.offset(ast_q, n), orders, sps)
   end
 end
 
@@ -176,7 +200,40 @@ Returns the schema associated with this query.
     Depot.Query.schema(q)
 """
 fn schema(query) do
-  match query do Query(s, _, _, _, _, _, _) -> s end
+  match query do Query(s, _, _, _, _, _, _, _) -> s end
+end
+
+-- ---------------------------------------------------------------------------
+-- Private helpers for ORDER BY
+-- ---------------------------------------------------------------------------
+
+-- Append a pre-compiled ORDER BY part (e.g. "\"age\" ASC") to the query.
+pfn add_order_part(query, part) do
+  match query do
+    Query(s, ws, sel, lim, off, ast_q, orders, sps) ->
+      Query(s, ws, sel, lim, off, ast_q, List.append(orders, Cons(part, Nil)), sps)
+  end
+end
+
+-- Quote an identifier with double-quotes (simple version, no escaping).
+-- Field names in practice do not contain double-quote characters.
+pfn dq_ident(name) do "\"" ++ name ++ "\"" end
+
+-- Append accumulated ORDER BY parts to a base SQL string.
+-- Uses Cons(p, rest) pattern to avoid reusing the scrutinee in the arm body.
+pfn append_order_sql(sql, parts) do
+  match parts do
+    Nil          -> sql
+    Cons(p, rest) -> sql ++ " ORDER BY " ++ p ++ suffix_order_parts(rest)
+  end
+end
+
+-- Build the ", item, item, ..." suffix for ORDER BY (after the first item).
+pfn suffix_order_parts(parts) do
+  match parts do
+    Nil           -> ""
+    Cons(p, rest) -> ", " ++ p ++ suffix_order_parts(rest)
+  end
 end
 
 -- ---------------------------------------------------------------------------
@@ -221,56 +278,6 @@ pfn drop_rows(lst, n) do
   end
 end
 
--- Compare two values extracted from records by a field name.
--- Returns negative if a < b, 0 if equal, positive if a > b.
-pfn compare_field_values(a, b) do
-  if a == b then 0
-  else if a < b then 0 - 1
-  else 1
-end
-
--- Build a comparison function from order_by clauses.
--- Returns true if row_a should come before row_b.
-pfn compare_rows(row_a, row_b, order_bys) do
-  match order_bys do
-    Nil -> true
-    Cons((field, direction), rest) ->
-      let va = match record_get(row_a, field) do
-        Some(v) -> v
-        None -> ""
-      end
-      let vb = match record_get(row_b, field) do
-        Some(v) -> v
-        None -> ""
-      end
-      let cmp = compare_field_values(va, vb)
-      if cmp == 0 then compare_rows(row_a, row_b, rest)
-      else if direction == "desc" then cmp > 0
-      else cmp < 0
-  end
-end
-
--- Insertion sort for rows using order_by clauses.
-pfn insert_row(row, lst, order_bys) do
-  match lst do
-    Nil -> Cons(row, Nil)
-    Cons(h, rest) ->
-      if compare_rows(row, h, order_bys) then Cons(row, Cons(h, rest))
-      else Cons(h, insert_row(row, rest, order_bys))
-  end
-end
-
-pfn sort_rows_acc(rows, order_bys, acc) do
-  match rows do
-    Nil -> acc
-    Cons(h, rest) -> sort_rows_acc(rest, order_bys, insert_row(h, acc, order_bys))
-  end
-end
-
-pfn sort_rows(rows, order_bys) do
-  sort_rows_acc(rows, order_bys, Nil)
-end
-
 -- ---------------------------------------------------------------------------
 -- Execution
 -- ---------------------------------------------------------------------------
@@ -280,23 +287,22 @@ Execute a query against a list of rows (records).
 
 Applies operations in order:
   1. where predicates (AND-combined filter)
-  2. order_by (merge sort)
-  3. offset (drop N rows)
-  4. limit (take N rows)
-  5. select projection (map)
+  2. offset (drop N rows)
+  3. limit (take N rows)
+  4. select projection (map)
+
+Note: `order_by` clauses are SQL-only; use `exec_sql` for server-side ordering.
 
     let results = Depot.Query.execute(query, rows)
 """
 fn execute(query, rows) do
   match query do
-    Query(_, wheres, sel, order_bys, lim, off, _) ->
+    Query(_, wheres, sel, lim, off, _, _, _) ->
       -- 1. Filter
       let filtered = apply_wheres(rows, wheres)
-      -- 2. Sort
-      let sorted = match order_bys do
-        Nil -> filtered
-        _ -> sort_rows(filtered, order_bys)
-      end
+      -- 2. Sort — in-memory path does not sort (ORDER BY is SQL-only).
+      --    Use exec_sql for server-side ordering.
+      let sorted = filtered
       -- 3. Offset
       let offset_applied = match off do
         None -> sorted
@@ -323,7 +329,7 @@ Only applies where predicates (ignores order_by, limit, offset, select).
 """
 fn count(query, rows) do
   match query do
-    Query(_, wheres, _, _, _, _, _) ->
+    Query(_, wheres, _, _, _, _, _, _) ->
       let filtered = apply_wheres(rows, wheres)
       List.length(filtered)
   end
@@ -343,62 +349,78 @@ end
 -- ---------------------------------------------------------------------------
 -- These delegate to Build.where_ with appropriate Ast.Expr nodes.
 -- They are independent of the in-memory `where_` predicates.
+--
+-- Parameter values are accumulated directly into the sql_params field
+-- (8th Query argument) as each condition is added. This avoids the need
+-- to walk the AST later and sidesteps March constructor ambiguity issues
+-- (Eq / Col / Gt etc. are ambiguous between Ast.Expr and ColExpr).
 
-pfn add_sql_where(query, expr) do
+-- Add a SQL WHERE condition that produces one bound parameter ($N).
+-- Appends param_val to the sql_params accumulator.
+pfn add_sql_where_param(query, expr, param_val) do
   match query do
-    Query(s, ws, sel, obs, lim, off, ast_q) ->
-      Query(s, ws, sel, obs, lim, off, Build.where_(ast_q, expr))
+    Query(s, ws, sel, lim, off, ast_q, orders, sps) ->
+      Query(s, ws, sel, lim, off, Build.where_(ast_q, expr), orders,
+            List.append(sps, Cons(param_val, Nil)))
+  end
+end
+
+-- Add a SQL WHERE condition that produces NO bound parameter (IS NULL / IS NOT NULL).
+pfn add_sql_where_no_param(query, expr) do
+  match query do
+    Query(s, ws, sel, lim, off, ast_q, orders, sps) ->
+      Query(s, ws, sel, lim, off, Build.where_(ast_q, expr), orders, sps)
   end
 end
 
 doc "WHERE field = $N"
 fn where_eq(query, field, value) do
-  add_sql_where(query, Ast.Eq(Ast.Col(field), Ast.Lit(Ast.PString(value))))
+  add_sql_where_param(query, Eq(Col(field), Lit(PString(value))), value)
 end
 
 doc "WHERE field <> $N"
 fn where_ne(query, field, value) do
-  add_sql_where(query, Ast.Neq(Ast.Col(field), Ast.Lit(Ast.PString(value))))
+  add_sql_where_param(query, Neq(Col(field), Lit(PString(value))), value)
 end
 
 doc "WHERE field > $N"
 fn where_gt(query, field, value) do
-  add_sql_where(query, Ast.Gt(Ast.Col(field), Ast.Lit(Ast.PString(value))))
+  add_sql_where_param(query, Gt(Col(field), Lit(PString(value))), value)
 end
 
 doc "WHERE field < $N"
 fn where_lt(query, field, value) do
-  add_sql_where(query, Ast.Lt(Ast.Col(field), Ast.Lit(Ast.PString(value))))
+  add_sql_where_param(query, Lt(Col(field), Lit(PString(value))), value)
 end
 
 doc "WHERE field >= $N"
 fn where_gte(query, field, value) do
-  add_sql_where(query, Ast.Gte(Ast.Col(field), Ast.Lit(Ast.PString(value))))
+  add_sql_where_param(query, Gte(Col(field), Lit(PString(value))), value)
 end
 
 doc "WHERE field <= $N"
 fn where_lte(query, field, value) do
-  add_sql_where(query, Ast.Lte(Ast.Col(field), Ast.Lit(Ast.PString(value))))
+  add_sql_where_param(query, Lte(Col(field), Lit(PString(value))), value)
 end
 
 doc "WHERE field LIKE $N  (case-sensitive pattern match)"
 fn where_like(query, field, pattern) do
-  add_sql_where(query, Ast.Like(Ast.Col(field), pattern))
+  add_sql_where_param(query, Like(Col(field), pattern), pattern)
 end
 
 doc "WHERE field ILIKE $N  (case-insensitive pattern match, PostgreSQL extension)"
 fn where_ilike(query, field, pattern) do
-  add_sql_where(query, Ast.ILike(Ast.Col(field), pattern))
+  add_sql_where_param(query, ILike(Col(field), pattern), pattern)
 end
 
 doc "WHERE field IS NULL  (no parameter)"
 fn where_is_null(query, field) do
-  add_sql_where(query, Ast.IsNull(Ast.Col(field)))
+  add_sql_where_no_param(query, IsNull(Col(field)))
 end
 
 doc "WHERE field IS NOT NULL  (no parameter)"
 fn where_is_not_null(query, field) do
-  add_sql_where(query, Ast.IsNotNull(Ast.Col(field)))
+  add_sql_where_no_param(query, IsNotNull(Col(field)))
 end
 
 -- ---------------------------------------------------------------------------
@@ -410,6 +432,7 @@ Generate a parameterised SQL SELECT string from the query.
 
 Uses the schema's table name and db_fields (non-virtual columns).
 SQL conditions added via `where_eq` / `where_gt` etc. become the WHERE clause.
+ORDER BY clauses added via `order_asc` / `order_desc` are appended last.
 
 The `$N` placeholders match the list returned by `to_params/1` — pass both
 to `Connection.exec_prepared/3`:
@@ -422,9 +445,9 @@ Or use `exec_sql/2` which does this in one step.
 """
 fn to_sql(query) : String do
   match query do
-    Query(_, _, _, _, _, _, ast_q) ->
+    Query(_, _, _, _, _, ast_q, order_parts, _) ->
       let compiled = Compile.compile_inline(ast_q)
-      compiled.sql
+      append_order_sql(compiled.sql, order_parts)
   end
 end
 
@@ -439,35 +462,18 @@ IS NULL / IS NOT NULL conditions produce no parameter.
 """
 fn to_params(query) : List(String) do
   match query do
-    Query(_, _, _, _, _, _, ast_q) ->
-      let compiled = Compile.compile_parameterized(ast_q)
-      params_to_strings(compiled.params)
+    Query(_, _, _, _, _, _, _, sps) -> sps
   end
 end
 
-doc """
-Execute the query against a live PostgreSQL connection.
-
-Calls `Connection.exec_prepared/3` with the SQL and params from `to_sql/1`
-and `to_params/1`.  Returns a list of rows, where each row is a list of
-`(column_name, Option(String))` pairs (an association list).
-
-    match Depot.Query.exec_sql(q, db_conn) do
-    Ok(rows)  ->
-      List.map(rows, fn row ->
-        match List.assoc(row, "email") do
-        Some(Some(e)) -> e
-        _             -> ""
-        end
-      )
-    Err(msg) -> []
-    end
-"""
+doc "Execute the query against a live PostgreSQL connection."
 fn exec_sql(query, conn) do
   match query do
-    Query(_, _, _, _, _, _, ast_q) ->
+    Query(_, _, _, _, _, ast_q, order_parts, _) ->
       let compiled = Compile.compile_parameterized(ast_q)
-      match Connection.exec_prepared(conn, compiled.sql, compiled.params) do
+      let sql = append_order_sql(compiled.sql, order_parts)
+      let params = compiled.params
+      match Connection.exec_prepared(conn, sql, params) do
       Err(e)     -> Err(e)
       Ok(result) ->
         let rows = List.map(result.rows, fn row ->
@@ -491,7 +497,7 @@ Ignores `select`, `order_by`, `limit`, and `offset` — those don't affect a cou
 """
 fn count_sql(query, conn) do
   match query do
-    Query(_, _, _, _, _, _, ast_q) ->
+    Query(_, _, _, _, _, ast_q, _, _) ->
       let count_q = Build.as_count_query(ast_q)
       let compiled = Compile.compile_parameterized(count_q)
       match Connection.exec_prepared(conn, compiled.sql, compiled.params) do
