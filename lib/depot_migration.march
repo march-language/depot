@@ -454,9 +454,20 @@ do not leave stale pending statements behind.
 fn run(conn, migration_fn) do
   -- Drain any stale log entries from earlier calls so we start clean.
   let _ = drain_log()
-  let _ = migration_fn()
-  let stmts = drain_log()
-  Depot.Transaction.run(conn, fn c -> exec_statements(c, stmts))
+  -- Run migration_fn inside __try_call: a panic during SQL construction
+  -- (e.g. an assertion in a user-supplied helper) must NOT leave the log
+  -- half-populated for the next migration.  Either we get a clean log
+  -- and proceed, or we short-circuit with Err and the log is drained.
+  match __try_call(fn _ -> migration_fn()) do
+    Err(panic) -> do
+      let _ = drain_log()
+      Err("migration build panicked: " ++ panic)
+    end
+    Ok(_) -> do
+      let stmts = drain_log()
+      Depot.Transaction.run(conn, fn c -> exec_statements(c, stmts))
+    end
+  end
 end
 
 doc """

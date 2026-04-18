@@ -117,4 +117,36 @@ test "run rolls back all siblings when a later statement fails" do
   )
 end
 
+test "run catches a panic in migration_fn and drains the log" do
+  with_conn(fn conn ->
+    let outcome = Depot.Migration.run(conn, fn () ->
+      let _ = Depot.Migration.execute("CREATE TABLE mig_test (v INT)")
+      -- Panic before the second execute — must not leave stray log
+      -- entries for a subsequent migration to pick up.
+      let _ = 1 / 0
+      Depot.Migration.execute("CREATE TABLE mig_test2 (v INT)")
+    )
+    match outcome do
+      Ok(_) -> assert false
+      Err(_) -> do
+        -- The first CREATE was logged but the panic aborted before the
+        -- transaction opened, so neither table should exist.
+        let _ = assert (table_exists(conn, "mig_test") == false)
+        let _ = assert (table_exists(conn, "mig_test2") == false)
+        -- A follow-up clean migration must not see leaked log entries.
+        let follow_up = Depot.Migration.run(conn, fn () ->
+          Depot.Migration.execute("CREATE TABLE mig_test2 (v INT)")
+        )
+        match follow_up do
+          Err(_) -> assert false
+          Ok(_) -> do
+            let _ = assert (table_exists(conn, "mig_test") == false)
+            assert table_exists(conn, "mig_test2")
+          end
+        end
+      end
+    end
+  )
+end
+
 end -- mod TestMigrationExec

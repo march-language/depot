@@ -106,4 +106,23 @@ test "nested run uses savepoints — inner Err does not kill outer" do
   )
 end
 
+test "run rolls back when callback panics" do
+  with_conn(fn conn ->
+    let tx = run(conn, fn c ->
+      let _ = simple_query(c, "INSERT INTO tx_test VALUES (7)")
+      -- Panic via division by zero — __try_call inside run must catch
+      -- this and surface it as Err, triggering ROLLBACK.
+      let _ = 1 / 0
+      Ok(())
+    )
+    match tx do
+      Ok(_) -> assert false
+      Err(_) -> do
+        -- The insert must have been rolled back.
+        assert row_count(conn) == "0"
+      end
+    end
+  )
+end
+
 end -- mod TestRepoTransaction

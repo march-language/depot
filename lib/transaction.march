@@ -101,9 +101,19 @@ fn run(conn, callback) do
     Err(e) -> Err("transaction begin: " ++ e)
     Ok(_)  -> do
       let _ = set_depth(conn.fd, depth + 1)
-      let result = callback(conn)
+      -- Run the user callback inside __try_call so a panic / assert /
+      -- match-failure inside their code is turned into Err(msg) and
+      -- triggers ROLLBACK rather than leaving the connection stranded
+      -- in an open transaction.  The callback still returns its normal
+      -- Result(a, String) on the non-panic path, so we get a nested
+      -- Result and flatten it below.
+      let guarded = __try_call(fn _ -> callback(conn))
       let _ = set_depth(conn.fd, depth)
-      match result do
+      let outcome = match guarded do
+        Ok(inner)  -> inner
+        Err(panic) -> Err("transaction callback panicked: " ++ panic)
+      end
+      match outcome do
         Ok(v) ->
           match tx_commit(conn, depth) do
             Err(e) -> Err("transaction commit: " ++ e)
