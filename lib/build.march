@@ -334,6 +334,27 @@ fn distinct_on(q, exprs) do
   end
 end
 
+--- Converts a query into a `SELECT count(*) AS "count"` query.
+---
+--- Preserves the FROM clause and WHERE conditions of the original query,
+--- but replaces selects with COUNT(*), and clears orders, limit, and offset.
+--- Useful for building count(*) variants of existing queries.
+---
+--- march> match as_count_query(from("t")) do | Query(f) -> match f.selects do | Cons(SelectAs(CountAll, "count"), Nil) -> true | _ -> false end end
+--- true
+fn as_count_query(q) do
+  match q do
+    Query(f) ->
+      Query({
+        f with
+        selects = Cons(SelectAs(CountAll, "count"), Nil),
+        orders  = Nil,
+        limit_  = None,
+        offset_ = None
+      })
+  end
+end
+
 -- ---- OR fold helpers ----
 
 -- Folds a non-empty list of Expr values into a right-associated Or tree.

@@ -39,21 +39,23 @@
 
 mod Depot.Query do
 
+import Ast
+import Build
+
 -- ---------------------------------------------------------------------------
 -- Types
 -- ---------------------------------------------------------------------------
 
--- Query(schema, wheres, select_fn, order_bys, limit_val, offset_val, sql_conds)
+-- Query(schema, wheres, select_fn, order_bys, limit_val, offset_val, ast_query)
 --   schema     : the Depot.Schema value
 --   wheres     : list of predicate functions (each: row -> Bool), AND-combined
 --   select_fn  : None or Some(fn) for projection (row -> projected_row)
 --   order_bys  : list of (field_name, direction) pairs, direction = "asc" | "desc"
---   limit_val  : None or Some(Int)
---   offset_val : None or Some(Int)
---   sql_conds  : list of (field, op, value) triples for SQL WHERE generation
---               op ∈ {"=","<>",">","<",">=","<=","LIKE","ILIKE","IS NULL","IS NOT NULL"}
---               value = "" for IS NULL / IS NOT NULL (no parameter)
-type Query = Query(a, List(b), c, List((String, String)), d, e, List((String, String, String)))
+--                used by the in-memory execution path
+--   limit_val  : None or Some(Int) — used by in-memory execution path
+--   offset_val : None or Some(Int) — used by in-memory execution path
+--   ast_query  : Ast.Query used for SQL generation via Build/Compile
+type Query = Query(a, List(b), c, List((String, String)), d, e, Ast.Query)
 
 -- ---------------------------------------------------------------------------
 -- Construction
@@ -65,7 +67,9 @@ Wrap a Depot.Schema into a fresh query with no operations.
     let q = Depot.Query.from(schema())
 """
 fn from(s) do
-  Query(s, Nil, None, Nil, None, None, Nil)
+  let tbl = Depot.Schema.table(s)
+  let ast_q = Build.from(tbl)
+  Query(s, Nil, None, Nil, None, None, ast_q)
 end
 
 -- ---------------------------------------------------------------------------
@@ -81,8 +85,8 @@ The predicate receives a row (record) and must return a Bool.
 """
 fn where_(query, predicate) do
   match query do
-    Query(s, ws, sel, obs, lim, off, scs) ->
-      Query(s, List.append(ws, Cons(predicate, Nil)), sel, obs, lim, off, scs)
+    Query(s, ws, sel, obs, lim, off, ast_q) ->
+      Query(s, List.append(ws, Cons(predicate, Nil)), sel, obs, lim, off, ast_q)
   end
 end
 
@@ -97,8 +101,8 @@ The projection receives a row (record) and returns a new value.
 """
 fn select(query, projection) do
   match query do
-    Query(s, ws, _, obs, lim, off, scs) ->
-      Query(s, ws, Some(projection), obs, lim, off, scs)
+    Query(s, ws, _, obs, lim, off, ast_q) ->
+      Query(s, ws, Some(projection), obs, lim, off, ast_q)
   end
 end
 
@@ -112,8 +116,11 @@ Multiple calls accumulate: earlier calls have higher priority.
 """
 fn order_by(query, field, direction) do
   match query do
-    Query(s, ws, sel, obs, lim, off, scs) ->
-      Query(s, ws, sel, List.append(obs, Cons((field, direction), Nil)), lim, off, scs)
+    Query(s, ws, sel, obs, lim, off, ast_q) ->
+      let new_obs = List.append(obs, Cons((field, direction), Nil))
+      let dir_ast = if direction == "desc" then Ast.Desc else Ast.Asc
+      let new_ast_q = Build.order_by(ast_q, Ast.Col(field), dir_ast)
+      Query(s, ws, sel, new_obs, lim, off, new_ast_q)
   end
 end
 
@@ -142,8 +149,8 @@ Set a limit on the number of results. Replaces any previous limit.
 """
 fn limit(query, n) do
   match query do
-    Query(s, ws, sel, obs, _, off, scs) ->
-      Query(s, ws, sel, obs, Some(n), off, scs)
+    Query(s, ws, sel, obs, _, off, ast_q) ->
+      Query(s, ws, sel, obs, Some(n), off, Build.limit(ast_q, n))
   end
 end
 
@@ -154,8 +161,8 @@ Set an offset (skip N rows). Replaces any previous offset.
 """
 fn offset(query, n) do
   match query do
-    Query(s, ws, sel, obs, lim, _, scs) ->
-      Query(s, ws, sel, obs, lim, Some(n), scs)
+    Query(s, ws, sel, obs, lim, _, ast_q) ->
+      Query(s, ws, sel, obs, lim, Some(n), Build.offset(ast_q, n))
   end
 end
 
@@ -334,117 +341,69 @@ end
 -- ---------------------------------------------------------------------------
 -- SQL conditions (WHERE clauses for exec_sql)
 -- ---------------------------------------------------------------------------
--- These accumulate (field, operator, value) triples that to_sql/1 serialises
--- into a parameterised SQL WHERE clause.  They are independent of the
--- in-memory `where_` predicates; use whichever suits the execution path.
+-- These delegate to Build.where_ with appropriate Ast.Expr nodes.
+-- They are independent of the in-memory `where_` predicates.
 
-pfn add_sql_cond(query, field, op, value) do
+pfn add_sql_where(query, expr) do
   match query do
-    Query(s, ws, sel, obs, lim, off, scs) ->
-      Query(s, ws, sel, obs, lim, off, List.append(scs, Cons((field, op, value), Nil)))
+    Query(s, ws, sel, obs, lim, off, ast_q) ->
+      Query(s, ws, sel, obs, lim, off, Build.where_(ast_q, expr))
   end
 end
 
 doc "WHERE field = $N"
 fn where_eq(query, field, value) do
-  add_sql_cond(query, field, "=", value)
+  add_sql_where(query, Ast.Eq(Ast.Col(field), Ast.Lit(Ast.PString(value))))
 end
 
 doc "WHERE field <> $N"
 fn where_ne(query, field, value) do
-  add_sql_cond(query, field, "<>", value)
+  add_sql_where(query, Ast.Neq(Ast.Col(field), Ast.Lit(Ast.PString(value))))
 end
 
 doc "WHERE field > $N"
 fn where_gt(query, field, value) do
-  add_sql_cond(query, field, ">", value)
+  add_sql_where(query, Ast.Gt(Ast.Col(field), Ast.Lit(Ast.PString(value))))
 end
 
 doc "WHERE field < $N"
 fn where_lt(query, field, value) do
-  add_sql_cond(query, field, "<", value)
+  add_sql_where(query, Ast.Lt(Ast.Col(field), Ast.Lit(Ast.PString(value))))
 end
 
 doc "WHERE field >= $N"
 fn where_gte(query, field, value) do
-  add_sql_cond(query, field, ">=", value)
+  add_sql_where(query, Ast.Gte(Ast.Col(field), Ast.Lit(Ast.PString(value))))
 end
 
 doc "WHERE field <= $N"
 fn where_lte(query, field, value) do
-  add_sql_cond(query, field, "<=", value)
+  add_sql_where(query, Ast.Lte(Ast.Col(field), Ast.Lit(Ast.PString(value))))
 end
 
 doc "WHERE field LIKE $N  (case-sensitive pattern match)"
 fn where_like(query, field, pattern) do
-  add_sql_cond(query, field, "LIKE", pattern)
+  add_sql_where(query, Ast.Like(Ast.Col(field), pattern))
 end
 
 doc "WHERE field ILIKE $N  (case-insensitive pattern match, PostgreSQL extension)"
 fn where_ilike(query, field, pattern) do
-  add_sql_cond(query, field, "ILIKE", pattern)
+  add_sql_where(query, Ast.ILike(Ast.Col(field), pattern))
 end
 
 doc "WHERE field IS NULL  (no parameter)"
 fn where_is_null(query, field) do
-  add_sql_cond(query, field, "IS NULL", "")
+  add_sql_where(query, Ast.IsNull(Ast.Col(field)))
 end
 
 doc "WHERE field IS NOT NULL  (no parameter)"
 fn where_is_not_null(query, field) do
-  add_sql_cond(query, field, "IS NOT NULL", "")
+  add_sql_where(query, Ast.IsNotNull(Ast.Col(field)))
 end
 
 -- ---------------------------------------------------------------------------
 -- SQL generation
 -- ---------------------------------------------------------------------------
-
--- Returns true if the operator does not consume a $N parameter.
-pfn is_nullary_op(op) do
-  op == "IS NULL" || op == "IS NOT NULL"
-end
-
--- Build the WHERE clause and collect parameters in order.
--- Returns (where_clause_string, params_list).
--- Param $N numbers are assigned only to non-nullary conditions.
-pfn build_where_clause(conds, param_index) do
-  match conds do
-  Nil -> ("", Nil)
-  _ ->
-    fn go(cs, idx, clauses, params) do
-      match cs do
-      Nil -> (String.join(List.reverse(clauses), " AND "), List.reverse(params))
-      Cons((field, op, value), rest) ->
-        if is_nullary_op(op) do
-          let frag = field ++ " " ++ op
-          go(rest, idx, Cons(frag, clauses), params)
-        else
-          let frag = field ++ " " ++ op ++ " $" ++ int_to_string(idx)
-          go(rest, idx + 1, Cons(frag, clauses), Cons(value, params))
-        end
-      end
-    end
-    let (clause, params) = go(conds, param_index, Nil, Nil)
-    (clause, params)
-  end
-end
-
--- Build the ORDER BY clause.
-pfn build_order_clause(order_bys) do
-  match order_bys do
-  Nil -> ""
-  _   -> " ORDER BY " ++ build_order_parts(order_bys, Nil)
-  end
-end
-
-pfn build_order_parts(obs, acc) do
-  match obs do
-  Nil -> String.join(List.reverse(acc), ", ")
-  Cons((field, dir), rest) ->
-    let part = field ++ " " ++ (if dir == "desc" then "DESC" else "ASC")
-    build_order_parts(rest, Cons(part, acc))
-  end
-end
 
 doc """
 Generate a parameterised SQL SELECT string from the query.
@@ -463,24 +422,9 @@ Or use `exec_sql/2` which does this in one step.
 """
 fn to_sql(query) : String do
   match query do
-  Query(s, _, _, obs, lim, off, scs) ->
-    let tbl     = Depot.Schema.table(s)
-    let cols    = Depot.Schema.db_fields(s)
-    let sel_str = String.join(cols, ", ")
-    let base    = "SELECT " ++ sel_str ++ " FROM " ++ tbl
-    let (where_clause, _) = build_where_clause(scs, 1)
-    let where_str = if String.is_empty(where_clause) then ""
-                    else " WHERE " ++ where_clause
-    let order_str = build_order_clause(obs)
-    let limit_str = match lim do
-      None    -> ""
-      Some(n) -> " LIMIT " ++ int_to_string(n)
-      end
-    let offset_str = match off do
-      None    -> ""
-      Some(n) -> " OFFSET " ++ int_to_string(n)
-      end
-    base ++ where_str ++ order_str ++ limit_str ++ offset_str
+    Query(_, _, _, _, _, _, ast_q) ->
+      let compiled = Compile.compile_inline(ast_q)
+      compiled.sql
   end
 end
 
@@ -495,9 +439,9 @@ IS NULL / IS NOT NULL conditions produce no parameter.
 """
 fn to_params(query) : List(String) do
   match query do
-  Query(_, _, _, _, _, _, scs) ->
-    let (_, params) = build_where_clause(scs, 1)
-    params
+    Query(_, _, _, _, _, _, ast_q) ->
+      let compiled = Compile.compile_parameterized(ast_q)
+      params_to_strings(compiled.params)
   end
 end
 
@@ -520,24 +464,25 @@ and `to_params/1`.  Returns a list of rows, where each row is a list of
     end
 """
 fn exec_sql(query, conn) do
-  let sql       = to_sql(query)
-  let str_params = to_params(query)
-  let params    = strings_to_pg_params(str_params, Nil)
-  match Connection.exec_prepared(conn, sql, params) do
-  Err(e)     -> Err(e)
-  Ok(result) ->
-    let rows = List.map(result.rows, fn row ->
-      zip_cols(result.columns, row)
-    )
-    Ok(rows)
+  match query do
+    Query(_, _, _, _, _, _, ast_q) ->
+      let compiled = Compile.compile_parameterized(ast_q)
+      match Connection.exec_prepared(conn, compiled.sql, compiled.params) do
+      Err(e)     -> Err(e)
+      Ok(result) ->
+        let rows = List.map(result.rows, fn row ->
+          zip_cols(result.columns, row)
+        )
+        Ok(rows)
+      end
   end
 end
 
 doc """
 Execute a COUNT(*) query and return the integer count.
 
-Uses a `SELECT count(*) FROM <table> WHERE ...` query.  Ignores `select`,
-`order_by`, `limit`, and `offset` — those don't affect a count.
+Uses a `SELECT count(*) AS "count" FROM <table> WHERE ...` query.
+Ignores `select`, `order_by`, `limit`, and `offset` — those don't affect a count.
 
     match Depot.Query.count_sql(q, db_conn) do
     Ok(n)    -> n
@@ -546,33 +491,39 @@ Uses a `SELECT count(*) FROM <table> WHERE ...` query.  Ignores `select`,
 """
 fn count_sql(query, conn) do
   match query do
-  Query(s, _, _, _, _, _, scs) ->
-    let tbl = Depot.Schema.table(s)
-    let (where_clause, str_params) = build_where_clause(scs, 1)
-    let params = strings_to_pg_params(str_params, Nil)
-    let where_str = if String.is_empty(where_clause) then ""
-                    else " WHERE " ++ where_clause
-    let sql = "SELECT count(*) FROM " ++ tbl ++ where_str
-    match Connection.exec_prepared(conn, sql, params) do
-    Err(e) -> Err(e)
-    Ok(result) ->
-      match result.rows do
-      Cons(Cons(Some(n_str), _), _) ->
-        match string_to_int(n_str) do
-        Some(n) -> Ok(n)
-        None    -> Ok(0)
+    Query(_, _, _, _, _, _, ast_q) ->
+      let count_q = Build.as_count_query(ast_q)
+      let compiled = Compile.compile_parameterized(count_q)
+      match Connection.exec_prepared(conn, compiled.sql, compiled.params) do
+      Err(e) -> Err(e)
+      Ok(result) ->
+        match result.rows do
+        Cons(Cons(Some(n_str), _), _) ->
+          match string_to_int(n_str) do
+          Some(n) -> Ok(n)
+          None    -> Ok(0)
+          end
+        _ -> Ok(0)
         end
-      _ -> Ok(0)
       end
-    end
   end
 end
 
--- Convert a list of plain strings to PostgreSQL Param values for exec_prepared.
-pfn strings_to_pg_params(strs, acc) do
-  match strs do
+
+-- Convert a List(Param) to List(String) for the public to_params API.
+pfn params_to_strings(params) do
+  params_to_strings_acc(params, Nil)
+end
+
+pfn params_to_strings_acc(params, acc) do
+  match params do
   Nil -> List.reverse(acc)
-  Cons(s, rest) -> strings_to_pg_params(rest, Cons(ParamText(s), acc))
+  Cons(p, rest) ->
+    match p do
+    ParamText(s)   -> params_to_strings_acc(rest, Cons(s, acc))
+    ParamNull      -> params_to_strings_acc(rest, Cons("", acc))
+    ParamBinary(_) -> params_to_strings_acc(rest, Cons("", acc))
+    end
   end
 end
 
