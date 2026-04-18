@@ -13,7 +13,6 @@
 
 mod TestLivePostgres do
 
-import Map
 import Connection
 
 fn test_config() do
