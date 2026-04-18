@@ -92,6 +92,14 @@ fn where_in(q, expr, vals) do
   end
 end
 
+--- Appends a WHERE expr BETWEEN lo AND hi predicate.
+---
+--- march> match where_between(from("t"), Col("age"), Lit(PInt(18)), Lit(PInt(65))) do | Query(f) -> match f.wheres do | Cons(Where(Between(_, _, _)), Nil) -> true | _ -> false end end
+--- true
+fn where_between(q, expr, lo, hi) do
+  where_(q, Between(expr, lo, hi))
+end
+
 --- Appends a WHERE expr NOT IN (vals) predicate. Empty vals list is a no-op.
 ---
 --- march> match where_not_in(from("t"), Col("id"), [Lit(PInt(1))]) do | Query(f) -> match f.wheres do | Cons(Where(_), Nil) -> true | _ -> false end end
