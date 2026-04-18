@@ -61,7 +61,7 @@ end
 fn encode(msg : FrontendMessage) : Bytes do
   match msg do
   Startup(params) -> do
-    let pairs = Map.fold(params, Bytes.empty(), fn acc -> fn k -> fn v ->
+    let pairs = Map.fold(params, Bytes.empty(), fn (acc, k, v) ->
       Bytes.concat(acc, Bytes.concat(cstring(k), cstring(v)))
     )
     let payload = Bytes.concat(i32_be(196608), Bytes.concat(pairs, Bytes.from_list([0])))
