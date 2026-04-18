@@ -1,0 +1,209 @@
+-- test/test_returning_live.march
+-- Phase 1.6 — INSERT / UPDATE / DELETE ... RETURNING against live Postgres.
+--
+-- Verifies that MutationExec.exec_insert / exec_update / exec_delete
+-- round-trip the RETURNING clause as actual data rows (not just SQL bytes).
+-- Server-side defaults (sequences, now()) must come back on the insert path.
+--
+-- Requires Postgres on 127.0.0.1:5432 with a database named `depot_test`
+-- and a `postgres` superuser that trusts local connections.
+
+mod TestReturningLive do
+
+import Connection
+import Ast
+import Mutation
+import MutationBuild
+import MutationExec
+
+fn test_config() do
+  default_config("postgres", "depot_test")
+end
+
+pfn with_conn(body) do
+  match connect(test_config()) do
+  Err(e) -> do
+    let _ = println("connect: " ++ e)
+    assert false
+  end
+  Ok(conn) -> do
+    let _ = simple_query(conn, "DROP TABLE IF EXISTS ret_test")
+    let _ = simple_query(conn,
+      "CREATE TABLE ret_test (id SERIAL PRIMARY KEY, "
+      ++ "name TEXT NOT NULL, "
+      ++ "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
+    let result = body(conn)
+    let _ = simple_query(conn, "DROP TABLE IF EXISTS ret_test")
+    let _ = close(conn)
+    result
+  end
+  end
+end
+
+pfn first_cell(rows) do
+  match rows do
+    Cons(Cons(Some(s), _), _) -> Some(s)
+    _ -> None
+  end
+end
+
+test "INSERT ... RETURNING * returns the server-assigned id and created_at" do
+  with_conn(fn conn ->
+    let i = insert_into("ret_test")
+           |> insert_cols(["name"])
+           |> insert_row([PString("Alice")])
+           |> insert_returning_all
+    match MutationExec.exec_insert(conn, i) do
+      Err(e) -> do
+        let _ = println("exec_insert: " ++ e)
+        assert false
+      end
+      Ok(r) -> do
+        -- Exactly one row with three non-null columns (id, name, created_at).
+        match r.rows do
+          Cons(Cons(Some(id_s), Cons(Some(name_s), Cons(Some(_ts_s), Nil))), Nil) -> do
+            let _ = assert name_s == "Alice"
+            -- id came from a SERIAL — must parse as a positive int.
+            match String.to_int(id_s) do
+              Ok(n)  -> assert n > 0
+              Err(_) -> assert false
+            end
+          end
+          _ -> assert false
+        end
+      end
+    end
+  )
+end
+
+test "INSERT ... RETURNING \"id\" returns only the id column" do
+  with_conn(fn conn ->
+    let i = insert_into("ret_test")
+           |> insert_cols(["name"])
+           |> insert_row([PString("Bob")])
+           |> insert_returning([SelectField(Expr.Col("id"))])
+    match MutationExec.exec_insert(conn, i) do
+      Err(e) -> do
+        let _ = println("exec_insert: " ++ e)
+        assert false
+      end
+      Ok(r) -> do
+        match r.rows do
+          Cons(Cons(Some(id_s), Nil), Nil) ->
+            match String.to_int(id_s) do
+              Ok(n)  -> assert n > 0
+              Err(_) -> assert false
+            end
+          _ -> assert false
+        end
+      end
+    end
+  )
+end
+
+test "UPDATE ... RETURNING * returns the post-update row" do
+  with_conn(fn conn ->
+    -- Seed one row, then update by name, returning everything.
+    let ins = insert_into("ret_test")
+             |> insert_cols(["name"])
+             |> insert_row([PString("Carol")])
+             |> insert_returning([SelectField(Expr.Col("id"))])
+    match MutationExec.exec_insert(conn, ins) do
+      Err(e) -> do
+        let _ = println("seed: " ++ e)
+        assert false
+      end
+      Ok(ins_res) -> do
+        match first_cell(ins_res.rows) do
+          None -> assert false
+          Some(id_s) ->
+            match String.to_int(id_s) do
+              Err(_) -> assert false
+              Ok(id_n) -> do
+                let u = Update({
+                  table_     = "ret_test",
+                  sets       = [("name", Lit(PString("Carol-updated")))],
+                  wheres     = [Where(Expr.Eq(Expr.Col("id"), Lit(PInt(id_n))))],
+                  returning_ = [SelectAll]
+                })
+                match MutationExec.exec_update(conn, u) do
+                  Err(e) -> do
+                    let _ = println("exec_update: " ++ e)
+                    assert false
+                  end
+                  Ok(r) ->
+                    match r.rows do
+                      Cons(Cons(Some(_), Cons(Some(name_s), Cons(Some(_), Nil))), Nil) ->
+                        assert name_s == "Carol-updated"
+                      _ -> assert false
+                    end
+                end
+              end
+            end
+        end
+      end
+    end
+  )
+end
+
+test "DELETE ... RETURNING \"id\" returns the id of the deleted row" do
+  with_conn(fn conn ->
+    let ins = insert_into("ret_test")
+             |> insert_cols(["name"])
+             |> insert_row([PString("Dave")])
+             |> insert_returning([SelectField(Expr.Col("id"))])
+    match MutationExec.exec_insert(conn, ins) do
+      Err(e) -> do
+        let _ = println("seed: " ++ e)
+        assert false
+      end
+      Ok(ins_res) ->
+        match first_cell(ins_res.rows) do
+          None -> assert false
+          Some(id_s) ->
+            match String.to_int(id_s) do
+              Err(_) -> assert false
+              Ok(id_n) -> do
+                let d = Mutation.Delete({
+                  table_     = "ret_test",
+                  wheres     = [Where(Expr.Eq(Expr.Col("id"), Lit(PInt(id_n))))],
+                  returning_ = [SelectField(Expr.Col("id"))]
+                })
+                match MutationExec.exec_delete(conn, d) do
+                  Err(e) -> do
+                    let _ = println("exec_delete: " ++ e)
+                    assert false
+                  end
+                  Ok(r) ->
+                    match r.rows do
+                      Cons(Cons(Some(got), Nil), Nil) -> assert got == id_s
+                      _ -> assert false
+                    end
+                end
+              end
+            end
+        end
+    end
+  )
+end
+
+test "INSERT without RETURNING yields no rows" do
+  with_conn(fn conn ->
+    let i = insert_into("ret_test")
+           |> insert_cols(["name"])
+           |> insert_row([PString("Eve")])
+    match MutationExec.exec_insert(conn, i) do
+      Err(e) -> do
+        let _ = println("exec_insert: " ++ e)
+        assert false
+      end
+      Ok(r) ->
+        match r.rows do
+          Nil -> assert true
+          _   -> assert false
+        end
+    end
+  )
+end
+
+end -- mod TestReturningLive
