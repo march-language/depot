@@ -1,0 +1,157 @@
+-- test/test_joins_live.march
+-- Phase 2.6 — INNER / LEFT / RIGHT / multi-table joins against live Postgres.
+
+mod TestJoinsLive do
+
+import Connection
+import Ast
+import Build
+import Compile
+
+fn test_config() do
+  default_config("postgres", "depot_test")
+end
+
+pfn with_conn(body) do
+  match connect(test_config()) do
+  Err(e) -> do
+    let _ = println("connect: " ++ e)
+    assert false
+  end
+  Ok(conn) -> do
+    let _ = simple_query(conn, "DROP TABLE IF EXISTS j_posts")
+    let _ = simple_query(conn, "DROP TABLE IF EXISTS j_users")
+    let _ = simple_query(conn, "DROP TABLE IF EXISTS j_tags")
+    let _ = simple_query(conn,
+      "CREATE TABLE j_users (id INT PRIMARY KEY, name TEXT NOT NULL)")
+    let _ = simple_query(conn,
+      "CREATE TABLE j_posts (id INT PRIMARY KEY, user_id INT, title TEXT NOT NULL)")
+    let _ = simple_query(conn,
+      "CREATE TABLE j_tags (id INT PRIMARY KEY, post_id INT NOT NULL, label TEXT NOT NULL)")
+    -- 3 users, 2 have posts, 1 does not. 1 post has no tag, 1 post has a tag.
+    let _ = simple_query(conn,
+      "INSERT INTO j_users VALUES (1,'Alice'),(2,'Bob'),(3,'Carol')")
+    let _ = simple_query(conn,
+      "INSERT INTO j_posts VALUES (10,1,'hello'),(11,2,'world'),(12,NULL,'orphan')")
+    let _ = simple_query(conn,
+      "INSERT INTO j_tags VALUES (100,10,'tech')")
+    let result = body(conn)
+    let _ = simple_query(conn, "DROP TABLE IF EXISTS j_posts")
+    let _ = simple_query(conn, "DROP TABLE IF EXISTS j_users")
+    let _ = simple_query(conn, "DROP TABLE IF EXISTS j_tags")
+    let _ = close(conn)
+    result
+  end
+  end
+end
+
+pfn run_rows(conn, q) do
+  let compiled = Compile.compile_parameterized(q)
+  Connection.exec_prepared(conn, compiled.sql, compiled.params)
+end
+
+test "INNER JOIN returns only rows with a matching key" do
+  with_conn(fn conn ->
+    let q = from("j_users")
+           |> select([Expr.QCol("j_users", "name"),
+                      Expr.QCol("j_posts", "title")])
+           |> join("j_posts", Expr.Eq(Expr.QCol("j_users", "id"),
+                                       Expr.QCol("j_posts", "user_id")))
+           |> order_by(Expr.QCol("j_users", "id"), Asc)
+    match run_rows(conn, q) do
+      Err(e) -> do
+        let _ = println("inner join: " ++ e)
+        assert false
+      end
+      Ok(r) ->
+        -- Expect exactly 2 rows (Alice/hello, Bob/world) — Carol has no post,
+        -- the orphan post has user_id=NULL.
+        match r.rows do
+          Cons(Cons(Some("Alice"), Cons(Some("hello"), Nil)),
+            Cons(Cons(Some("Bob"), Cons(Some("world"), Nil)), Nil)) -> assert true
+          _ -> assert false
+        end
+    end
+  )
+end
+
+test "LEFT JOIN keeps unmatched left rows and decodes nulls to None" do
+  with_conn(fn conn ->
+    let q = from("j_users")
+           |> select([Expr.QCol("j_users", "name"),
+                      Expr.QCol("j_posts", "title")])
+           |> left_join("j_posts", Expr.Eq(Expr.QCol("j_users", "id"),
+                                            Expr.QCol("j_posts", "user_id")))
+           |> order_by(Expr.QCol("j_users", "id"), Asc)
+    match run_rows(conn, q) do
+      Err(e) -> do
+        let _ = println("left join: " ++ e)
+        assert false
+      end
+      Ok(r) -> do
+        -- 3 rows. Carol's title cell must decode as None (NULL).
+        let _ = match r.rows do
+          Cons(Cons(Some("Alice"), Cons(Some("hello"), Nil)),
+            Cons(Cons(Some("Bob"), Cons(Some("world"), Nil)),
+              Cons(Cons(Some("Carol"), Cons(None, Nil)), Nil))) -> assert true
+          _ -> assert false
+        end
+        ()
+      end
+    end
+  )
+end
+
+test "three-table join: users JOIN posts JOIN tags" do
+  with_conn(fn conn ->
+    let q = from("j_users")
+           |> select([Expr.QCol("j_users", "name"),
+                      Expr.QCol("j_tags", "label")])
+           |> join("j_posts", Expr.Eq(Expr.QCol("j_users", "id"),
+                                       Expr.QCol("j_posts", "user_id")))
+           |> join("j_tags",  Expr.Eq(Expr.QCol("j_posts", "id"),
+                                       Expr.QCol("j_tags", "post_id")))
+    match run_rows(conn, q) do
+      Err(e) -> do
+        let _ = println("triple join: " ++ e)
+        assert false
+      end
+      Ok(r) ->
+        -- Only Alice's post has a tag — one row expected.
+        match r.rows do
+          Cons(Cons(Some("Alice"), Cons(Some("tech"), Nil)), Nil) -> assert true
+          _ -> assert false
+        end
+    end
+  )
+end
+
+test "LEFT JOIN row count >= base row count" do
+  with_conn(fn conn ->
+    -- Property: |LEFT JOIN result| >= |left table|.
+    let q = from("j_users")
+           |> select([Expr.QCol("j_users", "id")])
+           |> left_join("j_posts", Expr.Eq(Expr.QCol("j_users", "id"),
+                                            Expr.QCol("j_posts", "user_id")))
+    match run_rows(conn, q) do
+      Err(e) -> do
+        let _ = println("left join count: " ++ e)
+        assert false
+      end
+      Ok(r) -> do
+        let left_n = row_count(r.rows, 0)
+        -- j_users has 3 rows; LEFT JOIN must return >= 3.
+        assert left_n >= 3
+      end
+    end
+  )
+end
+
+pfn row_count(rows, acc) do
+  match rows do
+    Nil -> acc
+    Cons(_, rest) -> row_count(rest, acc + 1)
+  end
+end
+
+end -- mod TestJoinsLive

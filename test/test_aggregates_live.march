@@ -1,0 +1,127 @@
+-- test/test_aggregates_live.march
+-- Phase 2.7 — GROUP BY / HAVING / aggregate functions against live Postgres.
+
+mod TestAggregatesLive do
+
+import Connection
+import Ast
+import Build
+import Compile
+
+fn test_config() do
+  default_config("postgres", "depot_test")
+end
+
+pfn with_conn(body) do
+  match connect(test_config()) do
+  Err(e) -> do
+    let _ = println("connect: " ++ e)
+    assert false
+  end
+  Ok(conn) -> do
+    let _ = simple_query(conn, "DROP TABLE IF EXISTS agg_test")
+    let _ = simple_query(conn,
+      "CREATE TABLE agg_test (id INT PRIMARY KEY, grp TEXT NOT NULL, n INT NOT NULL)")
+    -- Three groups: a={1,2,3}, b={10,20}, c={100}.
+    let _ = simple_query(conn,
+      "INSERT INTO agg_test VALUES "
+      ++ "(1,'a',1),(2,'a',2),(3,'a',3),"
+      ++ "(4,'b',10),(5,'b',20),"
+      ++ "(6,'c',100)")
+    let result = body(conn)
+    let _ = simple_query(conn, "DROP TABLE IF EXISTS agg_test")
+    let _ = close(conn)
+    result
+  end
+  end
+end
+
+pfn run_rows(conn, q) do
+  let compiled = Compile.compile_parameterized(q)
+  Connection.exec_prepared(conn, compiled.sql, compiled.params)
+end
+
+test "COUNT(*) on ungrouped query returns total row count" do
+  with_conn(fn conn ->
+    let q = from("agg_test") |> select([Expr.CountAll])
+    match run_rows(conn, q) do
+      Err(e) -> do
+        let _ = println("count: " ++ e)
+        assert false
+      end
+      Ok(r) ->
+        match r.rows do
+          Cons(Cons(Some(s), Nil), Nil) -> assert s == "6"
+          _ -> assert false
+        end
+    end
+  )
+end
+
+test "GROUP BY grp with SUM(n) returns one row per group" do
+  with_conn(fn conn ->
+    let q = from("agg_test")
+           |> select([Expr.Col("grp"), Expr.Sum(Expr.Col("n"))])
+           |> group_by([Expr.Col("grp")])
+           |> order_by(Expr.Col("grp"), Asc)
+    match run_rows(conn, q) do
+      Err(e) -> do
+        let _ = println("sum: " ++ e)
+        assert false
+      end
+      Ok(r) ->
+        -- Expect ('a',6), ('b',30), ('c',100).
+        match r.rows do
+          Cons(Cons(Some("a"), Cons(Some("6"),   Nil)),
+            Cons(Cons(Some("b"), Cons(Some("30"),  Nil)),
+              Cons(Cons(Some("c"), Cons(Some("100"), Nil)), Nil))) -> assert true
+          _ -> assert false
+        end
+    end
+  )
+end
+
+test "GROUP BY with HAVING filters on aggregate" do
+  with_conn(fn conn ->
+    -- HAVING COUNT(*) > 1 — keeps groups a and b, drops c.
+    let q = from("agg_test")
+           |> select([Expr.Col("grp")])
+           |> group_by([Expr.Col("grp")])
+           |> having(Expr.Gt(Expr.CountAll, Lit(PInt(1))))
+           |> order_by(Expr.Col("grp"), Asc)
+    match run_rows(conn, q) do
+      Err(e) -> do
+        let _ = println("having: " ++ e)
+        assert false
+      end
+      Ok(r) ->
+        match r.rows do
+          Cons(Cons(Some("a"), Nil),
+            Cons(Cons(Some("b"), Nil), Nil)) -> assert true
+          _ -> assert false
+        end
+    end
+  )
+end
+
+test "MIN / MAX / AVG / COUNT on numeric column" do
+  with_conn(fn conn ->
+    let q = from("agg_test")
+           |> select([Expr.Min(Expr.Col("n")),
+                      Expr.Max(Expr.Col("n")),
+                      Expr.Count(Expr.Col("n"))])
+    match run_rows(conn, q) do
+      Err(e) -> do
+        let _ = println("min/max: " ++ e)
+        assert false
+      end
+      Ok(r) ->
+        match r.rows do
+          Cons(Cons(Some("1"), Cons(Some("100"), Cons(Some("6"), Nil))), Nil) -> assert true
+          _ -> assert false
+        end
+    end
+  )
+end
+
+end -- mod TestAggregatesLive
