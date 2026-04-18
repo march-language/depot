@@ -1,17 +1,72 @@
--- Depot — database library for March.
---
--- Depot provides a composable query builder, schema definitions,
--- changeset-based validation (Gate), migrations, and a pool-backed
--- PostgreSQL connection manager.
---
--- Public API:
---   Depot.Query     — composable in-memory query builder
---   Depot.Schema    — table schema definitions
---   Depot.Gate      — changeset validation (cast + validate)
---   Depot.Migration — schema migration helpers
---   Depot.Repo      — in-memory repository backed by Vault
---   Depot.Form      — form parameter casting helpers
---   Depot.Test      — test helpers (sandboxed transactions, fixtures)
+--- Depot — database library for March.
+---
+--- Depot is a composable ORM toolkit for March applications. It covers the
+--- full lifecycle of working with relational data: defining schemas, building
+--- queries, validating input, running migrations, and inspecting query plans.
+---
+--- ## Sub-modules
+---
+--- | Module              | Responsibility                                              |
+--- |---------------------|-------------------------------------------------------------|
+--- | Depot.Schema        | Define table schemas — field names, types, and associations |
+--- | Depot.Query         | Composable query builder (from / where_eq / exec_sql)       |
+--- | Depot.Repo          | In-memory repository for testing (insert/get/all/delete)    |
+--- | Depot.Gate          | Changeset-style validation and casting (cast + validate)     |
+--- | Depot.Migration     | Schema migrations — DDL generation with up/down versioning  |
+--- | Depot.Transaction   | Database transactions with automatic savepoint nesting       |
+--- | Depot.Type          | Custom type adapters (Email, Enum) for field coercion        |
+--- | Depot.Embed         | Embedded schemas — nested assoc-list records inside a row   |
+--- | Depot.Explain       | EXPLAIN / EXPLAIN ANALYZE query-plan inspection              |
+---
+--- ## Quick start
+---
+--- ### 1. Define a schema
+---
+---   fn user_schema() do
+---     Depot.Schema.define("users", {
+---       fields = {
+---         name  = "String",
+---         email = "String",
+---         age   = ("Int", { default = 0 })
+---       }
+---     })
+---   end
+---
+--- ### 2. Validate input with Gate
+---
+---   fn user_gate(params) do
+---     Depot.Gate.cast(params, ["name", "email", "age"])
+---     |> Depot.Gate.validate_required(["name", "email"])
+---     |> Depot.Gate.validate_format("email", "@")
+---     |> Depot.Gate.validate_number("age", [NumMin(13)])
+---   end
+---
+--- ### 3. Persist with Repo
+---
+---   let gate = user_gate(conn_params)
+---   match Depot.Repo.insert(user_schema(), gate) do
+---     Ok(record) -> record
+---     Err(gate)  -> Depot.Gate.errors(gate)
+---   end
+---
+--- ### 4. Query
+---
+---   let rows =
+---     Depot.Query.from(user_schema())
+---     |> Depot.Query.where_gt("age", "18")
+---     |> Depot.Query.order_asc("name")
+---     |> Depot.Query.limit(20)
+---     |> Depot.Query.exec_sql(db_conn)
+---
+--- ## Design principles
+---
+--- - **No magic**: every operation is an explicit function call on a plain value.
+--- - **Non-short-circuiting validation**: Gate collects *all* errors before you
+---   inspect them, so users see a complete error list on first submit.
+--- - **Test-friendly**: Depot.Repo is an in-memory store backed by Vault;
+---   no database required for unit tests.
+--- - **Composable queries**: Depot.Query builds a pure value describing the
+---   query. Execution (in-memory vs SQL) is a separate step.
 
 mod Depot do
 end
