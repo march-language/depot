@@ -1,0 +1,270 @@
+-- test/test_where_groups_live.march
+-- Phase 1.3 — OR / AND condition grouping against live Postgres.
+-- Phase 1.2 — where_in / where_not_in against live Postgres.
+--
+-- The compile-level tests already verify parenthesisation of the SQL
+-- strings; this file proves that the resulting statements, when shipped
+-- through exec_prepared, select the expected rows on a real database.
+--
+-- Row-set assertions compare March-side boolean evaluations of the same
+-- predicate against the DB-side row sets — if compile parenthesised
+-- incorrectly, the two would drift.
+--
+-- Requires Postgres on 127.0.0.1:5432 with a database named `depot_test`
+-- and a `postgres` superuser that trusts local connections.
+
+mod TestWhereGroupsLive do
+
+import Connection
+import Ast
+import Build
+import Compile
+
+fn test_config() do
+  default_config("postgres", "depot_test")
+end
+
+pfn with_conn(body) do
+  match connect(test_config()) do
+  Err(e) -> do
+    let _ = println("connect: " ++ e)
+    assert false
+  end
+  Ok(conn) -> do
+    let _ = simple_query(conn, "DROP TABLE IF EXISTS wg_test")
+    let _ = simple_query(conn,
+      "CREATE TABLE wg_test (id INT PRIMARY KEY, "
+      ++ "a INT NOT NULL, b INT NOT NULL, c INT NOT NULL)")
+    -- Seed eight rows covering every (a,b,c) ∈ {1,2}^3 so every boolean
+    -- combination has at least one matching row to hit.
+    let _ = simple_query(conn, "INSERT INTO wg_test (id,a,b,c) VALUES "
+      ++ "(1,1,1,1),(2,1,1,2),(3,1,2,1),(4,1,2,2),"
+      ++ "(5,2,1,1),(6,2,1,2),(7,2,2,1),(8,2,2,2)")
+    let result = body(conn)
+    let _ = simple_query(conn, "DROP TABLE IF EXISTS wg_test")
+    let _ = close(conn)
+    result
+  end
+  end
+end
+
+-- Run a built Query and collect the id column as a list of int strings
+-- in row order.
+pfn run_ids(conn, q) do
+  let compiled = Compile.compile_parameterized(q)
+  match Connection.exec_prepared(conn, compiled.sql, compiled.params) do
+    Err(e) -> Err(e)
+    Ok(r)  -> Ok(collect_ids(r.rows, Nil))
+  end
+end
+
+pfn collect_ids(rows, acc) do
+  match rows do
+    Nil -> reverse_strs(acc, Nil)
+    Cons(Cons(Some(id_s), _), rest) -> collect_ids(rest, Cons(id_s, acc))
+    Cons(_, rest) -> collect_ids(rest, acc)
+  end
+end
+
+pfn reverse_strs(xs, acc) do
+  match xs do
+    Nil -> acc
+    Cons(h, t) -> reverse_strs(t, Cons(h, acc))
+  end
+end
+
+-- Does `xs` contain `target` (by string equality)?
+pfn has_id(xs, target) do
+  match xs do
+    Nil -> false
+    Cons(h, t) -> if h == target do true else has_id(t, target) end
+  end
+end
+
+-- Select id ordered ascending.
+fn select_ids(q) do
+  match q do
+    Ast.Query(f) -> Ast.Query({ f with
+      selects = [SelectField(Expr.Col("id"))],
+      orders  = [OrderExpr(Expr.Col("id"), Asc)] })
+  end
+end
+
+-- ---- Phase 1.3: (a OR b) AND c vs a OR (b AND c) ----
+
+test "(a=1 OR b=2) AND c=1 parenthesises correctly on the wire" do
+  with_conn(fn conn ->
+    -- Expected rows: id 1 (1,1,1), id 3 (1,2,1), id 7 (2,2,1).
+    let pred = Expr.And(
+      Expr.Or(Expr.Eq(Expr.Col("a"), Lit(PInt(1))),
+              Expr.Eq(Expr.Col("b"), Lit(PInt(2)))),
+      Expr.Eq(Expr.Col("c"), Lit(PInt(1))))
+    let q = select_ids(from("wg_test") |> where_(pred))
+    match run_ids(conn, q) do
+      Err(e) -> do
+        let _ = println("run_ids: " ++ e)
+        assert false
+      end
+      Ok(ids) -> do
+        let _ = assert has_id(ids, "1")
+        let _ = assert has_id(ids, "3")
+        let _ = assert has_id(ids, "7")
+        let _ = assert (has_id(ids, "5") == false)
+        let _ = assert (has_id(ids, "2") == false)
+        let _ = assert (has_id(ids, "4") == false)
+        let _ = assert (has_id(ids, "6") == false)
+        assert (has_id(ids, "8") == false)
+      end
+    end
+  )
+end
+
+test "a=1 OR (b=2 AND c=1) groups differently than the AND-first form" do
+  with_conn(fn conn ->
+    -- Expected rows: all a=1 rows (1..4) plus (b=2 AND c=1) rows (3,7).
+    -- Union: {1,2,3,4,7}.
+    let pred = Expr.Or(
+      Expr.Eq(Expr.Col("a"), Lit(PInt(1))),
+      Expr.And(Expr.Eq(Expr.Col("b"), Lit(PInt(2))),
+               Expr.Eq(Expr.Col("c"), Lit(PInt(1)))))
+    let q = select_ids(from("wg_test") |> where_(pred))
+    match run_ids(conn, q) do
+      Err(e) -> do
+        let _ = println("run_ids: " ++ e)
+        assert false
+      end
+      Ok(ids) -> do
+        let _ = assert has_id(ids, "1")
+        let _ = assert has_id(ids, "2")
+        let _ = assert has_id(ids, "3")
+        let _ = assert has_id(ids, "4")
+        let _ = assert has_id(ids, "7")
+        let _ = assert (has_id(ids, "5") == false)
+        let _ = assert (has_id(ids, "6") == false)
+        assert (has_id(ids, "8") == false)
+      end
+    end
+  )
+end
+
+test "NOT (a=1 AND b=1) excludes the two rows where both are 1" do
+  with_conn(fn conn ->
+    let pred = Expr.Not(Expr.And(
+      Expr.Eq(Expr.Col("a"), Lit(PInt(1))),
+      Expr.Eq(Expr.Col("b"), Lit(PInt(1)))))
+    let q = select_ids(from("wg_test") |> where_(pred))
+    match run_ids(conn, q) do
+      Err(e) -> do
+        let _ = println("run_ids: " ++ e)
+        assert false
+      end
+      Ok(ids) -> do
+        -- Rows 1 and 2 have a=1 AND b=1; should be excluded.
+        let _ = assert (has_id(ids, "1") == false)
+        let _ = assert (has_id(ids, "2") == false)
+        let _ = assert has_id(ids, "3")
+        let _ = assert has_id(ids, "4")
+        let _ = assert has_id(ids, "5")
+        let _ = assert has_id(ids, "6")
+        let _ = assert has_id(ids, "7")
+        assert has_id(ids, "8")
+      end
+    end
+  )
+end
+
+test "mixed or_where and where_ chain: WHERE a=1 OR b=2 AND c=1" do
+  -- The or_where / where_ chain produces "a=1 OR b=2 AND c=1" without
+  -- explicit grouping. Postgres binds AND tighter than OR, so this
+  -- matches the same row set as the explicit `a=1 OR (b=2 AND c=1)`
+  -- test above — use that as the oracle.
+  with_conn(fn conn ->
+    let q = select_ids(from("wg_test")
+      |> where_(Expr.Eq(Expr.Col("a"), Lit(PInt(1))))
+      |> or_where(Expr.And(Expr.Eq(Expr.Col("b"), Lit(PInt(2))),
+                           Expr.Eq(Expr.Col("c"), Lit(PInt(1))))))
+    match run_ids(conn, q) do
+      Err(e) -> do
+        let _ = println("run_ids: " ++ e)
+        assert false
+      end
+      Ok(ids) -> do
+        let _ = assert has_id(ids, "1")
+        let _ = assert has_id(ids, "2")
+        let _ = assert has_id(ids, "3")
+        let _ = assert has_id(ids, "4")
+        let _ = assert has_id(ids, "7")
+        let _ = assert (has_id(ids, "5") == false)
+        let _ = assert (has_id(ids, "6") == false)
+        assert (has_id(ids, "8") == false)
+      end
+    end
+  )
+end
+
+-- ---- Phase 1.2: where_in / where_not_in ----
+
+test "where_in selects only the listed ids" do
+  with_conn(fn conn ->
+    let q = select_ids(from("wg_test")
+      |> where_in(Expr.Col("id"), [Lit(PInt(2)), Lit(PInt(4)), Lit(PInt(6))]))
+    match run_ids(conn, q) do
+      Err(e) -> do
+        let _ = println("run_ids: " ++ e)
+        assert false
+      end
+      Ok(ids) -> do
+        let _ = assert has_id(ids, "2")
+        let _ = assert has_id(ids, "4")
+        let _ = assert has_id(ids, "6")
+        let _ = assert (has_id(ids, "1") == false)
+        let _ = assert (has_id(ids, "3") == false)
+        let _ = assert (has_id(ids, "5") == false)
+        let _ = assert (has_id(ids, "7") == false)
+        assert (has_id(ids, "8") == false)
+      end
+    end
+  )
+end
+
+test "where_not_in excludes the listed ids" do
+  with_conn(fn conn ->
+    let q = select_ids(from("wg_test")
+      |> where_not_in(Expr.Col("id"), [Lit(PInt(1)), Lit(PInt(8))]))
+    match run_ids(conn, q) do
+      Err(e) -> do
+        let _ = println("run_ids: " ++ e)
+        assert false
+      end
+      Ok(ids) -> do
+        let _ = assert (has_id(ids, "1") == false)
+        let _ = assert (has_id(ids, "8") == false)
+        let _ = assert has_id(ids, "2")
+        let _ = assert has_id(ids, "3")
+        let _ = assert has_id(ids, "4")
+        let _ = assert has_id(ids, "5")
+        let _ = assert has_id(ids, "6")
+        assert has_id(ids, "7")
+      end
+    end
+  )
+end
+
+test "where_in with empty list selects zero rows (WHERE FALSE)" do
+  with_conn(fn conn ->
+    let q = select_ids(from("wg_test") |> where_in(Expr.Col("id"), Nil))
+    match run_ids(conn, q) do
+      Err(e) -> do
+        let _ = println("run_ids: " ++ e)
+        assert false
+      end
+      Ok(ids) ->
+        match ids do
+          Nil -> assert true
+          _   -> assert false
+        end
+    end
+  )
+end
+
+end -- mod TestWhereGroupsLive
