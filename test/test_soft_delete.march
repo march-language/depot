@@ -1,0 +1,85 @@
+-- test/test_soft_delete.march
+-- Phase 3.3 — Soft delete conventions.
+--
+-- Opt-in is by declaring a `deleted_at` field on the schema (see
+-- `Depot.Schema.is_soft_deletable/1`). Read paths that want to hide
+-- deleted rows pipe through `Build.not_deleted/1`; the escape hatch is
+-- `Build.with_deleted/1`. `MutationBuild.soft_delete_for_table/1`
+-- returns an UPDATE that stamps `deleted_at = NOW()`.
+
+mod TestSoftDelete do
+
+import Ast
+import Build
+import Mutation
+import MutationBuild
+
+fn soft_schema() do
+  Depot.Schema.Schema(
+    "widgets",
+    [
+      ("id",         ("int",       Nil)),
+      ("name",       ("text",      Nil)),
+      ("deleted_at", ("timestamp", Nil))
+    ],
+    Nil,
+    "id"
+  )
+end
+
+fn hard_schema() do
+  Depot.Schema.Schema(
+    "hard_widgets",
+    [
+      ("id",   ("int",  Nil)),
+      ("name", ("text", Nil))
+    ],
+    Nil,
+    "id"
+  )
+end
+
+test "is_soft_deletable detects the deleted_at convention" do
+  let s = soft_schema()
+  let h = hard_schema()
+  let _ = assert Depot.Schema.is_soft_deletable(s)
+  assert !Depot.Schema.is_soft_deletable(h)
+end
+
+test "not_deleted appends a deleted_at IS NULL where-clause" do
+  let q = from("widgets") |> not_deleted
+  match q do
+  Query(f) -> match f.wheres do
+    Cons(Where(e), Nil) -> match e do
+      Expr.IsNull(c) -> match c do
+        Expr.Col(name) -> assert name == "deleted_at"
+        _              -> assert false
+      end
+      _ -> assert false
+    end
+    _ -> assert false
+  end
+  end
+end
+
+test "with_deleted strips the leading not_deleted filter" do
+  let q = from("widgets") |> not_deleted |> with_deleted
+  match q do
+  Query(f) -> match f.wheres do
+    Nil -> assert true
+    _   -> assert false
+  end
+  end
+end
+
+test "soft_delete_for_table produces an UPDATE with one SET assignment" do
+  let u = MutationBuild.soft_delete_for_table("widgets")
+  match u do
+  Update(f) -> match f.sets do
+    Cons(_, Nil) -> assert true
+    _            -> assert false
+  end
+  end
+end
+
+end -- mod TestSoftDelete

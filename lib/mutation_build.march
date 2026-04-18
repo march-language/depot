@@ -5,6 +5,7 @@ mod MutationBuild do
 
 import Ast
 import Mutation
+import Depot.Schema
 
 -- ---- INSERT builders ----
 
@@ -128,6 +129,34 @@ fn update_returning(u, exprs) do
   match u do
   Update(f) -> Update({ f with returning_ = exprs })
   end
+end
+
+--- Build a soft-delete UPDATE for a soft-deletable schema.
+---
+--- Produces `UPDATE "<table>" SET "deleted_at" = NOW()` with no WHERE
+--- clause. Typical usage composes a WHERE onto it with `update_where`
+--- or (preferred) bridges from a SELECT query via `update_all`.
+---
+---   soft_delete(schema) |> update_where(Eq(Col("id"), Lit(PInt(1))))
+---
+--- The schema is expected to declare a `deleted_at` field (see
+--- `Depot.Schema.is_soft_deletable/1`). When it doesn't, the caller is
+--- on their own — nothing here enforces the convention, but composing
+--- with `Build.from_schema/1` keeps the read + write sides in sync.
+fn soft_delete(schema) do
+  let tbl = Depot.Schema.table(schema)
+  soft_delete_for_table(tbl)
+end
+
+--- Same as `soft_delete/1` but takes the table name directly — useful
+--- when you don't have a schema value in hand.
+fn soft_delete_for_table(table) do
+  Update({
+    table_ = table,
+    sets   = [("deleted_at", Raw("NOW()"))],
+    wheres = Nil,
+    returning_ = Nil
+  })
 end
 
 -- ---- DELETE builders ----

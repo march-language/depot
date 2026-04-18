@@ -26,6 +26,37 @@ fn from(table) do
   })
 end
 
+--- Appends `WHERE "deleted_at" IS NULL`, the standard soft-delete
+--- filter. Composes freely with other where_/where_or/join builders.
+---
+--- Schema opt-in: schemas that declare a `deleted_at` field
+--- (see `Depot.Schema.is_soft_deletable/1`) should have this filter
+--- applied in their read path; non-soft schemas should not. Callers
+--- decide by branching on `is_soft_deletable` at the call site —
+--- pushing the decision into `Build.from` would entangle the query
+--- builder with schema metadata.
+fn not_deleted(q) do
+  where_(q, Expr.IsNull(Expr.Col("deleted_at")))
+end
+
+--- Removes a soft-delete filter added by `not_deleted/1` from the
+--- front of the WHERE list. Returns the query unchanged if no
+--- leading soft-delete filter is present.
+fn with_deleted(q) do
+  match q do
+  Query(f) -> match f.wheres do
+    Cons(Where(e), rest) -> match e do
+      Expr.IsNull(inner) -> match inner do
+        Expr.Col(name) -> if name == "deleted_at" then Query({ f with wheres = rest }) else q
+        _              -> q
+      end
+      _ -> q
+    end
+    _ -> q
+  end
+  end
+end
+
 --- Creates a query from a subquery with an alias.
 ---
 --- march> match from_subquery(from("inner"), "sub") do | Query(f) -> match f.from_ do | FromSubquery(_, a) -> a | _ -> "" end end

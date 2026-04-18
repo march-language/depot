@@ -240,6 +240,21 @@ fn primary_key(schema) do
   match schema do Schema(_, _, _, pk) -> pk end
 end
 
+fn has_field(schema, name) do
+  let fs = fields(schema)
+  match alist_get_opt(fs, name) do
+    Some(_) -> true
+    None    -> false
+  end
+end
+
+--- True if the schema opts into soft deletes by declaring a `deleted_at`
+--- field. This is the convention used by Build.from_schema to decide
+--- whether to auto-apply a `deleted_at IS NULL` filter.
+fn is_soft_deletable(schema) do
+  has_field(schema, "deleted_at")
+end
+
 fn is_virtual(schema, field_name) do
   match field_opts(schema, field_name) do
     Some(opts) -> alist_get(opts, "virtual", false)
