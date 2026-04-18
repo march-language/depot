@@ -1,0 +1,63 @@
+-- test/test_explain.march
+-- Phase 3.7 — Repo.explain / EXPLAIN pass-through.
+
+mod TestExplain do
+
+import Depot.Explain
+
+test "explain_sql with default opts prepends bare EXPLAIN" do
+  let out = Depot.Explain.explain_sql(
+              "SELECT * FROM \"users\"",
+              Depot.Explain.default_opts())
+  assert out == "EXPLAIN SELECT * FROM \"users\""
+end
+
+test "explain_sql with analyze_opts prepends EXPLAIN ANALYZE" do
+  let out = Depot.Explain.explain_sql(
+              "SELECT 1",
+              Depot.Explain.analyze_opts())
+  assert out == "EXPLAIN ANALYZE SELECT 1"
+end
+
+test "explain_sql emits option list when buffers is on" do
+  let opts = { analyze = true, verbose = false, costs = true,
+               buffers = true, format_ = "text" }
+  let out = Depot.Explain.explain_sql("SELECT 1", opts)
+  assert out == "EXPLAIN (BUFFERS, ANALYZE) SELECT 1"
+end
+
+test "explain_sql emits FORMAT when non-text format requested" do
+  let opts = { analyze = false, verbose = false, costs = true,
+               buffers = false, format_ = "json" }
+  let out = Depot.Explain.explain_sql("SELECT 1", opts)
+  assert out == "EXPLAIN (FORMAT json) SELECT 1"
+end
+
+test "explain_sql emits COSTS OFF when costs disabled" do
+  let opts = { analyze = false, verbose = false, costs = false,
+               buffers = false, format_ = "text" }
+  let out = Depot.Explain.explain_sql("SELECT 1", opts)
+  assert out == "EXPLAIN (COSTS OFF) SELECT 1"
+end
+
+test "parse_plan_line extracts node type and relation for Seq Scan" do
+  let node = Depot.Explain.parse_plan_line(
+               "Seq Scan on users  (cost=0.00..12.70 rows=270 width=36)")
+  let _ = assert node.node_type == "Seq Scan"
+  assert node.relation == "users"
+end
+
+test "parse_plan_line handles leading arrow on nested rows" do
+  let node = Depot.Explain.parse_plan_line(
+               "  ->  Index Scan using users_pkey on users  (cost=..)")
+  let _ = assert node.node_type == "Index Scan using users_pkey"
+  assert node.relation == "users"
+end
+
+test "parse_plan_line leaves relation blank when no ' on ' present" do
+  let node = Depot.Explain.parse_plan_line("Limit  (cost=0.00..0.05 rows=1)")
+  let _ = assert node.relation == ""
+  assert node.node_type == "Limit  (cost=0.00..0.05 rows=1)"
+end
+
+end -- mod TestExplain

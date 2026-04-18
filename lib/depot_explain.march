@@ -1,0 +1,153 @@
+-- depot/lib/depot_explain.march
+-- Phase 3.7 — Repo.explain pass-through.
+--
+-- `Depot.Explain` wraps an already-compiled SQL string with the PostgreSQL
+-- `EXPLAIN` / `EXPLAIN ANALYZE` prefix (honouring a handful of options) and
+-- provides a minimal parser that turns the text output back into a
+-- structured value so callers can assert on it in tests.
+--
+-- Two entry points:
+--   explain_sql(sql, opts)   — returns the SQL to send to the database
+--   parse_plan_line(line)    — parses a single plan line into a PlanNode
+--
+-- The parser is deliberately tiny: it recognises the "NodeType on relation"
+-- prefix that PostgreSQL emits for scan nodes. Anything else falls back to
+-- an opaque plan node with the whole line as the node type. Callers that
+-- need full-fidelity plans should use the JSON format and a dedicated
+-- decoder on top of this primitive.
+
+mod Depot.Explain do
+
+--- Options controlling which `EXPLAIN` flags are emitted. Mirrors the
+--- PostgreSQL switches. Construct with a record literal; `default_opts/0`
+--- returns a sensible starting value.
+type ExplainOpts = {
+  analyze : Bool,
+  verbose : Bool,
+  costs   : Bool,
+  buffers : Bool,
+  format_ : String
+}
+
+--- A parsed plan row. `detail` is the full trimmed text of the original
+--- line, so callers always have an escape hatch.
+type PlanNode = {
+  node_type : String,
+  relation  : String,
+  detail    : String
+}
+
+--- Default options: plain `EXPLAIN`, text output, costs on.
+fn default_opts() do
+  { analyze = false, verbose = false, costs = true,
+    buffers = false, format_ = "text" }
+end
+
+--- Shortcut: `EXPLAIN ANALYZE` with otherwise-default options.
+fn analyze_opts() do
+  { analyze = true, verbose = false, costs = true,
+    buffers = false, format_ = "text" }
+end
+
+--- Build the SQL to send to the database. `sql` is the already-compiled
+--- inner query (from `Compile.compile_inline` or similar); this function
+--- prepends the `EXPLAIN` prefix. When only `analyze` differs from the
+--- defaults the short `EXPLAIN ANALYZE ...` form is used; otherwise a
+--- parenthesised option list is emitted.
+fn explain_sql(sql, opts) do
+  if use_short_form(opts) then
+    if opts.analyze then "EXPLAIN ANALYZE " ++ sql
+    else "EXPLAIN " ++ sql
+  else
+    "EXPLAIN (" ++ build_opt_list(opts) ++ ") " ++ sql
+end
+
+-- True when only `analyze` (or nothing) differs from defaults, so we can
+-- emit the shorter syntax.
+pfn use_short_form(opts) do
+  opts.verbose == false
+    && opts.costs == true
+    && opts.buffers == false
+    && opts.format_ == "text"
+end
+
+pfn build_opt_list(opts) do
+  let parts_a = if opts.analyze then Cons("ANALYZE", Nil) else Nil
+  let parts_v = if opts.verbose then Cons("VERBOSE", parts_a) else parts_a
+  let parts_b = if opts.buffers then Cons("BUFFERS", parts_v) else parts_v
+  let parts_f = if opts.format_ == "text" then parts_b
+                else Cons("FORMAT " ++ opts.format_, parts_b)
+  let parts_c = if opts.costs then parts_f else Cons("COSTS OFF", parts_f)
+  join_commas(parts_c)
+end
+
+pfn join_commas(parts) do
+  match parts do
+  Nil -> ""
+  Cons(p, Nil) -> p
+  Cons(p, rest) -> p ++ ", " ++ join_commas(rest)
+  end
+end
+
+--- Parse a single PostgreSQL plan line into a `PlanNode`. Recognises the
+--- common "NodeType on relation" shape ("Seq Scan on users", "Index Scan
+--- using users_pkey on users"). Lines that don't match keep the whole
+--- (trimmed) text as the node type and leave the relation blank.
+fn parse_plan_line(line) do
+  let trimmed = String.trim(strip_arrow(line))
+  match split_on_relation(trimmed) do
+    Some((nt, rel)) ->
+      { node_type = nt, relation = rel, detail = trimmed }
+    None ->
+      { node_type = trimmed, relation = "", detail = trimmed }
+  end
+end
+
+-- Strip a leading "-> " produced by nested plan nodes, if present.
+pfn strip_arrow(s) do
+  let t = String.trim(s)
+  if String.starts_with(t, "-> ") then
+    String.slice(t, 3, String.byte_size(t) - 3)
+  else t
+end
+
+-- Split "Seq Scan on users  (cost=..)" into ("Seq Scan", "users"). Returns
+-- None if the " on " infix is absent.
+pfn split_on_relation(s) do
+  match find_substring(s, " on ", 0) do
+    None    -> None
+    Some(i) -> do
+      let before = String.slice(s, 0, i)
+      let rest_start = i + 4
+      let after = String.slice(s, rest_start, String.byte_size(s) - rest_start)
+      Some((before, take_ident(after)))
+    end
+  end
+end
+
+-- Linear substring search. Returns Some(index) or None.
+pfn find_substring(hay, needle, pos) do
+  let hl = String.byte_size(hay)
+  let nl = String.byte_size(needle)
+  if pos + nl > hl then None
+  else if String.slice(hay, pos, nl) == needle then Some(pos)
+  else find_substring(hay, needle, pos + 1)
+end
+
+-- Read the leading identifier from a string (stops at space, '(', or end).
+pfn take_ident(s) do
+  take_ident_at(s, 0)
+end
+
+pfn take_ident_at(s, i) do
+  let n = String.byte_size(s)
+  if i >= n then s
+  else do
+    let ch = String.slice(s, i, 1)
+    if ch == " " then String.slice(s, 0, i)
+    else if ch == "(" then String.trim(String.slice(s, 0, i))
+    else take_ident_at(s, i + 1)
+  end
+end
+
+end
