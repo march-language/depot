@@ -221,25 +221,97 @@ pfn run_migration(m : MigFile, fn_name : String) : Result((), String) do
   end
 end
 
+-- ---- String helpers ----
+
+pfn to_pascal_case(parts) do
+  to_pascal_acc(parts, "")
+end
+
+pfn to_pascal_acc(parts, acc) do
+  match parts do
+  Nil            -> acc
+  Cons(p, rest)  ->
+    if String.is_empty(p) then to_pascal_acc(rest, acc)
+    else do
+      let cap = String.to_uppercase(String.slice_bytes(p, 0, 1))
+              ++ String.slice_bytes(p, 1, String.byte_size(p) - 1)
+      to_pascal_acc(rest, acc ++ cap)
+    end
+  end
+end
+
+-- ---- List helpers ----
+
+pfn int_list_contains(lst, n) do
+  match lst do
+  Nil           -> false
+  Cons(x, rest) ->
+    if x == n then true else int_list_contains(rest, n)
+  end
+end
+
+pfn list_is_empty(lst : List(a)) : Bool do
+  match lst do
+  Nil -> true
+  _   -> false
+  end
+end
+
+pfn list_length(lst : List(a)) : Int do list_len_acc(lst, 0) end
+pfn list_len_acc(lst : List(a), acc : Int) : Int do
+  match lst do
+  Nil           -> acc
+  Cons(_, rest) -> list_len_acc(rest, acc + 1)
+  end
+end
+
+pfn list_reverse(lst : List(a)) : List(a) do list_rev_acc(lst, []) end
+pfn list_rev_acc(lst : List(a), acc : List(a)) : List(a) do
+  match lst do
+  Nil           -> acc
+  Cons(x, rest) -> list_rev_acc(rest, Cons(x, acc))
+  end
+end
+
+pfn take(n : Int, lst : List(a)) : List(a) do
+  list_rev_acc(take_acc(n, lst, Nil), Nil)
+end
+
+pfn take_acc(n : Int, lst : List(a), acc : List(a)) : List(a) do
+  if n == 0 then acc
+  else
+    match lst do
+    Nil           -> acc
+    Cons(x, rest) -> take_acc(n - 1, rest, Cons(x, acc))
+    end
+end
+
+pfn sort_int_list(lst) do sort_int_acc(lst, Nil) end
+
+pfn sort_int_acc(lst, acc) do
+  match lst do
+  Nil -> acc
+  Cons(h, rest) -> sort_int_acc(rest, insert_int(h, acc))
+  end
+end
+
+pfn insert_int(n, lst) do
+  match lst do
+  Nil -> Cons(n, Nil)
+  Cons(h, rest) ->
+    if n <= h then Cons(n, Cons(h, rest))
+    else Cons(h, insert_int(n, rest))
+  end
+end
 -- ---- Commands ----
 
 --- forge depot migrate — apply all pending migrations in order.
-fn migrate() do
-  let all     = discover_migrations()
-  let applied = read_applied()
-  let pending = filter_pending(all, applied)
-  if list_is_empty(pending) then do
-    println("Already up to date. No pending migrations.")
-    Ok(())
-  end else do
-    println("Running " ++ int_to_string(list_length(pending)) ++ " migration(s)...")
-    match run_pending_up(pending) do
-    Err(e) -> Err(e)
-    Ok(_)  -> do
-      println("Migrations complete. " ++ int_to_string(list_length(pending)) ++ " applied.")
-      Ok(())
-    end
-    end
+pfn find_migration(all : List(MigFile), version : Int) : Option(MigFile) do
+  match all do
+  Nil           -> None
+  Cons(m, rest) ->
+    if m.version == version then Some(m)
+    else find_migration(rest, version)
   end
 end
 
@@ -272,6 +344,55 @@ pfn run_pending_up(pending : List(MigFile)) : Result((), String) do
   end
 end
 
+pfn run_rollback_list(versions : List(Int), all : List(MigFile)) : Result((), String) do
+  match versions do
+  Nil                -> Ok(())
+  Cons(version, v_rest) ->
+    match find_migration(all, version) do
+    None -> do
+      println("  * rolling back " ++ int_to_string(version) ++ "... MISSING FILE (skipped)")
+      remove_applied(version)
+      run_rollback_list(v_rest, all)
+    end
+    Some(m) -> do
+      print("  * rolling back " ++ int_to_string(m.version) ++ "_" ++ m.name ++ "... ")
+      match run_migration(m, "down") do
+      Err(msg) -> do
+        println("FAILED")
+        Err(msg)
+      end
+      Ok(_) -> do
+        remove_applied(m.version)
+        println("done")
+        run_rollback_list(v_rest, all)
+      end
+      end
+    end
+    end
+  end
+end
+
+fn migrate() do
+  let all     = discover_migrations()
+  let applied = read_applied()
+  let pending = filter_pending(all, applied)
+  if list_is_empty(pending) then do
+    println("Already up to date. No pending migrations.")
+    Ok(())
+  end else do
+    println("Running " ++ int_to_string(list_length(pending)) ++ " migration(s)...")
+    match run_pending_up(pending) do
+    Err(e) -> Err(e)
+    Ok(_)  -> do
+      println("Migrations complete. " ++ int_to_string(list_length(pending)) ++ " applied.")
+      Ok(())
+    end
+    end
+  end
+end
+
+
+
 --- forge depot rollback [--step N] — roll back the last N migrations.
 fn rollback(step) do
   let all          = discover_migrations()
@@ -293,42 +414,7 @@ fn rollback(step) do
   end
 end
 
-pfn run_rollback_list(versions : List(Int), all : List(MigFile)) : Result((), String) do
-  match versions do
-  Nil                -> Ok(())
-  Cons(version, rest) ->
-    match find_migration(all, version) do
-    None -> do
-      println("  * rolling back " ++ int_to_string(version) ++ "... MISSING FILE (skipped)")
-      remove_applied(version)
-      run_rollback_list(rest, all)
-    end
-    Some(m) -> do
-      print("  * rolling back " ++ int_to_string(m.version) ++ "_" ++ m.name ++ "... ")
-      match run_migration(m, "down") do
-      Err(msg) -> do
-        println("FAILED")
-        Err(msg)
-      end
-      Ok(_) -> do
-        remove_applied(m.version)
-        println("done")
-        run_rollback_list(rest, all)
-      end
-      end
-    end
-    end
-  end
-end
 
-pfn find_migration(all : List(MigFile), version : Int) : Option(MigFile) do
-  match all do
-  Nil           -> None
-  Cons(m, rest) ->
-    if m.version == version then Some(m)
-    else find_migration(rest, version)
-  end
-end
 
 --- forge depot migrations — show migration status.
 fn migrations() do
@@ -428,87 +514,5 @@ fn gen_migration(name) do
   end
 end
 
--- ---- String helpers ----
-
-pfn to_pascal_case(parts) do
-  to_pascal_acc(parts, "")
-end
-
-pfn to_pascal_acc(parts, acc) do
-  match parts do
-  Nil            -> acc
-  Cons(p, rest)  ->
-    if String.is_empty(p) then to_pascal_acc(rest, acc)
-    else do
-      let cap = String.to_uppercase(String.slice_bytes(p, 0, 1))
-              ++ String.slice_bytes(p, 1, String.byte_size(p) - 1)
-      to_pascal_acc(rest, acc ++ cap)
-    end
-  end
-end
-
--- ---- List helpers ----
-
-pfn int_list_contains(lst, n) do
-  match lst do
-  Nil           -> false
-  Cons(x, rest) ->
-    if x == n then true else int_list_contains(rest, n)
-  end
-end
-
-pfn list_is_empty(lst) do
-  match lst do
-  Nil -> true
-  _   -> false
-  end
-end
-
-pfn list_length(lst) do list_len_acc(lst, 0) end
-pfn list_len_acc(lst, acc) do
-  match lst do
-  Nil           -> acc
-  Cons(_, rest) -> list_len_acc(rest, acc + 1)
-  end
-end
-
-pfn list_reverse(lst) do list_rev_acc(lst, []) end
-pfn list_rev_acc(lst, acc) do
-  match lst do
-  Nil           -> acc
-  Cons(x, rest) -> list_rev_acc(rest, Cons(x, acc))
-  end
-end
-
-pfn take(n, lst) do
-  list_rev_acc(take_acc(n, lst, Nil), Nil)
-end
-
-pfn take_acc(n, lst, acc) do
-  if n == 0 then acc
-  else
-    match lst do
-    Nil           -> acc
-    Cons(x, rest) -> take_acc(n - 1, rest, Cons(x, acc))
-    end
-end
-
-pfn sort_int_list(lst) do sort_int_acc(lst, Nil) end
-
-pfn sort_int_acc(lst, acc) do
-  match lst do
-  Nil -> acc
-  Cons(h, rest) -> sort_int_acc(rest, insert_int(h, acc))
-  end
-end
-
-pfn insert_int(n, lst) do
-  match lst do
-  Nil -> Cons(n, Nil)
-  Cons(h, rest) ->
-    if n <= h then Cons(n, Cons(h, rest))
-    else Cons(h, insert_int(n, rest))
-  end
-end
 
 end
