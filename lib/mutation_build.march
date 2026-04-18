@@ -159,6 +159,34 @@ fn soft_delete_for_table(table) do
   })
 end
 
+--- Build an optimistically-locked UPDATE for `table`.
+---
+--- Produces `UPDATE "<table>" SET "lock_version" = "lock_version" + 1`
+--- with `WHERE "lock_version" = <expected_version>`. Compose further
+--- SET assignments via `set_/3` and additional WHERE predicates via
+--- `update_where/2`. Execution semantics are left to the caller:
+---   - rows_affected == 1 -> success
+---   - rows_affected == 0 -> StaleEntry (someone else bumped the row)
+fn locked_update(table, expected_version) do
+  Update({
+    table_ = table,
+    sets   = [("lock_version",
+               Add(Col("lock_version"), Lit(PInt(1))))],
+    wheres = [Where(Eq(Col("lock_version"), Lit(PInt(expected_version))))],
+    returning_ = Nil
+  })
+end
+
+--- Classifier for locked_update execution results. Given the number of
+--- rows affected by the UPDATE, returns Ok(()) if exactly one row
+--- matched (success) or Err("stale_entry") otherwise.
+---
+--- Pair with `Connection.exec_prepared` + rows_affected/status-tag
+--- parsing on the execution side.
+fn classify_locked_update_result(rows_affected) do
+  if rows_affected == 1 then Ok(()) else Err("stale_entry")
+end
+
 -- ---- DELETE builders ----
 
 --- Creates a new DELETE query for the given table.

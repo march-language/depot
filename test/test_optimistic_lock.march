@@ -1,0 +1,73 @@
+-- test/test_optimistic_lock.march
+-- Phase 3.4 — Optimistic locking via lock_version.
+
+mod TestOptimisticLock do
+
+import Ast
+import Mutation
+import MutationBuild
+
+test "locked_update sets lock_version = lock_version + 1" do
+  let u = MutationBuild.locked_update("widgets", 7)
+  match u do
+  Update(f) -> match f.sets do
+    Cons((col, e), Nil) -> do
+      let _ = assert col == "lock_version"
+      match e do
+        Add(Col("lock_version"), Lit(PInt(1))) -> assert true
+        _                                      -> assert false
+      end
+    end
+    _ -> assert false
+  end
+  end
+end
+
+test "locked_update adds WHERE lock_version = expected" do
+  let u = MutationBuild.locked_update("widgets", 7)
+  match u do
+  Update(f) -> match f.wheres do
+    Cons(Where(e), Nil) -> match e do
+      Eq(Col("lock_version"), Lit(PInt(7))) -> assert true
+      _                                     -> assert false
+    end
+    _ -> assert false
+  end
+  end
+end
+
+test "locked_update is the intended table and has no returning by default" do
+  let u = MutationBuild.locked_update("widgets", 0)
+  match u do
+  Update(f) -> do
+    let _ = assert f.table_ == "widgets"
+    match f.returning_ do
+      Nil -> assert true
+      _   -> assert false
+    end
+  end
+  end
+end
+
+test "classify_locked_update_result returns Ok when exactly one row changed" do
+  match MutationBuild.classify_locked_update_result(1) do
+    Ok(_) -> assert true
+    _     -> assert false
+  end
+end
+
+test "classify_locked_update_result returns Err stale_entry on zero rows" do
+  match MutationBuild.classify_locked_update_result(0) do
+    Err(tag) -> assert tag == "stale_entry"
+    _        -> assert false
+  end
+end
+
+test "classify_locked_update_result treats any non-1 affected count as stale" do
+  match MutationBuild.classify_locked_update_result(2) do
+    Err(tag) -> assert tag == "stale_entry"
+    _        -> assert false
+  end
+end
+
+end -- mod TestOptimisticLock
