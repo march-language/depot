@@ -17,6 +17,9 @@
 
 mod Depot.Migration do
 
+import Connection
+import Depot.Transaction
+
 -- ---------------------------------------------------------------------------
 -- Private helpers
 -- ---------------------------------------------------------------------------
@@ -216,6 +219,30 @@ fn drop_table(name) do
 end
 
 doc """
+Generate a DROP TABLE IF EXISTS statement. Idempotent — safe to re-run.
+
+    Depot.Migration.drop_table_if_exists("old_table")
+"""
+fn drop_table_if_exists(name) do
+  let sql = "DROP TABLE IF EXISTS \"" ++ name ++ "\""
+  log_sql(sql)
+end
+
+doc """
+Generate a CREATE TABLE IF NOT EXISTS statement. Idempotent — safe to
+re-run against a database that already has the table.
+
+    Depot.Migration.create_table_if_not_exists("users", { id = ("UUID", { primary_key = true }) })
+"""
+fn create_table_if_not_exists(name, columns) do
+  let entries = record_entries(columns)
+  let col_fragments = columns_sql(entries)
+  let cols = join_strings(col_fragments, ", ")
+  let sql = "CREATE TABLE IF NOT EXISTS \"" ++ name ++ "\" (" ++ cols ++ ")"
+  log_sql(sql)
+end
+
+doc """
 Generate a CREATE INDEX statement.
 
 columns is a list of column name strings.
@@ -366,6 +393,368 @@ Check if a migration version has been applied.
 fn is_applied(version) do
   let versions = applied_migrations()
   list_contains(versions, version)
+end
+
+-- ---------------------------------------------------------------------------
+-- Execution against a live PostgreSQL connection (phase 2.4)
+-- ---------------------------------------------------------------------------
+
+-- Clear the pending SQL log and return the previous contents (oldest first).
+pfn drain_log() do
+  let t = ensure_vault()
+  let current = match Vault.get(t, "log") do
+    Some(lst) -> lst
+    None      -> Nil
+  end
+  Vault.set(t, "log", Nil)
+  -- log_sql prepends; reverse so callers see statements in issue order.
+  reverse_strings(current, Nil)
+end
+
+pfn reverse_strings(xs, acc) do
+  match xs do
+    Nil -> acc
+    Cons(h, t) -> reverse_strings(t, Cons(h, acc))
+  end
+end
+
+pfn reverse_ints(xs, acc) do
+  match xs do
+    Nil -> acc
+    Cons(h, t) -> reverse_ints(t, Cons(h, acc))
+  end
+end
+
+pfn reverse_migrations(xs, acc) do
+  match xs do
+    Nil -> acc
+    Cons(h, t) -> reverse_migrations(t, Cons(h, acc))
+  end
+end
+
+-- Execute a list of SQL strings in order against `conn`, short-circuiting
+-- on the first error.
+pfn exec_statements(conn, stmts) do
+  match stmts do
+    Nil -> Ok(())
+    Cons(sql, rest) ->
+      match Connection.simple_query(conn, sql) do
+        Err(e) -> Err("migration statement `" ++ sql ++ "`: " ++ e)
+        Ok(_)  -> exec_statements(conn, rest)
+      end
+  end
+end
+
+doc """
+Execute `migration_fn` against a live PostgreSQL connection.
+
+`migration_fn` is a thunk (`fn () -> _`) that builds the migration by
+calling `create_table`, `alter_table`, `create_index`, etc.  Each call
+accumulates SQL in the Vault log; after the thunk returns, this
+function drains the log and executes every statement inside a single
+`Depot.Transaction.run`.  A statement failure rolls back all siblings.
+
+Returns `Ok(())` on full success, `Err(reason)` on the first failure.
+On error, the Vault log is consumed either way — failed migrations
+do not leave stale pending statements behind.
+
+    Depot.Migration.run(conn, fn () ->
+      Depot.Migration.create_table_if_not_exists("users", {
+        id = ("UUID", { primary_key = true }),
+        email = ("String", { null = false })
+      })
+    )
+"""
+fn run(conn, migration_fn) do
+  -- Drain any stale log entries from earlier calls so we start clean.
+  let _ = drain_log()
+  -- Run migration_fn inside __try_call: a panic during SQL construction
+  -- (e.g. an assertion in a user-supplied helper) must NOT leave the log
+  -- half-populated for the next migration.  Either we get a clean log
+  -- and proceed, or we short-circuit with Err and the log is drained.
+  match __try_call(fn _ -> migration_fn()) do
+    Err(panic) -> do
+      let _ = drain_log()
+      Err("migration build panicked: " ++ panic)
+    end
+    Ok(_) -> do
+      let stmts = drain_log()
+      Depot.Transaction.run(conn, fn c -> exec_statements(c, stmts))
+    end
+  end
+end
+
+doc """
+Execute a single SQL string against `conn`, wrapped in a transaction.
+Convenience for one-off migrations where populating the log would be
+overkill.
+"""
+fn run_sql(conn, sql) do
+  Depot.Transaction.run(conn, fn c -> exec_statements(c, Cons(sql, Nil)))
+end
+
+-- ---------------------------------------------------------------------------
+-- Migration versioning — phase 2.5
+-- ---------------------------------------------------------------------------
+
+-- A versioned migration is a structural record with three fields:
+--   version : Int           — monotonic version (e.g. 20260418120000)
+--   up      : List(String)  — forward SQL statements, applied in order
+--   down    : List(String)  — reverse SQL statements, applied in order
+--
+-- The up/down lists are plain SQL rather than thunks because march's
+-- typechecker doesn't reliably infer `() -> Unit` fields inside record
+-- literals — threading raw SQL keeps the surface simple and lets
+-- `migrate` reuse `Migration.run_statements` for both directions.
+
+-- Ensure the schema_migrations table exists on `conn`.
+pfn ensure_migrations_table(conn) do
+  let sql = "CREATE TABLE IF NOT EXISTS \"schema_migrations\" "
+         ++ "(\"version\" BIGINT NOT NULL, "
+         ++ "\"inserted_at\" TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+         ++ "PRIMARY KEY (\"version\"))"
+  match Connection.simple_query(conn, sql) do
+    Err(e) -> Err("schema_migrations bootstrap: " ++ e)
+    Ok(_)  -> Ok(())
+  end
+end
+
+pfn extract_version(row) do
+  match row do
+    Cons(Some(s), Nil) ->
+      match String.to_int(s) do
+        Ok(n)  -> Some(n)
+        Err(_) -> None
+      end
+    _ -> None
+  end
+end
+
+pfn parse_version_rows(rows, acc) do
+  match rows do
+    Nil -> acc
+    Cons(row, rest) ->
+      match extract_version(row) do
+        Some(n) -> parse_version_rows(rest, Cons(n, acc))
+        None    -> parse_version_rows(rest, acc)
+      end
+  end
+end
+
+doc """
+Read the list of applied migration versions from `schema_migrations`,
+ordered ascending.  Ensures the tracking table exists.
+"""
+fn applied_versions(conn) do
+  match ensure_migrations_table(conn) do
+    Err(e) -> Err(e)
+    Ok(_) ->
+      match Connection.simple_query(conn,
+          "SELECT version::text FROM schema_migrations ORDER BY version ASC") do
+        Err(e) -> Err("schema_migrations read: " ++ e)
+        Ok(r)  -> do
+          let rs = r.rows
+          Ok(reverse_ints(parse_version_rows(rs, Nil), Nil))
+        end
+      end
+  end
+end
+
+-- Sort migrations by version ascending (insertion sort — migration
+-- counts are tiny in practice).
+pfn insert_sorted(m, acc) do
+  match acc do
+    Nil -> Cons(m, Nil)
+    Cons(h, t) ->
+      if m.version < h.version do Cons(m, Cons(h, t))
+      else Cons(h, insert_sorted(m, t))
+      end
+  end
+end
+
+pfn sort_migrations(ms, acc) do
+  match ms do
+    Nil -> acc
+    Cons(m, rest) -> sort_migrations(rest, insert_sorted(m, acc))
+  end
+end
+
+pfn int_member(n, xs) do
+  match xs do
+    Nil -> false
+    Cons(h, t) -> if h == n do true else int_member(n, t) end
+  end
+end
+
+-- Detect versions recorded in the DB that aren't in the supplied code list.
+-- Divergence means the checkout is older than the DB — fail loud rather
+-- than silently "migrating" past state we don't know how to reverse.
+pfn find_divergence(applied, code_versions) do
+  match applied do
+    Nil -> None
+    Cons(v, rest) ->
+      if int_member(v, code_versions) do find_divergence(rest, code_versions)
+      else Some(v)
+      end
+  end
+end
+
+pfn versions_of(ms, acc) do
+  match ms do
+    Nil -> acc
+    Cons(m, rest) -> versions_of(rest, Cons(m.version, acc))
+  end
+end
+
+doc """
+Execute a pre-built list of SQL statements inside a single transaction,
+recording them in the migration log for uniform telemetry.  Used by
+`migrate` and `rollback` to run a migration's `up` / `down` list.
+"""
+fn run_statements(conn, stmts) do
+  Depot.Transaction.run(conn, fn c -> exec_statements(c, stmts))
+end
+
+-- Run each pending migration's `up` in order, recording the version
+-- after success.  Stop on first failure.
+pfn run_pending(conn, pending) do
+  match pending do
+    Nil -> Ok(0)
+    Cons(m, rest) ->
+      match run_statements(conn, m.up) do
+        Err(e) -> Err("migration " ++ int_to_string(m.version) ++ ": " ++ e)
+        Ok(_) ->
+          let insert_sql = "INSERT INTO schema_migrations (version) VALUES ("
+                        ++ int_to_string(m.version) ++ ")"
+          match Connection.simple_query(conn, insert_sql) do
+            Err(e) -> Err("record migration " ++ int_to_string(m.version) ++ ": " ++ e)
+            Ok(_) ->
+              match run_pending(conn, rest) do
+                Err(e) -> Err(e)
+                Ok(n)  -> Ok(n + 1)
+              end
+          end
+      end
+  end
+end
+
+pfn filter_pending(sorted, applied, acc) do
+  match sorted do
+    Nil -> reverse_migrations(acc, Nil)
+    Cons(m, rest) ->
+      if int_member(m.version, applied) do filter_pending(rest, applied, acc)
+      else filter_pending(rest, applied, Cons(m, acc))
+      end
+  end
+end
+
+doc """
+Apply every migration in `migrations` whose version is not yet in the
+DB's `schema_migrations` table.
+
+Migrations are applied in ascending `version` order.  Each migration's
+`up` runs inside its own transaction via `Depot.Migration.run`, and
+its version is recorded in `schema_migrations` on success.  The first
+failure short-circuits the run.
+
+If the DB records a version that is not present in `migrations`, this
+is treated as schema/code divergence (older checkout) and surfaces as
+`Err("divergent version ...")` before any migration runs.
+
+Returns `Ok(n)` where n is the number of migrations applied.
+
+    Depot.Migration.migrate(conn, [m1, m2, m3])
+"""
+fn migrate(conn, migrations) do
+  match applied_versions(conn) do
+    Err(e) -> Err(e)
+    Ok(applied) ->
+      let code_versions = versions_of(migrations, Nil)
+      match find_divergence(applied, code_versions) do
+        Some(v) -> Err("divergent version " ++ int_to_string(v)
+                    ++ " recorded in schema_migrations but missing from the code")
+        None ->
+          let sorted  = sort_migrations(migrations, Nil)
+          let pending = filter_pending(sorted, applied, Nil)
+          run_pending(conn, pending)
+      end
+  end
+end
+
+-- Look up a migration by version in the supplied list.
+pfn find_migration(ms, version) do
+  match ms do
+    Nil -> None
+    Cons(m, rest) ->
+      if m.version == version do Some(m) else find_migration(rest, version) end
+  end
+end
+
+-- Run `down` for each version in `versions` (already in the order to
+-- run — most recent first), deleting the schema_migrations row after
+-- success.
+pfn run_downs(conn, migrations, versions) do
+  match versions do
+    Nil -> Ok(0)
+    Cons(v, rest) ->
+      match find_migration(migrations, v) do
+        None -> Err("rollback: migration " ++ int_to_string(v) ++ " missing from code")
+        Some(m) ->
+          match run_statements(conn, m.down) do
+            Err(e) -> Err("rollback " ++ int_to_string(v) ++ ": " ++ e)
+            Ok(_) ->
+              let delete_sql = "DELETE FROM schema_migrations WHERE version = "
+                            ++ int_to_string(v)
+              match Connection.simple_query(conn, delete_sql) do
+                Err(e) -> Err("rollback record " ++ int_to_string(v) ++ ": " ++ e)
+                Ok(_) ->
+                  match run_downs(conn, migrations, rest) do
+                    Err(e) -> Err(e)
+                    Ok(n)  -> Ok(n + 1)
+                  end
+              end
+          end
+      end
+  end
+end
+
+-- Take the last n elements of a list (as an ordered take-from-tail).
+pfn list_length(xs) do
+  match xs do
+    Nil -> 0
+    Cons(_, t) -> 1 + list_length(t)
+  end
+end
+
+pfn list_drop(xs, n) do
+  if n <= 0 do xs
+  else match xs do
+    Nil -> Nil
+    Cons(_, t) -> list_drop(t, n - 1)
+  end end
+end
+
+doc """
+Run `down` for the last `n` applied migrations, most-recent first.
+
+The applied set is read from `schema_migrations`; each `down` runs
+inside its own transaction; the version row is deleted from
+`schema_migrations` after a successful `down`.  Missing-in-code
+migrations short-circuit the rollback with `Err`.
+
+Returns `Ok(k)` where k is the number of migrations actually reversed.
+"""
+fn rollback(conn, migrations, n) do
+  match applied_versions(conn) do
+    Err(e) -> Err(e)
+    Ok(applied) ->
+      -- applied is ascending; we want the last n in descending order.
+      let total = list_length(applied)
+      let skip  = total - n
+      let tail  = list_drop(applied, if skip < 0 then 0 else skip)
+      let descending = reverse_ints(tail, Nil)
+      run_downs(conn, migrations, descending)
+  end
 end
 
 end

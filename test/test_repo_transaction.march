@@ -1,0 +1,128 @@
+-- test/test_repo_transaction.march
+-- Phase 1.1 — Depot.Transaction against a live PostgreSQL.
+--
+-- Requires Postgres on 127.0.0.1:5432 with a database named `depot_test`
+-- and a `postgres` superuser that trusts local connections. Missing
+-- fixture ⇒ every test errors out at `Connection.connect`, which is
+-- clearly a fixture problem rather than a logic bug.
+
+mod TestRepoTransaction do
+
+import Connection
+import Depot.Transaction
+
+fn test_config() do
+  default_config("postgres", "depot_test")
+end
+
+pfn with_conn(body) do
+  match connect(test_config()) do
+  Err(e) -> do
+    let _ = println("connect: " ++ e)
+    assert false
+  end
+  Ok(conn) -> do
+    let _ = simple_query(conn, "DROP TABLE IF EXISTS tx_test")
+    let _ = simple_query(conn, "CREATE TABLE tx_test (v INT)")
+    let result = body(conn)
+    let _ = simple_query(conn, "DROP TABLE tx_test")
+    let _ = close(conn)
+    result
+  end
+  end
+end
+
+pfn row_count(conn) do
+  match simple_query(conn, "SELECT COUNT(*)::text FROM tx_test") do
+    Ok(r) ->
+      match r.rows do
+        Cons(Cons(Some(s), Nil), Nil) -> s
+        _ -> "?"
+      end
+    Err(_) -> "err"
+  end
+end
+
+test "run commits on Ok" do
+  with_conn(fn conn ->
+    let tx = run(conn, fn c ->
+      let _ = simple_query(c, "INSERT INTO tx_test VALUES (1), (2)")
+      Ok(42)
+    )
+    match tx do
+      Err(e) -> do
+        let _ = println("tx err: " ++ e)
+        assert false
+      end
+      Ok(v) -> do
+        let _ = assert v == 42
+        assert row_count(conn) == "2"
+      end
+    end
+  )
+end
+
+test "run rolls back on Err and leaves table untouched" do
+  with_conn(fn conn ->
+    let tx = run(conn, fn c ->
+      let _ = simple_query(c, "INSERT INTO tx_test VALUES (99)")
+      Err("intentional")
+    )
+    match tx do
+      Ok(_) -> assert false
+      Err(reason) -> do
+        let _ = assert reason == "intentional"
+        assert row_count(conn) == "0"
+      end
+    end
+  )
+end
+
+test "nested run uses savepoints — inner Err does not kill outer" do
+  with_conn(fn conn ->
+    let outer = run(conn, fn c ->
+      let _ = simple_query(c, "INSERT INTO tx_test VALUES (1)")
+      let inner = run(c, fn c2 ->
+        let _ = simple_query(c2, "INSERT INTO tx_test VALUES (2)")
+        Err("inner fail")
+      )
+      match inner do
+        Ok(_)  -> Ok("unexpected")
+        Err(_) -> Ok("outer survived")
+      end
+    )
+    match outer do
+      Err(e) -> do
+        let _ = println("outer err: " ++ e)
+        assert false
+      end
+      Ok(tag) -> do
+        let _ = assert tag == "outer survived"
+        -- Only the outer insert (v=1) survives; inner (v=2) was
+        -- rolled back via ROLLBACK TO SAVEPOINT.
+        assert row_count(conn) == "1"
+      end
+    end
+  )
+end
+
+test "run rolls back when callback panics" do
+  with_conn(fn conn ->
+    let tx = run(conn, fn c ->
+      let _ = simple_query(c, "INSERT INTO tx_test VALUES (7)")
+      -- Panic via division by zero — __try_call inside run must catch
+      -- this and surface it as Err, triggering ROLLBACK.
+      let _ = 1 / 0
+      Ok(())
+    )
+    match tx do
+      Ok(_) -> assert false
+      Err(_) -> do
+        -- The insert must have been rolled back.
+        assert row_count(conn) == "0"
+      end
+    end
+  )
+end
+
+end -- mod TestRepoTransaction

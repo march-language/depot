@@ -250,6 +250,19 @@ fn with_conn(pool, callback) do
   end
 end
 
+--- Executes a callback with a pooled connection held exclusively for the
+--- callback's entire lifetime.
+---
+--- Semantically identical to `with_conn` today — kept as a separate entry
+--- point so transactional callers (e.g. `Depot.Transaction.run_pool`)
+--- can express their intent ("don't reap or reuse this connection until
+--- I'm done") and so future pool extensions (idle-reap timers, health
+--- pings) can special-case pinned connections without affecting the
+--- standard lease path.
+fn with_conn_pinned(pool, callback) do
+  with_conn(pool, callback)
+end
+
 --- Returns a PoolStats snapshot of the pool's current state.
 ---
 --- Uses actor_get_int on state fields 0 (checked_out) and 3 (idle_count).

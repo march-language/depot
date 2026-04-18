@@ -1,0 +1,146 @@
+-- depot/lib/transaction.march
+-- Depot.Transaction: PostgreSQL-backed transactions for `Depot.Repo`.
+--
+-- Phase 1.1 of the ROADMAP. The contract is deliberately narrow:
+--
+--   * Top-level `run(conn, fn c -> ...)` issues `BEGIN`, runs the callback,
+--     then `COMMIT` on `Ok(_)` or `ROLLBACK` on `Err(_)`.
+--   * Nested `run` calls (same fd) degrade to `SAVEPOINT sp_<depth>` /
+--     `RELEASE SAVEPOINT` / `ROLLBACK TO SAVEPOINT`, so inner failures can
+--     be caught without tanking the outer transaction.
+--   * `run_pool(pool, ...)` checks out a connection, pins it for the whole
+--     transaction (`Pool.with_conn_pinned`), then delegates to `run`.
+--
+-- Depth tracking uses a single Vault table keyed by file descriptor.  The
+-- pool hands out one ConnState per checkout, so the fd uniquely identifies
+-- the transaction context for the duration of the callback.
+
+mod Depot.Transaction do
+
+import Connection
+import Pool
+
+-- ---- Depth tracking (keyed by fd) ----
+
+pfn depth_table() do
+  match Vault.whereis("depot.transaction.depth") do
+    Some(t) -> t
+    None    -> Vault.new("depot.transaction.depth")
+  end
+end
+
+pfn current_depth(fd) do
+  match Vault.get(depth_table(), to_string(fd)) do
+    Some(n) -> n
+    None    -> 0
+  end
+end
+
+pfn set_depth(fd, n) do
+  let t = depth_table()
+  if n <= 0 do Vault.drop(t, to_string(fd))
+  else Vault.set(t, to_string(fd), n)
+  end
+end
+
+-- ---- Savepoint name helpers ----
+
+pfn savepoint_name(depth) do
+  "sp_" ++ to_string(depth)
+end
+
+-- ---- Begin / commit / rollback dispatch ----
+
+pfn tx_begin(conn, depth) do
+  match depth do
+    0 -> simple_query(conn, "BEGIN")
+    _ -> simple_query(conn, "SAVEPOINT " ++ savepoint_name(depth))
+  end
+end
+
+pfn tx_commit(conn, depth) do
+  match depth do
+    0 -> simple_query(conn, "COMMIT")
+    _ -> simple_query(conn, "RELEASE SAVEPOINT " ++ savepoint_name(depth))
+  end
+end
+
+pfn tx_rollback(conn, depth) do
+  match depth do
+    0 -> simple_query(conn, "ROLLBACK")
+    _ -> simple_query(conn, "ROLLBACK TO SAVEPOINT " ++ savepoint_name(depth))
+  end
+end
+
+-- ---- Public API ----
+
+doc """
+Run `callback` inside a PostgreSQL transaction on `conn`.
+
+Returns `Ok(v)` after `COMMIT` when the callback returns `Ok(v)`.
+Returns `Err(reason)` after `ROLLBACK` when the callback returns `Err(reason)`.
+Wire-level errors from BEGIN / COMMIT / ROLLBACK themselves are surfaced
+verbatim — the caller sees exactly one `Err(String)`.
+
+Nested calls (same fd) use `SAVEPOINT sp_<depth>` / `RELEASE SAVEPOINT` /
+`ROLLBACK TO SAVEPOINT` so an inner `Err` only rolls back its own work.
+
+    match Depot.Transaction.run(conn, fn c ->
+      match Connection.simple_query(c, "INSERT INTO users ...") do
+        Ok(_)  -> Ok(())
+        Err(e) -> Err(e)
+      end
+    ) do
+      Ok(_)  -> ...
+      Err(e) -> ...
+    end
+"""
+fn run(conn, callback) do
+  let depth = current_depth(conn.fd)
+  match tx_begin(conn, depth) do
+    Err(e) -> Err("transaction begin: " ++ e)
+    Ok(_)  -> do
+      let _ = set_depth(conn.fd, depth + 1)
+      -- Run the user callback inside __try_call so a panic / assert /
+      -- match-failure inside their code is turned into Err(msg) and
+      -- triggers ROLLBACK rather than leaving the connection stranded
+      -- in an open transaction.  The callback still returns its normal
+      -- Result(a, String) on the non-panic path, so we get a nested
+      -- Result and flatten it below.
+      let guarded = __try_call(fn _ -> callback(conn))
+      let _ = set_depth(conn.fd, depth)
+      let outcome = match guarded do
+        Ok(inner)  -> inner
+        Err(panic) -> Err("transaction callback panicked: " ++ panic)
+      end
+      match outcome do
+        Ok(v) ->
+          match tx_commit(conn, depth) do
+            Err(e) -> Err("transaction commit: " ++ e)
+            Ok(_)  -> Ok(v)
+          end
+        Err(reason) ->
+          match tx_rollback(conn, depth) do
+            Err(e) -> Err("transaction rollback (orig: " ++ reason ++ "): " ++ e)
+            Ok(_)  -> Err(reason)
+          end
+      end
+    end
+  end
+end
+
+doc """
+Check out a pooled connection, pin it for the transaction's lifetime,
+and run `callback` inside a `BEGIN` / `COMMIT` block.
+
+Returns the callback's `Result` directly (unwrapped from the pool layer
+so success and failure paths collapse to a single `Result`).
+"""
+fn run_pool(pool, callback) do
+  match with_conn_pinned(pool, fn conn -> run(conn, callback)) do
+    Ok(inner) -> inner
+    Err(e)    -> Err("transaction checkout: " ++ e)
+  end
+end
+
+end -- mod Depot.Transaction
