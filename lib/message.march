@@ -4,8 +4,14 @@
 mod Message do
 
 --- Frontend messages sent from client to PostgreSQL server.
+-- TODO(march-bug): Startup carries a `List((String, String))` instead of a
+-- `Map(String, String)` to work around a march compiler RC bug where
+-- `Map.fold` with a Bytes-accumulator callback leaks a closure apply-pointer
+-- through `Bytes.list_append` and crashes in `march_decrc` on a .text
+-- address. Revert to `Map(String, String)` once the compiler fix lands.
+-- See commit bodies around 831e315 / 0075636 for context.
 type FrontendMessage =
-    Startup(Map(String, String))
+    Startup(List((String, String)))
   | SimpleQuery(String)
   | Parse(String, String, List(Int))
   | Bind(String, String, List(Param))

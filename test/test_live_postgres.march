@@ -1,0 +1,73 @@
+-- test/test_live_postgres.march
+-- Phase 1.1 bootstrap — smoke tests against a real, live PostgreSQL.
+--
+-- Assumes a local Postgres reachable at 127.0.0.1:5432 with a database
+-- named `depot_test` and a `postgres` superuser that trusts local
+-- connections. If that's missing, every test here errors out at
+-- `Connection.connect` — the failure mode is clearly a fixture problem
+-- rather than a logic bug.
+--
+-- This file exists to pin down the wire before Phase 1.1's transaction
+-- code starts issuing BEGIN/COMMIT. Once `Repo.transaction/2` lands,
+-- nested smoke tests move into `test_repo_transaction.march`.
+
+mod TestLivePostgres do
+
+import Map
+import Connection
+
+fn test_config() do
+  default_config("postgres", "depot_test")
+end
+
+test "connect + SELECT 1 returns a single row with value 1" do
+  match connect(test_config()) do
+  Err(e) ->
+    let _ = println("connect error: " ++ e)
+    assert false
+  Ok(conn) ->
+    let result = simple_query(conn, "SELECT 1")
+    let _ = close(conn)
+    match result do
+    Err(e) ->
+      let _ = println("query error: " ++ e)
+      assert false
+    Ok(r) ->
+      match r.rows do
+      Cons(Cons(Some(s), Nil), Nil) -> assert s == "1"
+      _ -> assert false
+      end
+    end
+  end
+end
+
+test "simple_query can issue BEGIN / COMMIT and Postgres echoes the tags" do
+  -- Directly drives the SQL Phase 1.1 will hide behind Repo.transaction.
+  -- If either BEGIN or COMMIT errored on the wire, this test is the first
+  -- red line; the higher-level transaction code can't compensate.
+  match connect(test_config()) do
+  Err(e) ->
+    let _ = println("connect: " ++ e)
+    assert false
+  Ok(conn) ->
+    match simple_query(conn, "BEGIN") do
+    Err(e) ->
+      let _ = close(conn)
+      let _ = println("BEGIN: " ++ e)
+      assert false
+    Ok(begin_r) ->
+      match simple_query(conn, "COMMIT") do
+      Err(e) ->
+        let _ = close(conn)
+        let _ = println("COMMIT: " ++ e)
+        assert false
+      Ok(commit_r) ->
+        let _ = close(conn)
+        let _ = assert begin_r.tag == "BEGIN"
+        assert commit_r.tag == "COMMIT"
+      end
+    end
+  end
+end
+
+end -- mod TestLivePostgres

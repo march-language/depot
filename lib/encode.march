@@ -61,9 +61,12 @@ end
 fn encode(msg : FrontendMessage) : Bytes do
   match msg do
   Startup(params) -> do
-    let pairs = Map.fold(params, Bytes.empty(), fn acc -> fn k -> fn v ->
-      Bytes.concat(acc, Bytes.concat(cstring(k), cstring(v)))
-    )
+    -- TODO(march-bug): was `Map.fold(params, Bytes.empty(), fn acc -> fn k -> fn v -> ...)`
+    -- — replaced with a tail-recursive walk over an assoc list because
+    -- Map.fold with a Bytes-returning triply-curried callback crashes the
+    -- runtime (march_decrc on a .text closure apply-pointer, through
+    -- Bytes.list_append). Restore the Map.fold form once fixed upstream.
+    let pairs = encode_startup_pairs(params, Bytes.empty())
     let payload = Bytes.concat(i32_be(196608), Bytes.concat(pairs, Bytes.from_list([0])))
     length_prefix(payload)
   end
@@ -101,6 +104,18 @@ pfn encode_oids(oids, acc) do
   match oids do
   Nil -> acc
   Cons(oid, rest) -> encode_oids(rest, Bytes.concat(acc, i32_be(oid)))
+  end
+end
+
+-- Encodes the (key, value) pairs of a Startup message as contiguous
+-- cstring-pairs. Tail-recursive, no higher-order callback — intentionally
+-- written so the encoder doesn't pass curried closures through Map.fold
+-- (which crashes the runtime; see TODO in `encode`).
+pfn encode_startup_pairs(pairs, acc) do
+  match pairs do
+  Nil -> acc
+  Cons((k, v), rest) ->
+    encode_startup_pairs(rest, Bytes.concat(acc, Bytes.concat(cstring(k), cstring(v))))
   end
 end
 

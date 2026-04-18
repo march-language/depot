@@ -67,10 +67,11 @@ fn str_lt(a) do
   fn b -> a < b
 end
 
+-- TODO(march-bug): returns an assoc list instead of a Map to sidestep the
+-- Map.fold / Bytes RC crash in encode(Startup). Restore the Map once march
+-- runtime stops calling march_decrc on closure apply-pointers.
 fn startup_params(cfg) do
-  Map.from_list(
-    [("user", cfg.user), ("database", cfg.database), ("application_name", "depot")],
-    str_lt)
+  [("user", cfg.user), ("database", cfg.database), ("application_name", "depot")]
 end
 
 fn md5_password(password, user, salt) do
