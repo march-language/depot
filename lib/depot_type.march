@@ -1,0 +1,61 @@
+-- depot/lib/depot_type.march
+-- Custom user types for fields whose wire representation (dump) is
+-- different from their in-memory representation (load).
+--
+-- A type adapter is just a pair of pure functions:
+--   dump : T       -> SqlValue       — how to send it to the database
+--   load : String  -> Option(T)      — how to parse the text from a result row
+--
+-- Round-trip identity: for any v : T, load(dump(v)) == Some(v).
+--
+-- Two ready-made adapters are provided:
+--   * Email   — a trimmed, lowercased string that must contain '@'
+--   * Enum    — a list of (march_atom_as_string, db_string) pairs
+
+mod Depot.Type do
+
+-- ---- Email ------------------------------------------------------------
+
+--- Normalise an email address for storage: trim outer whitespace and
+--- lowercase. Returns None if the string doesn't contain '@'.
+fn email_cast(s) do
+  let normalised = String.to_lowercase(String.trim(s))
+  if String.contains(normalised, "@") then Some(normalised) else None
+end
+
+--- Encode an already-cast email for the wire.
+fn email_dump(email) do
+  PString(email)
+end
+
+--- Parse an email back from a string column value.
+fn email_load(s) do
+  email_cast(s)
+end
+
+-- ---- Enum -------------------------------------------------------------
+--
+-- An enum mapping is a List((march_label, db_label)) where both sides
+-- are strings. The march side is whatever symbolic label the
+-- application uses; the db side is what lands in the column.
+
+--- Encode a march label into its configured db string. Returns None
+--- for unknown labels — callers can treat that as a validation failure.
+fn enum_dump(mapping, march_label) do
+  match mapping do
+  Nil -> None
+  Cons((m, d), rest) ->
+    if m == march_label then Some(PString(d)) else enum_dump(rest, march_label)
+  end
+end
+
+--- Decode a db string back into its march label.
+fn enum_load(mapping, db_value) do
+  match mapping do
+  Nil -> None
+  Cons((m, d), rest) ->
+    if d == db_value then Some(m) else enum_load(rest, db_value)
+  end
+end
+
+end

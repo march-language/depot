@@ -1,0 +1,76 @@
+-- test/test_custom_type.march
+-- Phase 3.5 — Custom type adapters.
+
+mod TestCustomType do
+
+import Ast
+import Depot.Type
+
+test "email_cast normalises whitespace and case" do
+  match Depot.Type.email_cast("  Alice@Example.COM  ") do
+    Some(v) -> assert v == "alice@example.com"
+    None    -> assert false
+  end
+end
+
+test "email_cast rejects strings without @" do
+  match Depot.Type.email_cast("not-an-email") do
+    None    -> assert true
+    Some(_) -> assert false
+  end
+end
+
+test "email round-trip: load(dump(v)) == Some(v)" do
+  let cast_opt = Depot.Type.email_cast("User@Host.Org")
+  match cast_opt do
+    Some(v) -> do
+      match Depot.Type.email_dump(v) do
+        PString(s) -> match Depot.Type.email_load(s) do
+          Some(back) -> assert back == v
+          None       -> assert false
+        end
+        _ -> assert false
+      end
+    end
+    None -> assert false
+  end
+end
+
+fn status_enum() do
+  [ ("active",    "A"),
+    ("pending",   "P"),
+    ("cancelled", "C") ]
+end
+
+test "enum_dump maps march label to configured db value" do
+  match Depot.Type.enum_dump(status_enum(), "pending") do
+    Some(PString(s)) -> assert s == "P"
+    _                -> assert false
+  end
+end
+
+test "enum_dump returns None for unknown labels" do
+  match Depot.Type.enum_dump(status_enum(), "bogus") do
+    None    -> assert true
+    Some(_) -> assert false
+  end
+end
+
+test "enum_load recovers the march label from the db value" do
+  match Depot.Type.enum_load(status_enum(), "C") do
+    Some(s) -> assert s == "cancelled"
+    None    -> assert false
+  end
+end
+
+test "enum round-trip: load(dump(v)) == Some(v)" do
+  match Depot.Type.enum_dump(status_enum(), "active") do
+    Some(PString(db)) -> match Depot.Type.enum_load(status_enum(), db) do
+      Some(back) -> assert back == "active"
+      None       -> assert false
+    end
+    _ -> assert false
+  end
+end
+
+end -- mod TestCustomType
