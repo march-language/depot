@@ -17,6 +17,9 @@
 
 mod Depot.Migration do
 
+import Connection
+import Depot.Transaction
+
 -- ---------------------------------------------------------------------------
 -- Private helpers
 -- ---------------------------------------------------------------------------
@@ -216,6 +219,30 @@ fn drop_table(name) do
 end
 
 doc """
+Generate a DROP TABLE IF EXISTS statement. Idempotent — safe to re-run.
+
+    Depot.Migration.drop_table_if_exists("old_table")
+"""
+fn drop_table_if_exists(name) do
+  let sql = "DROP TABLE IF EXISTS \"" ++ name ++ "\""
+  log_sql(sql)
+end
+
+doc """
+Generate a CREATE TABLE IF NOT EXISTS statement. Idempotent — safe to
+re-run against a database that already has the table.
+
+    Depot.Migration.create_table_if_not_exists("users", { id = ("UUID", { primary_key = true }) })
+"""
+fn create_table_if_not_exists(name, columns) do
+  let entries = record_entries(columns)
+  let col_fragments = columns_sql(entries)
+  let cols = join_strings(col_fragments, ", ")
+  let sql = "CREATE TABLE IF NOT EXISTS \"" ++ name ++ "\" (" ++ cols ++ ")"
+  log_sql(sql)
+end
+
+doc """
 Generate a CREATE INDEX statement.
 
 columns is a list of column name strings.
@@ -366,6 +393,79 @@ Check if a migration version has been applied.
 fn is_applied(version) do
   let versions = applied_migrations()
   list_contains(versions, version)
+end
+
+-- ---------------------------------------------------------------------------
+-- Execution against a live PostgreSQL connection (phase 2.4)
+-- ---------------------------------------------------------------------------
+
+-- Clear the pending SQL log and return the previous contents (oldest first).
+pfn drain_log() do
+  let t = ensure_vault()
+  let current = match Vault.get(t, "log") do
+    Some(lst) -> lst
+    None      -> Nil
+  end
+  Vault.set(t, "log", Nil)
+  -- log_sql prepends; reverse so callers see statements in issue order.
+  reverse_list(current, Nil)
+end
+
+pfn reverse_list(xs, acc) do
+  match xs do
+    Nil -> acc
+    Cons(h, t) -> reverse_list(t, Cons(h, acc))
+  end
+end
+
+-- Execute a list of SQL strings in order against `conn`, short-circuiting
+-- on the first error.
+pfn exec_statements(conn, stmts) do
+  match stmts do
+    Nil -> Ok(())
+    Cons(sql, rest) ->
+      match Connection.simple_query(conn, sql) do
+        Err(e) -> Err("migration statement `" ++ sql ++ "`: " ++ e)
+        Ok(_)  -> exec_statements(conn, rest)
+      end
+  end
+end
+
+doc """
+Execute `migration_fn` against a live PostgreSQL connection.
+
+`migration_fn` is a thunk (`fn () -> _`) that builds the migration by
+calling `create_table`, `alter_table`, `create_index`, etc.  Each call
+accumulates SQL in the Vault log; after the thunk returns, this
+function drains the log and executes every statement inside a single
+`Depot.Transaction.run`.  A statement failure rolls back all siblings.
+
+Returns `Ok(())` on full success, `Err(reason)` on the first failure.
+On error, the Vault log is consumed either way — failed migrations
+do not leave stale pending statements behind.
+
+    Depot.Migration.run(conn, fn () ->
+      Depot.Migration.create_table_if_not_exists("users", {
+        id = ("UUID", { primary_key = true }),
+        email = ("String", { null = false })
+      })
+    )
+"""
+fn run(conn, migration_fn) do
+  -- Drain any stale log entries from earlier calls so we start clean.
+  let _ = drain_log()
+  let _ = migration_fn()
+  let stmts = drain_log()
+  Depot.Transaction.run(conn, fn c -> exec_statements(c, stmts))
+end
+
+doc """
+Execute a single SQL string against `conn`, wrapped in a transaction.
+Convenience for one-off migrations where populating the log would be
+overkill.
+"""
+fn run_sql(conn, sql) do
+  Depot.Transaction.run(conn, fn c -> exec_statements(c, Cons(sql, Nil)))
 end
 
 end

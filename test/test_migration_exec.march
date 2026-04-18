@@ -1,0 +1,120 @@
+-- test/test_migration_exec.march
+-- Phase 2.4 — Depot.Migration.run against a live PostgreSQL.
+
+mod TestMigrationExec do
+
+import Connection
+import Depot.Migration
+
+fn test_config() do
+  default_config("postgres", "depot_test")
+end
+
+pfn table_row_count(conn, table) do
+  match simple_query(conn, "SELECT COUNT(*)::text FROM " ++ table) do
+    Ok(r) ->
+      match r.rows do
+        Cons(Cons(Some(s), Nil), Nil) -> s
+        _ -> "?"
+      end
+    Err(e) -> "err: " ++ e
+  end
+end
+
+pfn table_exists(conn, table) do
+  match simple_query(conn,
+      "SELECT to_regclass('public." ++ table ++ "')::text") do
+    Ok(r) ->
+      match r.rows do
+        Cons(Cons(Some(s), Nil), Nil) -> s == table
+        _ -> false
+      end
+    Err(_) -> false
+  end
+end
+
+pfn with_conn(body) do
+  match connect(test_config()) do
+  Err(e) -> do
+    let _ = println("connect: " ++ e)
+    assert false
+  end
+  Ok(conn) -> do
+    let _ = simple_query(conn, "DROP TABLE IF EXISTS mig_test")
+    let _ = simple_query(conn, "DROP TABLE IF EXISTS mig_test2")
+    let result = body(conn)
+    let _ = simple_query(conn, "DROP TABLE IF EXISTS mig_test")
+    let _ = simple_query(conn, "DROP TABLE IF EXISTS mig_test2")
+    let _ = close(conn)
+    result
+  end
+  end
+end
+
+test "run_sql executes a single statement inside a transaction" do
+  with_conn(fn conn ->
+    let outcome = Depot.Migration.run_sql(conn,
+      "CREATE TABLE mig_test (v INT)")
+    match outcome do
+      Err(e) -> do
+        let _ = println("run_sql err: " ++ e)
+        assert false
+      end
+      Ok(_) -> do
+        let _ = assert table_exists(conn, "mig_test")
+        assert table_row_count(conn, "mig_test") == "0"
+      end
+    end
+  )
+end
+
+test "run_sql rolls back on SQL error — table is not left behind" do
+  with_conn(fn conn ->
+    -- Two statements in one call would need run(...); here we use run_sql
+    -- with a single statement that errors to exercise the rollback path.
+    let outcome = Depot.Migration.run_sql(conn,
+      "CREATE TABLE mig_test (v INT NOT NULL DEFAULT invalid_fn())")
+    match outcome do
+      Ok(_) -> assert false
+      Err(_) -> assert (table_exists(conn, "mig_test") == false)
+    end
+  )
+end
+
+test "run drains logged SQL and executes inside a transaction" do
+  with_conn(fn conn ->
+    let outcome = Depot.Migration.run(conn, fn () ->
+      let _ = Depot.Migration.execute("CREATE TABLE mig_test (v INT)")
+      Depot.Migration.execute("INSERT INTO mig_test VALUES (1), (2), (3)")
+    )
+    match outcome do
+      Err(e) -> do
+        let _ = println("migration err: " ++ e)
+        assert false
+      end
+      Ok(_) -> do
+        let _ = assert table_exists(conn, "mig_test")
+        assert table_row_count(conn, "mig_test") == "3"
+      end
+    end
+  )
+end
+
+test "run rolls back all siblings when a later statement fails" do
+  with_conn(fn conn ->
+    let outcome = Depot.Migration.run(conn, fn () ->
+      let _ = Depot.Migration.execute("CREATE TABLE mig_test (v INT)")
+      -- Second stmt deliberately fails — no column `nope` exists.
+      Depot.Migration.execute("INSERT INTO mig_test (nope) VALUES (1)")
+    )
+    match outcome do
+      Ok(_) -> assert false
+      Err(_) -> do
+        -- First create must have been rolled back with its sibling.
+        assert (table_exists(conn, "mig_test") == false)
+      end
+    end
+  )
+end
+
+end -- mod TestMigrationExec
