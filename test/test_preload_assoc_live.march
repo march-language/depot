@@ -1,0 +1,132 @@
+-- test/test_preload_assoc_live.march
+-- Phase 2.8 — schema-driven preload against live Postgres.
+--
+-- `Preload.preload_assoc_conn(conn, parent_schema, parent_result, assoc_name)`
+-- reads association metadata off the parent schema and delegates to the
+-- manual `preload_conn/5`. This file proves it agrees with the manual
+-- version end-to-end, and that unknown associations surface as Err.
+--
+-- Note: we build the Schema value directly rather than calling
+-- `Depot.Schema.define`, because codegen for the record-field helpers
+-- invoked by `define` is currently broken for some monomorphisations
+-- (see MEMORY: known parse errors blocking forge test).
+
+mod TestPreloadAssocLive do
+
+import Connection
+import Ast
+import Build
+import Compile
+import Preload
+import Depot.Schema
+
+fn test_config() do
+  default_config("postgres", "depot_test")
+end
+
+-- Build the Schema value directly. Shape matches Depot.Schema.Schema:
+--   Schema(table, fields, associations, primary_key)
+-- `associations` is List((kind, name, target, opts_pairs)).
+fn users_schema() do
+  Depot.Schema.Schema(
+    "pa_users",
+    Nil,
+    Cons(("has_many", "posts", "pa_posts",
+          Cons(("foreign_key", "user_id"), Nil)),
+         Nil),
+    "id"
+  )
+end
+
+pfn with_conn(body) do
+  match connect(test_config()) do
+  Err(e) -> do
+    let _ = println("connect: " ++ e)
+    assert false
+  end
+  Ok(conn) -> do
+    let _ = simple_query(conn, "DROP TABLE IF EXISTS pa_posts")
+    let _ = simple_query(conn, "DROP TABLE IF EXISTS pa_users")
+    let _ = simple_query(conn,
+      "CREATE TABLE pa_users (id INT PRIMARY KEY, name TEXT NOT NULL)")
+    let _ = simple_query(conn,
+      "CREATE TABLE pa_posts (id INT PRIMARY KEY, user_id INT, title TEXT NOT NULL)")
+    let _ = simple_query(conn,
+      "INSERT INTO pa_users VALUES (1,'Alice'),(2,'Bob'),(3,'Carol')")
+    let _ = simple_query(conn,
+      "INSERT INTO pa_posts VALUES (10,1,'hello'),(11,2,'world'),(12,1,'again')")
+    let result = body(conn)
+    let _ = simple_query(conn, "DROP TABLE IF EXISTS pa_posts")
+    let _ = simple_query(conn, "DROP TABLE IF EXISTS pa_users")
+    let _ = close(conn)
+    result
+  end
+  end
+end
+
+pfn load_users(conn) do
+  let q = from("pa_users") |> select([Expr.Col("id"), Expr.Col("name")])
+  let c = Compile.compile_parameterized(q)
+  exec_prepared(conn, c.sql, c.params)
+end
+
+pfn row_count(rows, acc) do
+  match rows do
+  Nil -> acc
+  Cons(_, rest) -> row_count(rest, acc + 1)
+  end
+end
+
+test "preload_assoc_conn loads children via has_many metadata" do
+  with_conn(fn conn ->
+    match load_users(conn) do
+    Err(e) -> do
+      let _ = println("load users: " ++ e)
+      assert false
+    end
+    Ok(users) ->
+      match Preload.preload_assoc_conn(conn, users_schema(), users, "posts") do
+      Err(e) -> do
+        let _ = println("preload_assoc_conn: " ++ e)
+        assert false
+      end
+      Ok(posts) ->
+        -- Alice (id=1) has 2 posts, Bob (id=2) has 1, Carol has 0.
+        -- IN (1, 2, 3) returns all 3 posts.
+        assert row_count(posts.rows, 0) == 3
+      end
+    end
+  )
+end
+
+test "preload_assoc_conn returns Err on unknown association name" do
+  with_conn(fn conn ->
+    match load_users(conn) do
+    Err(_)    -> assert false
+    Ok(users) ->
+      match Preload.preload_assoc_conn(conn, users_schema(), users, "widgets") do
+      Err(e) -> assert String.contains(e, "widgets")
+      Ok(_)  -> assert false
+      end
+    end
+  )
+end
+
+test "preload_assoc_conn agrees with manual preload_conn/5 row count" do
+  with_conn(fn conn ->
+    match load_users(conn) do
+    Err(_)    -> assert false
+    Ok(users) ->
+      match Preload.preload_conn(conn, users, "id", "pa_posts", "user_id") do
+      Err(_)    -> assert false
+      Ok(manual) ->
+        match Preload.preload_assoc_conn(conn, users_schema(), users, "posts") do
+        Err(_)   -> assert false
+        Ok(auto) -> assert row_count(manual.rows, 0) == row_count(auto.rows, 0)
+        end
+      end
+    end
+  )
+end
+
+end -- mod TestPreloadAssocLive

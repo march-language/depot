@@ -93,6 +93,16 @@ fn preload(pool, parent_result, parent_fk_col, child_table, child_fk_col) do
   |> flatten_result()
 end
 
+--- Connection-level variant of `preload/5` — skips the pool and issues the
+--- IN-query directly on `conn`. Useful in tests and transactional contexts
+--- where the caller already has a pinned connection.
+fn preload_conn(conn, parent_result, parent_fk_col, child_table, child_fk_col) do
+  let fk_vals = extract_col_values(parent_result, parent_fk_col)
+  let q = build_preload_query(child_table, child_fk_col, fk_vals)
+  let compiled = compile(q)
+  exec_prepared(conn, compiled.sql, compiled.params)
+end
+
 --- Removes duplicate strings from a list (preserves first occurrence order).
 fn dedup_strings(strs) do dedup_acc(strs, Nil) end
 
@@ -123,6 +133,82 @@ pfn list_rev_acc(lst, acc) do
   match lst do
   Nil -> acc
   Cons(x, rest) -> list_rev_acc(rest, Cons(x, acc))
+  end
+end
+
+--- Schema-driven preload: look up an association by name on `parent_schema`,
+--- derive the child table + foreign-key columns, and delegate to `preload/5`.
+---
+--- For a `has_many` declared as
+---
+---   has_many = { posts = ("posts", { foreign_key = "user_id" }) }
+---
+--- `preload_assoc(pool, users_schema, users_result, "posts")` is equivalent to
+---
+---   preload(pool, users_result, "id", "posts", "user_id")
+---
+--- Returns `Err("no such association: <name>")` if the association is not
+--- declared on the parent schema.
+fn preload_assoc(pool, parent_schema, parent_result, assoc_name) do
+  match Depot.Schema.association(parent_schema, assoc_name) do
+  None -> Err("no such association: " ++ assoc_name)
+  Some((kind, _, target, opts)) -> do
+    let parent_fk_col = pick_parent_fk(parent_schema, kind, opts)
+    let child_fk_col  = pick_child_fk(parent_schema, kind, opts)
+    preload(pool, parent_result, parent_fk_col, target, child_fk_col)
+  end
+  end
+end
+
+--- Connection-level variant of `preload_assoc/4` — see `preload_conn` for
+--- the non-schema-driven analogue.
+fn preload_assoc_conn(conn, parent_schema, parent_result, assoc_name) do
+  match Depot.Schema.association(parent_schema, assoc_name) do
+  None -> Err("no such association: " ++ assoc_name)
+  Some((kind, _, target, opts)) -> do
+    let parent_fk_col = pick_parent_fk(parent_schema, kind, opts)
+    let child_fk_col  = pick_child_fk(parent_schema, kind, opts)
+    preload_conn(conn, parent_result, parent_fk_col, target, child_fk_col)
+  end
+  end
+end
+
+-- For has_many / has_one: the parent side is the primary key; the child side
+-- holds the foreign key (opts.foreign_key), defaulting to "<parent>_id".
+-- For belongs_to: the parent side holds the foreign key (opts.foreign_key);
+-- the child side is its own primary key (opts.references, default "id").
+pfn pick_parent_fk(parent_schema, kind, opts) do
+  match kind do
+  "belongs_to" -> assoc_opt_str(opts, "foreign_key", "id")
+  _            -> Depot.Schema.primary_key(parent_schema)
+  end
+end
+
+pfn pick_child_fk(parent_schema, kind, opts) do
+  match kind do
+  "belongs_to" -> assoc_opt_str(opts, "references", "id")
+  _            -> assoc_opt_str(opts, "foreign_key",
+                    default_has_many_fk(parent_schema))
+  end
+end
+
+pfn default_has_many_fk(parent_schema) do
+  singularize(Depot.Schema.table(parent_schema)) ++ "_id"
+end
+
+-- Naive English-ish singularizer: drops a trailing "s" if present.
+-- Good enough for tables like "users" -> "user_id", "posts" -> "post_id".
+pfn singularize(s) do
+  let n = String.byte_size(s)
+  if n > 1 && String.ends_with(s, "s") then String.slice(s, 0, n - 1) else s
+end
+
+-- Opt lookup specialised to String values: returns default when the assoc
+-- opts list doesn't carry the key.
+pfn assoc_opt_str(opts, key, default) do
+  match opts do
+  Nil -> default
+  Cons((k, v), rest) -> if k == key then v else assoc_opt_str(rest, key, default)
   end
 end
 
