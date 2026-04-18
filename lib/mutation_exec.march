@@ -44,7 +44,7 @@ fn exec_insert(conn, i) do
     Ok({ columns = Nil, rows = Nil, tag = "INSERT 0 0" })
   else
     let compiled = compile_insert(i)
-    Depot.Telemetry.instrument(compiled.sql, compiled.params, fn _ ->
+    Depot.Telemetry.instrument(compiled.sql, compiled.params, fn () ->
       exec_prepared(conn, compiled.sql, compiled.params)
     )
   end
@@ -53,7 +53,7 @@ end
 --- Execute an `Update` ADT against a live connection. RETURNING-aware.
 fn exec_update(conn, u) do
   let compiled = compile_update(u)
-  Depot.Telemetry.instrument(compiled.sql, compiled.params, fn _ ->
+  Depot.Telemetry.instrument(compiled.sql, compiled.params, fn () ->
     exec_prepared(conn, compiled.sql, compiled.params)
   )
 end
@@ -61,7 +61,7 @@ end
 --- Execute a `Delete` ADT against a live connection. RETURNING-aware.
 fn exec_delete(conn, d) do
   let compiled = compile_delete(d)
-  Depot.Telemetry.instrument(compiled.sql, compiled.params, fn _ ->
+  Depot.Telemetry.instrument(compiled.sql, compiled.params, fn () ->
     exec_prepared(conn, compiled.sql, compiled.params)
   )
 end

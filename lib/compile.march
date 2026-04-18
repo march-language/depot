@@ -766,6 +766,11 @@ pfn subq_expr(e) do
   CountAll       -> "COUNT(*)"
   ExprParam(n)   -> "$" ++ int_to_string(n)
   Raw(sql)       -> sql
+  -- Fragment is intentionally a placeholder inside subqueries: calling
+  -- compile_frag_inline would close a mutual-recursion cycle (subq_expr ->
+  -- compile_frag_inline -> compile_frag_bytes_inline -> compile_expr_inline
+  -- -> compile_subquery_inline -> subq_select -> ... -> subq_expr), which
+  -- defeats tail-call analysis on compile_subquery_inline and its helpers.
   Fragment(_, _) -> "/* fragment in subquery */"
   _              -> "/* unsupported */"
   end
