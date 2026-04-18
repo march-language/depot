@@ -1,0 +1,87 @@
+-- depot/lib/depot_embed.march
+-- Embedded schemas — nested records that live inside a parent row and
+-- are serialised as an assoc-list blob (JSONB-compatible shape: a flat
+-- map of field->value strings).
+--
+-- Operations:
+--   put_embed/3     — set or replace one field in an embed
+--   get_embed/2     — look up a field (Option)
+--   apply_changes/2 — fold a list of (field, value) changes over an embed
+--   merge/2         — right-biased merge of two embeds
+--
+-- Serialisation uses a minimal `k1=v1;k2=v2;` shape that preserves
+-- key order and round-trips cleanly. It is not full JSON — the values
+-- must not contain '=' or ';'. For full JSON, plug in a dedicated
+-- encoder on top of these primitives.
+
+mod Depot.Embed do
+
+--- An embedded record is an ordered assoc list of (field, value) pairs.
+type Embed = Embed(List((String, String)))
+
+--- Empty embed.
+fn empty() do
+  Embed(Nil)
+end
+
+--- Set or replace the value of one field. If `field` is already
+--- present its value is updated in place (order preserved); otherwise
+--- the pair is appended.
+fn put_embed(e, field, value) do
+  match e do
+  Embed(pairs) -> Embed(put_assoc(pairs, field, value))
+  end
+end
+
+pfn put_assoc(pairs, field, value) do
+  match pairs do
+  Nil -> [(field, value)]
+  Cons((k, v), rest) ->
+    if k == field then
+      Cons((k, value), rest)
+    else
+      Cons((k, v), put_assoc(rest, field, value))
+  end
+end
+
+--- Look up a field. Returns Some(value) or None.
+fn get_embed(e, field) do
+  match e do
+  Embed(pairs) -> get_assoc(pairs, field)
+  end
+end
+
+pfn get_assoc(pairs, field) do
+  match pairs do
+  Nil -> None
+  Cons((k, v), rest) -> if k == field then Some(v) else get_assoc(rest, field)
+  end
+end
+
+--- Fold a list of (field, value) changes over an embed, left to right.
+---
+--- Roadmap property: `apply_changes(base, changes)` is equivalent to
+--- folding `put_embed` over `changes` manually, in order.
+fn apply_changes(e, changes) do
+  match changes do
+  Nil -> e
+  Cons((field, value), rest) -> apply_changes(put_embed(e, field, value), rest)
+  end
+end
+
+--- Right-biased merge: values from `b` win when a field is present in
+--- both. Keys from `a` that are not in `b` keep their order and value.
+fn merge(a, b) do
+  match b do
+  Embed(pairs_b) -> merge_pairs(a, pairs_b)
+  end
+end
+
+pfn merge_pairs(a, pairs) do
+  match pairs do
+  Nil -> a
+  Cons((k, v), rest) -> merge_pairs(put_embed(a, k, v), rest)
+  end
+end
+
+end

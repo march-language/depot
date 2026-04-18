@@ -1,0 +1,75 @@
+-- test/test_embed.march
+-- Phase 3.6 — Embedded schemas.
+
+mod TestEmbed do
+
+import Depot.Embed
+
+test "empty embed has no fields" do
+  let e = Depot.Embed.empty()
+  match Depot.Embed.get_embed(e, "anything") do
+    None    -> assert true
+    Some(_) -> assert false
+  end
+end
+
+test "put_embed adds a new field" do
+  let e = Depot.Embed.put_embed(Depot.Embed.empty(), "name", "Alice")
+  match Depot.Embed.get_embed(e, "name") do
+    Some(v) -> assert v == "Alice"
+    None    -> assert false
+  end
+end
+
+test "put_embed replaces an existing field in place" do
+  let e = Depot.Embed.put_embed(
+            Depot.Embed.put_embed(Depot.Embed.empty(), "name", "Alice"),
+            "name",
+            "Bob"
+          )
+  match Depot.Embed.get_embed(e, "name") do
+    Some(v) -> assert v == "Bob"
+    None    -> assert false
+  end
+end
+
+test "apply_changes updates an existing field to its latest value" do
+  let base = Depot.Embed.put_embed(Depot.Embed.empty(), "first", "A")
+  let changes = [("second", "B"), ("first", "A2")]
+  let out = Depot.Embed.apply_changes(base, changes)
+  match Depot.Embed.get_embed(out, "first") do
+    Some(v) -> assert v == "A2"
+    None    -> assert false
+  end
+end
+
+test "apply_changes appends new fields in the order supplied" do
+  let base = Depot.Embed.put_embed(Depot.Embed.empty(), "first", "A")
+  let out = Depot.Embed.apply_changes(base, [("second", "B"), ("third", "C")])
+  let _ = match Depot.Embed.get_embed(out, "second") do
+    Some(v) -> assert v == "B"
+    None    -> assert false
+  end
+  match Depot.Embed.get_embed(out, "third") do
+    Some(v) -> assert v == "C"
+    None    -> assert false
+  end
+end
+
+test "merge is right-biased: b's values win on conflict" do
+  let a = Depot.Embed.put_embed(
+            Depot.Embed.put_embed(Depot.Embed.empty(), "x", "a1"),
+            "y", "a2")
+  let b = Depot.Embed.put_embed(Depot.Embed.empty(), "x", "b1")
+  let merged = Depot.Embed.merge(a, b)
+  let _ = match Depot.Embed.get_embed(merged, "x") do
+    Some(v) -> assert v == "b1"
+    None    -> assert false
+  end
+  match Depot.Embed.get_embed(merged, "y") do
+    Some(v) -> assert v == "a2"
+    None    -> assert false
+  end
+end
+
+end -- mod TestEmbed
