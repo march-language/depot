@@ -1,0 +1,162 @@
+-- test/test_migration_versioning.march
+-- Phase 2.5 — Depot.Migration.migrate / rollback against a live PostgreSQL.
+
+mod TestMigrationVersioning do
+
+import Connection
+import Depot.Migration
+
+fn test_config() do
+  default_config("postgres", "depot_test")
+end
+
+pfn reset_fixture(conn) do
+  let _ = simple_query(conn, "DROP TABLE IF EXISTS schema_migrations")
+  let _ = simple_query(conn, "DROP TABLE IF EXISTS mv_t1")
+  let _ = simple_query(conn, "DROP TABLE IF EXISTS mv_t2")
+  let _ = simple_query(conn, "DROP TABLE IF EXISTS mv_t3")
+  ()
+end
+
+pfn with_conn(body) do
+  match connect(test_config()) do
+  Err(e) -> do
+    let _ = println("connect: " ++ e)
+    assert false
+  end
+  Ok(conn) -> do
+    let _ = reset_fixture(conn)
+    let result = body(conn)
+    let _ = reset_fixture(conn)
+    let _ = close(conn)
+    result
+  end
+  end
+end
+
+pfn table_exists(conn, table) do
+  match simple_query(conn,
+      "SELECT to_regclass('public." ++ table ++ "')::text") do
+    Ok(r) ->
+      match r.rows do
+        Cons(Cons(Some(s), Nil), Nil) -> s == table
+        _ -> false
+      end
+    Err(_) -> false
+  end
+end
+
+-- Migrations for the happy-path test.  Each migration is a record
+-- { version, up, down } where up/down are plain SQL lists.
+fn m1() do
+  { version = 1000,
+    up      = Cons("CREATE TABLE mv_t1 (v INT)", Nil),
+    down    = Cons("DROP TABLE mv_t1", Nil) }
+end
+
+fn m2() do
+  { version = 2000,
+    up      = Cons("CREATE TABLE mv_t2 (v INT)", Nil),
+    down    = Cons("DROP TABLE mv_t2", Nil) }
+end
+
+fn m3() do
+  { version = 3000,
+    up      = Cons("CREATE TABLE mv_t3 (v INT)", Nil),
+    down    = Cons("DROP TABLE mv_t3", Nil) }
+end
+
+test "migrate applies every pending migration once" do
+  with_conn(fn conn ->
+    let migs = Cons(m1(), Cons(m2(), Cons(m3(), Nil)))
+    match Depot.Migration.migrate(conn, migs) do
+      Err(e) -> do
+        let _ = println("migrate: " ++ e)
+        assert false
+      end
+      Ok(n) -> do
+        let _ = assert n == 3
+        let _ = assert table_exists(conn, "mv_t1")
+        let _ = assert table_exists(conn, "mv_t2")
+        let _ = assert table_exists(conn, "mv_t3")
+        -- Second migrate is a no-op because every version is applied.
+        match Depot.Migration.migrate(conn, migs) do
+          Err(e) -> do
+            let _ = println("second migrate: " ++ e)
+            assert false
+          end
+          Ok(k) -> assert k == 0
+        end
+      end
+    end
+  )
+end
+
+test "migrate runs versions in ascending order regardless of list order" do
+  with_conn(fn conn ->
+    -- Shuffle the list — migrate must still apply 1000, 2000, 3000 in order.
+    let migs = Cons(m3(), Cons(m1(), Cons(m2(), Nil)))
+    match Depot.Migration.migrate(conn, migs) do
+      Err(e) -> do
+        let _ = println("migrate: " ++ e)
+        assert false
+      end
+      Ok(_) ->
+        match Depot.Migration.applied_versions(conn) do
+          Err(e) -> do
+            let _ = println("applied: " ++ e)
+            assert false
+          end
+          Ok(vs) ->
+            match vs do
+              Cons(1000, Cons(2000, Cons(3000, Nil))) -> assert true
+              _ -> assert false
+            end
+        end
+    end
+  )
+end
+
+test "rollback reverses the last N migrations most-recent first" do
+  with_conn(fn conn ->
+    let migs = Cons(m1(), Cons(m2(), Cons(m3(), Nil)))
+    let _ = Depot.Migration.migrate(conn, migs)
+    match Depot.Migration.rollback(conn, migs, 2) do
+      Err(e) -> do
+        let _ = println("rollback: " ++ e)
+        assert false
+      end
+      Ok(k) -> do
+        let _ = assert k == 2
+        -- m2 and m3 are rolled back; m1 survives.
+        let _ = assert table_exists(conn, "mv_t1")
+        let _ = assert (table_exists(conn, "mv_t2") == false)
+        let _ = assert (table_exists(conn, "mv_t3") == false)
+        match Depot.Migration.applied_versions(conn) do
+          Err(_) -> assert false
+          Ok(vs) ->
+            match vs do
+              Cons(1000, Nil) -> assert true
+              _ -> assert false
+            end
+        end
+      end
+    end
+  )
+end
+
+test "divergent version recorded in DB but missing from code surfaces as Err" do
+  with_conn(fn conn ->
+    let migs_full = Cons(m1(), Cons(m2(), Cons(m3(), Nil)))
+    let _ = Depot.Migration.migrate(conn, migs_full)
+    -- The developer's checkout only knows about m1 and m3 (pretend m2 was
+    -- never committed to their branch).  migrate must refuse to proceed.
+    let migs_partial = Cons(m1(), Cons(m3(), Nil))
+    match Depot.Migration.migrate(conn, migs_partial) do
+      Ok(_)  -> assert false
+      Err(e) -> assert String.contains(e, "divergent version")
+    end
+  )
+end
+
+end -- mod TestMigrationVersioning
