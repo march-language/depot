@@ -171,8 +171,8 @@ fn locked_update(table, expected_version) do
   Update({
     table_ = table,
     sets   = [("lock_version",
-               Add(Col("lock_version"), Lit(PInt(1))))],
-    wheres = [Where(Eq(Col("lock_version"), Lit(PInt(expected_version))))],
+               Ast.Expr.Add(Ast.Expr.Col("lock_version"), Ast.Expr.Lit(Ast.SqlValue.PInt(1))))],
+    wheres = [Where(Ast.Expr.Eq(Ast.Expr.Col("lock_version"), Ast.Expr.Lit(Ast.SqlValue.PInt(expected_version))))],
     returning_ = Nil
   })
 end

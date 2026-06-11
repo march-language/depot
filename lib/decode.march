@@ -45,7 +45,7 @@ end
 fn read_cstring(b, pos) do
   fn go(i, acc) do
     let byte = Bytes.get(b, i)
-    if byte == 0 then (Bytes.to_string(Bytes.from_list(reverse(acc))), i + 1)
+    if byte == 0 then (Bytes.to_string(Bytes.from_list(List.reverse(acc))), i + 1)
     else go(i + 1, Cons(byte, acc))
   end
   go(pos, Nil)
@@ -109,7 +109,7 @@ fn parse_one_field_desc(b, pos) do
 end
 
 fn parse_field_descs(b, pos, n, acc) do
-  if n == 0 then reverse(acc)
+  if n == 0 then List.reverse(acc)
   else
     match parse_one_field_desc(b, pos) do
     (fd, next) -> parse_field_descs(b, next, n - 1, Cons(fd, acc))
@@ -117,7 +117,7 @@ fn parse_field_descs(b, pos, n, acc) do
 end
 
 fn parse_data_columns(b, pos, n, acc) do
-  if n == 0 then reverse(acc)
+  if n == 0 then List.reverse(acc)
   else
     match read_bytes_field(b, pos) do
     (col, next) -> parse_data_columns(b, next, n - 1, Cons(col, acc))
@@ -125,9 +125,9 @@ fn parse_data_columns(b, pos, n, acc) do
 end
 
 fn parse_sasl_mechanisms(b, pos, acc) do
-  if pos >= Bytes.length(b) then reverse(acc)
+  if pos >= Bytes.length(b) then List.reverse(acc)
   else
-    if Bytes.get(b, pos) == 0 then reverse(acc)
+    if Bytes.get(b, pos) == 0 then List.reverse(acc)
     else
       match read_cstring(b, pos) do
       (mech, next) -> parse_sasl_mechanisms(b, next, Cons(mech, acc))
