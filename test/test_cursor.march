@@ -8,7 +8,7 @@ import Build
 import Cursor
 
 test "declare_sql" do
-  let q = from("events") |> where_(Lt(Col("created_at"), Lit(PString("2026-01-01"))))
+  let q = Build.from("events") |> Build.where_(Expr.Lt(Expr.Col("created_at"), Lit(PString("2026-01-01"))))
   let sql = declare_sql("cur1", q)
   assert sql == "DECLARE \"cur1\" CURSOR FOR SELECT * FROM \"events\" WHERE \"created_at\" < '2026-01-01'"
 end

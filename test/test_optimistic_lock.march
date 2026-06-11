@@ -14,7 +14,7 @@ test "locked_update sets lock_version = lock_version + 1" do
     Cons((col, e), Nil) -> do
       let _ = assert col == "lock_version"
       match e do
-        Add(Col("lock_version"), Lit(PInt(1))) -> assert true
+        Expr.Add(Expr.Col("lock_version"), Lit(PInt(1))) -> assert true
         _                                      -> assert false
       end
     end
@@ -28,7 +28,7 @@ test "locked_update adds WHERE lock_version = expected" do
   match u do
   Update(f) -> match f.wheres do
     Cons(Where(e), Nil) -> match e do
-      Eq(Col("lock_version"), Lit(PInt(7))) -> assert true
+      Expr.Eq(Expr.Col("lock_version"), Lit(PInt(7))) -> assert true
       _                                     -> assert false
     end
     _ -> assert false

@@ -86,7 +86,7 @@ fn select_ids(q) do
   match q do
     Ast.Query(f) -> Ast.Query({ f with
       selects = [SelectField(Expr.Col("id"))],
-      orders  = [OrderExpr(Expr.Col("id"), Asc)] })
+      orders  = [OrderExpr(Expr.Col("id"), SortDir.Asc)] })
   end
 end
 
@@ -99,7 +99,7 @@ test "(a=1 OR b=2) AND c=1 parenthesises correctly on the wire" do
       Expr.Or(Expr.Eq(Expr.Col("a"), Lit(PInt(1))),
               Expr.Eq(Expr.Col("b"), Lit(PInt(2)))),
       Expr.Eq(Expr.Col("c"), Lit(PInt(1))))
-    let q = select_ids(from("wg_test") |> where_(pred))
+    let q = select_ids(Build.from("wg_test") |> Build.where_(pred))
     match run_ids(conn, q) do
       Err(e) -> do
         let _ = println("run_ids: " ++ e)
@@ -127,7 +127,7 @@ test "a=1 OR (b=2 AND c=1) groups differently than the AND-first form" do
       Expr.Eq(Expr.Col("a"), Lit(PInt(1))),
       Expr.And(Expr.Eq(Expr.Col("b"), Lit(PInt(2))),
                Expr.Eq(Expr.Col("c"), Lit(PInt(1)))))
-    let q = select_ids(from("wg_test") |> where_(pred))
+    let q = select_ids(Build.from("wg_test") |> Build.where_(pred))
     match run_ids(conn, q) do
       Err(e) -> do
         let _ = println("run_ids: " ++ e)
@@ -152,7 +152,7 @@ test "NOT (a=1 AND b=1) excludes the two rows where both are 1" do
     let pred = Expr.Not(Expr.And(
       Expr.Eq(Expr.Col("a"), Lit(PInt(1))),
       Expr.Eq(Expr.Col("b"), Lit(PInt(1)))))
-    let q = select_ids(from("wg_test") |> where_(pred))
+    let q = select_ids(Build.from("wg_test") |> Build.where_(pred))
     match run_ids(conn, q) do
       Err(e) -> do
         let _ = println("run_ids: " ++ e)
@@ -179,9 +179,9 @@ test "mixed or_where and where_ chain: WHERE a=1 OR b=2 AND c=1" do
   -- matches the same row set as the explicit `a=1 OR (b=2 AND c=1)`
   -- test above — use that as the oracle.
   with_conn(fn conn ->
-    let q = select_ids(from("wg_test")
-      |> where_(Expr.Eq(Expr.Col("a"), Lit(PInt(1))))
-      |> or_where(Expr.And(Expr.Eq(Expr.Col("b"), Lit(PInt(2))),
+    let q = select_ids(Build.from("wg_test")
+      |> Build.where_(Expr.Eq(Expr.Col("a"), Lit(PInt(1))))
+      |> Build.or_where(Expr.And(Expr.Eq(Expr.Col("b"), Lit(PInt(2))),
                            Expr.Eq(Expr.Col("c"), Lit(PInt(1))))))
     match run_ids(conn, q) do
       Err(e) -> do
@@ -206,8 +206,8 @@ end
 
 test "where_in selects only the listed ids" do
   with_conn(fn conn ->
-    let q = select_ids(from("wg_test")
-      |> where_in(Expr.Col("id"), [Lit(PInt(2)), Lit(PInt(4)), Lit(PInt(6))]))
+    let q = select_ids(Build.from("wg_test")
+      |> Build.where_in(Expr.Col("id"), [Lit(PInt(2)), Lit(PInt(4)), Lit(PInt(6))]))
     match run_ids(conn, q) do
       Err(e) -> do
         let _ = println("run_ids: " ++ e)
@@ -229,8 +229,8 @@ end
 
 test "where_not_in excludes the listed ids" do
   with_conn(fn conn ->
-    let q = select_ids(from("wg_test")
-      |> where_not_in(Expr.Col("id"), [Lit(PInt(1)), Lit(PInt(8))]))
+    let q = select_ids(Build.from("wg_test")
+      |> Build.where_not_in(Expr.Col("id"), [Lit(PInt(1)), Lit(PInt(8))]))
     match run_ids(conn, q) do
       Err(e) -> do
         let _ = println("run_ids: " ++ e)
@@ -252,7 +252,7 @@ end
 
 test "where_in with empty list selects zero rows (WHERE FALSE)" do
   with_conn(fn conn ->
-    let q = select_ids(from("wg_test") |> where_in(Expr.Col("id"), Nil))
+    let q = select_ids(Build.from("wg_test") |> Build.where_in(Expr.Col("id"), Nil))
     match run_ids(conn, q) do
       Err(e) -> do
         let _ = println("run_ids: " ++ e)

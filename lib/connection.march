@@ -451,6 +451,10 @@ fn exec_prepared(conn, sql, params) do
   let msgs = [
     Parse("", sql, Nil),
     Bind("", "", params),
+    -- Describe the portal so the server sends RowDescription — without it
+    -- the extended protocol returns DataRows with no column names and
+    -- `columns` stays empty (which breaks column lookups, e.g. Preload).
+    Describe(DescribePortal("")),
     Execute("", 0),
     Sync
   ]

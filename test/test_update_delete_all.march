@@ -29,7 +29,7 @@ import MutationExec
 
 test "delete_all — table + single Where copied from Query" do
   let q = Build.from("users")
-       |> Build.where_(Lt(Col("age"), Lit(PInt(13))))
+       |> Build.where_(Expr.Lt(Expr.Col("age"), Lit(PInt(13))))
   let d = delete_all(q)
   let sql = (compile_delete(d)).sql
   assert sql == "DELETE FROM \"users\" WHERE \"age\" < $1"
@@ -37,8 +37,8 @@ end
 
 test "delete_all — multiple AND wheres preserved in order" do
   let q = Build.from("events")
-       |> Build.where_(Eq(Col("kind"), Lit(PString("click"))))
-       |> Build.where_(Lt(Col("created_at"), Lit(PString("2026-01-01"))))
+       |> Build.where_(Expr.Eq(Expr.Col("kind"), Lit(PString("click"))))
+       |> Build.where_(Expr.Lt(Expr.Col("created_at"), Lit(PString("2026-01-01"))))
   let d = delete_all(q)
   let sql = (compile_delete(d)).sql
   assert sql == "DELETE FROM \"events\" WHERE \"kind\" = $1 AND \"created_at\" < $2"
@@ -46,7 +46,7 @@ end
 
 test "delete_all — composes with delete_returning_all" do
   let q = Build.from("tombstones")
-       |> Build.where_(IsNotNull(Col("deleted_at")))
+       |> Build.where_(Expr.IsNotNull(Expr.Col("deleted_at")))
   let d = delete_all(q) |> delete_returning_all()
   let sql = (compile_delete(d)).sql
   assert sql == "DELETE FROM \"tombstones\" WHERE \"deleted_at\" IS NOT NULL RETURNING *"
@@ -58,7 +58,7 @@ test "update_all — empty SET list is the degenerate UPDATE (caller adds sets)"
   -- `update_all` returns an Update with empty sets; the caller follows
   -- up with `set_/3` for each assignment. Keeping sets out of the
   -- query-bridge keeps the DSL small and orthogonal.
-  let q = Build.from("users") |> Build.where_(Eq(Col("id"), Lit(PInt(1))))
+  let q = Build.from("users") |> Build.where_(Expr.Eq(Expr.Col("id"), Lit(PInt(1))))
   let u = update_all(q)
   let sql = (compile_update(u)).sql
   -- Empty SET list is accepted by the compiler (it's tested upstream);
@@ -68,7 +68,7 @@ test "update_all — empty SET list is the degenerate UPDATE (caller adds sets)"
 end
 
 test "update_all — set_/update_returning compose on top of the bridge" do
-  let q = Build.from("users") |> Build.where_(Eq(Col("id"), Lit(PInt(42))))
+  let q = Build.from("users") |> Build.where_(Expr.Eq(Expr.Col("id"), Lit(PInt(42))))
   let u = update_all(q)
        |> set_("name", Lit(PString("Alice")))
        |> set_("active", Lit(PBool(true)))

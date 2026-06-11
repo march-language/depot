@@ -47,9 +47,9 @@ test "is_soft_deletable detects the deleted_at convention" do
 end
 
 test "not_deleted appends a deleted_at IS NULL where-clause" do
-  let q = from("widgets") |> not_deleted
+  let q = Build.from("widgets") |> not_deleted
   match q do
-  Query(f) -> match f.wheres do
+  Ast.Query(f) -> match f.wheres do
     Cons(Where(e), Nil) -> match e do
       Expr.IsNull(c) -> match c do
         Expr.Col(name) -> assert name == "deleted_at"
@@ -63,9 +63,9 @@ test "not_deleted appends a deleted_at IS NULL where-clause" do
 end
 
 test "with_deleted strips the leading not_deleted filter" do
-  let q = from("widgets") |> not_deleted |> with_deleted
+  let q = Build.from("widgets") |> not_deleted |> with_deleted
   match q do
-  Query(f) -> match f.wheres do
+  Ast.Query(f) -> match f.wheres do
     Nil -> assert true
     _   -> assert false
   end

@@ -15,9 +15,9 @@ end
 -- ---- Tests ----
 
 test "from table" do
-  let q = from("users")
+  let q = Build.from("users")
   match q do
-  Query(f) -> do
+  Ast.Query(f) -> do
     match f.from_ do
     FromTable(t) -> assert t == "users"
     _ -> assert false
@@ -33,17 +33,17 @@ test "from table" do
 end
 
 test "select exprs" do
-  let q = select(from("posts"), [Expr.Col("id"), Expr.Col("title")])
+  let q = Build.select(Build.from("posts"), [Expr.Col("id"), Expr.Col("title")])
   match q do
-  Query(f) ->
+  Ast.Query(f) ->
     assert list_len(f.selects) == 2
   end
 end
 
 test "select_all" do
-  let q = select_all(from("posts"))
+  let q = Build.select_all(Build.from("posts"))
   match q do
-  Query(f) -> do
+  Ast.Query(f) -> do
     assert list_len(f.selects) == 1
     assert f.selects == [SelectAll]
   end
@@ -51,9 +51,9 @@ test "select_all" do
 end
 
 test "WHERE clause" do
-  let q = where_(from("users"), Expr.Eq(Expr.Col("active"), Lit(PBool(true))))
+  let q = Build.where_(Build.from("users"), Expr.Eq(Expr.Col("active"), Lit(PBool(true))))
   match q do
-  Query(f) ->
+  Ast.Query(f) ->
     match f.wheres do
     Cons(Where(_), Nil) -> ()
     _ -> assert false
@@ -62,18 +62,18 @@ test "WHERE clause" do
 end
 
 test "or_where adds clause" do
-  let q = from("users")
-         |> where_(Expr.Eq(Expr.Col("role"), Lit(PString("admin"))))
-         |> or_where(Expr.Eq(Expr.Col("role"), Lit(PString("superuser"))))
+  let q = Build.from("users")
+         |> Build.where_(Expr.Eq(Expr.Col("role"), Lit(PString("admin"))))
+         |> Build.or_where(Expr.Eq(Expr.Col("role"), Lit(PString("superuser"))))
   match q do
-  Query(f) -> assert list_len(f.wheres) == 2
+  Ast.Query(f) -> assert list_len(f.wheres) == 2
   end
 end
 
 test "limit and offset" do
-  let q = limit(offset(from("events"), 20), 10)
+  let q = Build.limit(Build.offset(Build.from("events"), 20), 10)
   match q do
-  Query(f) -> do
+  Ast.Query(f) -> do
     assert f.limit_ == Some(10)
     assert f.offset_ == Some(20)
   end
@@ -81,9 +81,9 @@ test "limit and offset" do
 end
 
 test "distinct" do
-  let q = distinct(from("tags"))
+  let q = Build.distinct(Build.from("tags"))
   match q do
-  Query(f) -> match f.distinct_ do
+  Ast.Query(f) -> match f.distinct_ do
     Distinct -> assert true
     _        -> assert false
   end
@@ -91,11 +91,11 @@ test "distinct" do
 end
 
 test "order_by ASC" do
-  let q = order_by(from("logs"), Expr.Col("created_at"), Asc)
+  let q = Build.order_by(Build.from("logs"), Expr.Col("created_at"), SortDir.Asc)
   match q do
-  Query(f) ->
+  Ast.Query(f) ->
     match f.orders do
-    Cons(OrderExpr(e, Asc), Nil) ->
+    Cons(OrderExpr(e, SortDir.Asc), Nil) ->
       match e do
       Expr.Col(name) -> assert name == "created_at"
       _ -> assert false
@@ -106,50 +106,50 @@ test "order_by ASC" do
 end
 
 test "INNER JOIN" do
-  let q = join(from("orders"), "users", Expr.Eq(QCol("orders", "user_id"), QCol("users", "id")))
+  let q = Build.join(Build.from("orders"), "users", Expr.Eq(QCol("orders", "user_id"), QCol("users", "id")))
   match q do
-  Query(f) ->
+  Ast.Query(f) ->
     match f.joins do
-    Cons(JoinClause(Inner, "users", _), Nil) -> ()
+    Cons(JoinClause(JoinKind.Inner, "users", _), Nil) -> ()
     _ -> assert false
     end
   end
 end
 
 test "group_by" do
-  let q = group_by(from("sales"), [Expr.Col("category"), Expr.Col("year")])
+  let q = Build.group_by(Build.from("sales"), [Expr.Col("category"), Expr.Col("year")])
   match q do
-  Query(f) ->
+  Ast.Query(f) ->
     assert list_len(f.group_bys) == 2
   end
 end
 
 test "LEFT JOIN" do
-  let q = left_join(from("orders"), "users", Expr.Eq(QCol("orders", "user_id"), QCol("users", "id")))
+  let q = Build.left_join(Build.from("orders"), "users", Expr.Eq(QCol("orders", "user_id"), QCol("users", "id")))
   match q do
-  Query(f) ->
+  Ast.Query(f) ->
     match f.joins do
-    Cons(JoinClause(Left, "users", _), Nil) -> ()
+    Cons(JoinClause(JoinKind.Left, "users", _), Nil) -> ()
     _ -> assert false
     end
   end
 end
 
 test "RIGHT JOIN" do
-  let q = right_join(from("orders"), "users", Expr.Eq(QCol("orders", "user_id"), QCol("users", "id")))
+  let q = Build.right_join(Build.from("orders"), "users", Expr.Eq(QCol("orders", "user_id"), QCol("users", "id")))
   match q do
-  Query(f) ->
+  Ast.Query(f) ->
     match f.joins do
-    Cons(JoinClause(Right, "users", _), Nil) -> ()
+    Cons(JoinClause(JoinKind.Right, "users", _), Nil) -> ()
     _ -> assert false
     end
   end
 end
 
 test "FULL OUTER JOIN" do
-  let q = full_join(from("a"), "b", Expr.Eq(Expr.Col("a.id"), Expr.Col("b.a_id")))
+  let q = Build.full_join(Build.from("a"), "b", Expr.Eq(Expr.Col("a.id"), Expr.Col("b.a_id")))
   match q do
-  Query(f) ->
+  Ast.Query(f) ->
     match f.joins do
     Cons(JoinClause(FullOuter, "b", _), Nil) -> ()
     _ -> assert false
@@ -158,9 +158,9 @@ test "FULL OUTER JOIN" do
 end
 
 test "CROSS JOIN" do
-  let q = cross_join(from("a"), "b")
+  let q = Build.cross_join(Build.from("a"), "b")
   match q do
-  Query(f) ->
+  Ast.Query(f) ->
     match f.joins do
     Cons(JoinClause(Cross, "b", _), Nil) -> ()
     _ -> assert false
@@ -169,9 +169,9 @@ test "CROSS JOIN" do
 end
 
 test "having clause" do
-  let q = having(from("sales"), Expr.Gt(Expr.Count(Expr.Col("id")), Lit(PInt(1))))
+  let q = Build.having(Build.from("sales"), Expr.Gt(Expr.Count(Expr.Col("id")), Lit(PInt(1))))
   match q do
-  Query(f) ->
+  Ast.Query(f) ->
     match f.havings do
     Cons(Where(_), Nil) -> ()
     _ -> assert false
@@ -180,11 +180,11 @@ test "having clause" do
 end
 
 test "order_by DESC" do
-  let q = order_by(from("logs"), Expr.Col("created_at"), Desc)
+  let q = Build.order_by(Build.from("logs"), Expr.Col("created_at"), SortDir.Desc)
   match q do
-  Query(f) ->
+  Ast.Query(f) ->
     match f.orders do
-    Cons(OrderExpr(e, Desc), Nil) ->
+    Cons(OrderExpr(e, SortDir.Desc), Nil) ->
       match e do
       Expr.Col(name) -> assert name == "created_at"
       _ -> assert false
@@ -195,10 +195,10 @@ test "order_by DESC" do
 end
 
 test "from_subquery" do
-  let sub = from("events") |> where_(Expr.Eq(Expr.Col("active"), Lit(PBool(true))))
-  let q = from_subquery(sub, "e")
+  let sub = Build.from("events") |> Build.where_(Expr.Eq(Expr.Col("active"), Lit(PBool(true))))
+  let q = Build.from_subquery(sub, "e")
   match q do
-  Query(f) ->
+  Ast.Query(f) ->
     match f.from_ do
     FromSubquery(_, alias_name) -> assert alias_name == "e"
     _ -> assert false
@@ -207,9 +207,9 @@ test "from_subquery" do
 end
 
 test "select_as" do
-  let q = select_as(from("posts"), Expr.Count(Expr.Col("id")), "total")
+  let q = Build.select_as(Build.from("posts"), Expr.Count(Expr.Col("id")), "total")
   match q do
-  Query(f) ->
+  Ast.Query(f) ->
     match f.selects do
     Cons(SelectAs(e, alias_), Nil) -> do
       assert alias_ == "total"
@@ -228,13 +228,13 @@ test "select_as" do
 end
 
 test "chained builder" do
-  let q = from("users")
-         |> select([Expr.Col("id"), Expr.Col("name")])
-         |> where_(Expr.Eq(Expr.Col("active"), Lit(PBool(true))))
-         |> order_by(Expr.Col("name"), Asc)
-         |> limit(50)
+  let q = Build.from("users")
+         |> Build.select([Expr.Col("id"), Expr.Col("name")])
+         |> Build.where_(Expr.Eq(Expr.Col("active"), Lit(PBool(true))))
+         |> Build.order_by(Expr.Col("name"), SortDir.Asc)
+         |> Build.limit(50)
   match q do
-  Query(f) -> do
+  Ast.Query(f) -> do
     assert list_len(f.selects) == 2
     assert list_len(f.wheres) == 1
     assert list_len(f.orders) == 1
@@ -244,11 +244,11 @@ test "chained builder" do
 end
 
 test "order_asc shorthand" do
-  let q = order_asc(from("logs"), Expr.Col("created_at"))
+  let q = Build.order_asc(Build.from("logs"), Expr.Col("created_at"))
   match q do
-  Query(f) ->
+  Ast.Query(f) ->
     match f.orders do
-    Cons(OrderExpr(e, Asc), Nil) ->
+    Cons(OrderExpr(e, SortDir.Asc), Nil) ->
       match e do
       Expr.Col(name) -> assert name == "created_at"
       _ -> assert false
@@ -259,11 +259,11 @@ test "order_asc shorthand" do
 end
 
 test "order_desc shorthand" do
-  let q = order_desc(from("scores"), Expr.Col("points"))
+  let q = Build.order_desc(Build.from("scores"), Expr.Col("points"))
   match q do
-  Query(f) ->
+  Ast.Query(f) ->
     match f.orders do
-    Cons(OrderExpr(e, Desc), Nil) ->
+    Cons(OrderExpr(e, SortDir.Desc), Nil) ->
       match e do
       Expr.Col(name) -> assert name == "points"
       _ -> assert false
@@ -274,38 +274,38 @@ test "order_desc shorthand" do
 end
 
 test "multiple where_ and or_where" do
-  let q = from("events")
-         |> where_(Expr.Eq(Expr.Col("active"), Lit(PBool(true))))
-         |> where_(Expr.Gt(Expr.Col("score"), Lit(PInt(0))))
-         |> or_where(Expr.Eq(Expr.Col("featured"), Lit(PBool(true))))
+  let q = Build.from("events")
+         |> Build.where_(Expr.Eq(Expr.Col("active"), Lit(PBool(true))))
+         |> Build.where_(Expr.Gt(Expr.Col("score"), Lit(PInt(0))))
+         |> Build.or_where(Expr.Eq(Expr.Col("featured"), Lit(PBool(true))))
   match q do
-  Query(f) -> assert list_len(f.wheres) == 3
+  Ast.Query(f) -> assert list_len(f.wheres) == 3
   end
 end
 
 test "multiple group_by accumulates" do
-  let q = from("sales")
-         |> group_by([Expr.Col("region"), Expr.Col("year"), Expr.Col("quarter")])
+  let q = Build.from("sales")
+         |> Build.group_by([Expr.Col("region"), Expr.Col("year"), Expr.Col("quarter")])
   match q do
-  Query(f) -> assert list_len(f.group_bys) == 3
+  Ast.Query(f) -> assert list_len(f.group_bys) == 3
   end
 end
 
 test "chained joins" do
-  let q = from("orders")
-         |> join("users", Expr.Eq(QCol("orders", "user_id"), QCol("users", "id")))
-         |> left_join("products", Expr.Eq(QCol("orders", "product_id"), QCol("products", "id")))
+  let q = Build.from("orders")
+         |> Build.join("users", Expr.Eq(QCol("orders", "user_id"), QCol("users", "id")))
+         |> Build.left_join("products", Expr.Eq(QCol("orders", "product_id"), QCol("products", "id")))
   match q do
-  Query(f) -> assert list_len(f.joins) == 2
+  Ast.Query(f) -> assert list_len(f.joins) == 2
   end
 end
 
 -- ---- Additional Build tests ----
 
 test "from creates query with correct table" do
-  let q = from("products")
+  let q = Build.from("products")
   match q do
-  Query(f) ->
+  Ast.Query(f) ->
     match f.from_ do
     FromTable(t) -> assert t == "products"
     _ -> assert false
@@ -314,33 +314,33 @@ test "from creates query with correct table" do
 end
 
 test "where_ appends to wheres list" do
-  let q = from("t") |> where_(Expr.Eq(Expr.Col("a"), Lit(PInt(1))))
+  let q = Build.from("t") |> Build.where_(Expr.Eq(Expr.Col("a"), Lit(PInt(1))))
   match q do
-  Query(f) -> assert list_len(f.wheres) == 1
+  Ast.Query(f) -> assert list_len(f.wheres) == 1
   end
 end
 
 test "multiple where_ calls accumulate" do
-  let q = from("t")
-    |> where_(Expr.Eq(Expr.Col("a"), Lit(PInt(1))))
-    |> where_(Expr.Eq(Expr.Col("b"), Lit(PInt(2))))
-    |> where_(Expr.Eq(Expr.Col("c"), Lit(PInt(3))))
+  let q = Build.from("t")
+    |> Build.where_(Expr.Eq(Expr.Col("a"), Lit(PInt(1))))
+    |> Build.where_(Expr.Eq(Expr.Col("b"), Lit(PInt(2))))
+    |> Build.where_(Expr.Eq(Expr.Col("c"), Lit(PInt(3))))
   match q do
-  Query(f) -> assert list_len(f.wheres) == 3
+  Ast.Query(f) -> assert list_len(f.wheres) == 3
   end
 end
 
 test "select clears and sets selects" do
-  let q = from("t") |> select([Expr.Col("id"), Expr.Col("name"), Expr.Col("email")])
+  let q = Build.from("t") |> Build.select([Expr.Col("id"), Expr.Col("name"), Expr.Col("email")])
   match q do
-  Query(f) -> assert list_len(f.selects) == 3
+  Ast.Query(f) -> assert list_len(f.selects) == 3
   end
 end
 
 test "select_all sets SelectAll" do
-  let q = from("t") |> select_all
+  let q = Build.from("t") |> select_all
   match q do
-  Query(f) -> do
+  Ast.Query(f) -> do
     assert list_len(f.selects) == 1
     assert f.selects == [SelectAll]
   end
@@ -348,44 +348,44 @@ test "select_all sets SelectAll" do
 end
 
 test "join adds inner join" do
-  let q = from("t") |> join("other", Expr.Eq(Expr.Col("id"), Expr.Col("other_id")))
+  let q = Build.from("t") |> Build.join("other", Expr.Eq(Expr.Col("id"), Expr.Col("other_id")))
   match q do
-  Query(f) -> assert list_len(f.joins) == 1
+  Ast.Query(f) -> assert list_len(f.joins) == 1
   end
 end
 
 test "left_join adds left join" do
-  let q = from("t") |> left_join("other", Expr.Eq(Expr.Col("id"), Expr.Col("other_id")))
+  let q = Build.from("t") |> Build.left_join("other", Expr.Eq(Expr.Col("id"), Expr.Col("other_id")))
   match q do
-  Query(f) -> assert list_len(f.joins) == 1
+  Ast.Query(f) -> assert list_len(f.joins) == 1
   end
 end
 
 test "right_join adds right join" do
-  let q = from("t") |> right_join("other", Expr.Eq(Expr.Col("id"), Expr.Col("other_id")))
+  let q = Build.from("t") |> Build.right_join("other", Expr.Eq(Expr.Col("id"), Expr.Col("other_id")))
   match q do
-  Query(f) -> assert list_len(f.joins) == 1
+  Ast.Query(f) -> assert list_len(f.joins) == 1
   end
 end
 
 test "limit sets limit" do
-  let q = from("t") |> limit(10)
+  let q = Build.from("t") |> Build.limit(10)
   match q do
-  Query(f) -> assert f.limit_ == Some(10)
+  Ast.Query(f) -> assert f.limit_ == Some(10)
   end
 end
 
 test "offset sets offset" do
-  let q = from("t") |> offset(20)
+  let q = Build.from("t") |> Build.offset(20)
   match q do
-  Query(f) -> assert f.offset_ == Some(20)
+  Ast.Query(f) -> assert f.offset_ == Some(20)
   end
 end
 
 test "distinct sets distinct flag" do
-  let q = from("t") |> distinct
+  let q = Build.from("t") |> distinct
   match q do
-  Query(f) -> match f.distinct_ do
+  Ast.Query(f) -> match f.distinct_ do
     Distinct -> assert true
     _        -> assert false
   end
@@ -393,51 +393,51 @@ test "distinct sets distinct flag" do
 end
 
 test "order_asc adds asc order" do
-  let q = from("t") |> order_asc(Expr.Col("name"))
+  let q = Build.from("t") |> Build.order_asc(Expr.Col("name"))
   match q do
-  Query(f) -> assert list_len(f.orders) == 1
+  Ast.Query(f) -> assert list_len(f.orders) == 1
   end
 end
 
 test "order_desc adds desc order" do
-  let q = from("t") |> order_desc(Expr.Col("created_at"))
+  let q = Build.from("t") |> Build.order_desc(Expr.Col("created_at"))
   match q do
-  Query(f) -> assert list_len(f.orders) == 1
+  Ast.Query(f) -> assert list_len(f.orders) == 1
   end
 end
 
 test "multiple orders accumulate" do
-  let q = from("t") |> order_asc(Expr.Col("a")) |> order_desc(Expr.Col("b")) |> order_asc(Expr.Col("c"))
+  let q = Build.from("t") |> Build.order_asc(Expr.Col("a")) |> Build.order_desc(Expr.Col("b")) |> Build.order_asc(Expr.Col("c"))
   match q do
-  Query(f) -> assert list_len(f.orders) == 3
+  Ast.Query(f) -> assert list_len(f.orders) == 3
   end
 end
 
 test "group_by adds group by" do
-  let q = from("t") |> group_by([Expr.Col("status")])
+  let q = Build.from("t") |> Build.group_by([Expr.Col("status")])
   match q do
-  Query(f) -> assert list_len(f.group_bys) == 1
+  Ast.Query(f) -> assert list_len(f.group_bys) == 1
   end
 end
 
 test "having adds having clause" do
-  let q = from("t") |> having(Expr.Gt(CountAll, Lit(PInt(1))))
+  let q = Build.from("t") |> Build.having(Expr.Gt(CountAll, Lit(PInt(1))))
   match q do
-  Query(f) -> assert list_len(f.havings) == 1
+  Ast.Query(f) -> assert list_len(f.havings) == 1
   end
 end
 
 test "complex chained query" do
-  let q = from("orders")
-    |> join("users", Expr.Eq(QCol("orders", "user_id"), QCol("users", "id")))
-    |> where_(Expr.Eq(Expr.Col("status"), Lit(PString("active"))))
-    |> group_by([Expr.Col("user_id")])
-    |> having(Expr.Gt(Expr.Count(Expr.Col("id")), Lit(PInt(2))))
-    |> order_desc(Expr.Col("user_id"))
-    |> limit(10)
-    |> offset(0)
+  let q = Build.from("orders")
+    |> Build.join("users", Expr.Eq(QCol("orders", "user_id"), QCol("users", "id")))
+    |> Build.where_(Expr.Eq(Expr.Col("status"), Lit(PString("active"))))
+    |> Build.group_by([Expr.Col("user_id")])
+    |> Build.having(Expr.Gt(Expr.Count(Expr.Col("id")), Lit(PInt(2))))
+    |> Build.order_desc(Expr.Col("user_id"))
+    |> Build.limit(10)
+    |> Build.offset(0)
   match q do
-  Query(f) -> do
+  Ast.Query(f) -> do
     assert list_len(f.joins) == 1
     assert list_len(f.wheres) == 1
     assert list_len(f.group_bys) == 1
@@ -450,75 +450,75 @@ test "complex chained query" do
 end
 
 test "from starts with no wheres" do
-  let q = from("t")
+  let q = Build.from("t")
   match q do
-  Query(f) -> assert f.wheres == Nil
+  Ast.Query(f) -> assert f.wheres == Nil
   end
 end
 
 test "from starts with no joins" do
-  let q = from("t")
+  let q = Build.from("t")
   match q do
-  Query(f) -> assert f.joins == Nil
+  Ast.Query(f) -> assert f.joins == Nil
   end
 end
 
 test "from starts with no orders" do
-  let q = from("t")
+  let q = Build.from("t")
   match q do
-  Query(f) -> assert f.orders == Nil
+  Ast.Query(f) -> assert f.orders == Nil
   end
 end
 
 test "from starts with no group_bys" do
-  let q = from("t")
+  let q = Build.from("t")
   match q do
-  Query(f) -> assert f.group_bys == Nil
+  Ast.Query(f) -> assert f.group_bys == Nil
   end
 end
 
 test "from starts with no havings" do
-  let q = from("t")
+  let q = Build.from("t")
   match q do
-  Query(f) -> assert f.havings == Nil
+  Ast.Query(f) -> assert f.havings == Nil
   end
 end
 
 test "from starts with no limit" do
-  let q = from("t")
+  let q = Build.from("t")
   match q do
-  Query(f) -> assert f.limit_ == None
+  Ast.Query(f) -> assert f.limit_ == None
   end
 end
 
 test "from starts with no offset" do
-  let q = from("t")
+  let q = Build.from("t")
   match q do
-  Query(f) -> assert f.offset_ == None
+  Ast.Query(f) -> assert f.offset_ == None
   end
 end
 
 test "order_asc with multiple columns" do
-  let q = from("users")
-    |> order_asc(Expr.Col("last_name"))
-    |> order_asc(Expr.Col("first_name"))
+  let q = Build.from("users")
+    |> Build.order_asc(Expr.Col("last_name"))
+    |> Build.order_asc(Expr.Col("first_name"))
   match q do
-  Query(f) -> assert list_len(f.orders) == 2
+  Ast.Query(f) -> assert list_len(f.orders) == 2
   end
 end
 
 test "group_by multiple columns" do
-  let q = from("sales")
-    |> group_by([Expr.Col("year"), Expr.Col("month"), Expr.Col("product_id")])
+  let q = Build.from("sales")
+    |> Build.group_by([Expr.Col("year"), Expr.Col("month"), Expr.Col("product_id")])
   match q do
-  Query(f) -> assert list_len(f.group_bys) == 3
+  Ast.Query(f) -> assert list_len(f.group_bys) == 3
   end
 end
 
 test "limit then offset" do
-  let q = from("t") |> limit(5) |> offset(10)
+  let q = Build.from("t") |> Build.limit(5) |> Build.offset(10)
   match q do
-  Query(f) -> do
+  Ast.Query(f) -> do
     assert f.limit_ == Some(5)
     assert f.offset_ == Some(10)
   end
@@ -528,24 +528,24 @@ end
 -- ---- Phase 1.2: where_in / where_not_in ----
 
 test "where_in adds IN where clause" do
-  let q = from("users")
-    |> where_in(Expr.Col("id"), [Lit(PInt(1)), Lit(PInt(2)), Lit(PInt(3))])
+  let q = Build.from("users")
+    |> Build.where_in(Expr.Col("id"), [Lit(PInt(1)), Lit(PInt(2)), Lit(PInt(3))])
   match q do
-  Query(f) -> assert list_len(f.wheres) == 1
+  Ast.Query(f) -> assert list_len(f.wheres) == 1
   end
 end
 
 test "where_in empty list adds WHERE FALSE clause" do
-  let q = from("users") |> where_in(Expr.Col("id"), Nil)
+  let q = Build.from("users") |> Build.where_in(Expr.Col("id"), Nil)
   match q do
-  Query(f) -> assert list_len(f.wheres) == 1
+  Ast.Query(f) -> assert list_len(f.wheres) == 1
   end
 end
 
 test "where_in empty list clause is Where(Raw)" do
-  let q = from("users") |> where_in(Expr.Col("id"), Nil)
+  let q = Build.from("users") |> Build.where_in(Expr.Col("id"), Nil)
   match q do
-  Query(f) ->
+  Ast.Query(f) ->
     match f.wheres do
     Cons(Where(Raw(_)), Nil) -> ()
     _ -> assert false
@@ -554,69 +554,69 @@ test "where_in empty list clause is Where(Raw)" do
 end
 
 test "where_not_in adds NOT IN where clause" do
-  let q = from("users")
-    |> where_not_in(Expr.Col("id"), [Lit(PInt(1)), Lit(PInt(2))])
+  let q = Build.from("users")
+    |> Build.where_not_in(Expr.Col("id"), [Lit(PInt(1)), Lit(PInt(2))])
   match q do
-  Query(f) -> assert list_len(f.wheres) == 1
+  Ast.Query(f) -> assert list_len(f.wheres) == 1
   end
 end
 
 test "where_not_in empty list adds no clause" do
-  let q = from("users") |> where_not_in(Expr.Col("id"), Nil)
+  let q = Build.from("users") |> Build.where_not_in(Expr.Col("id"), Nil)
   match q do
-  Query(f) -> assert f.wheres == Nil
+  Ast.Query(f) -> assert f.wheres == Nil
   end
 end
 
 test "where_in chains with other conditions" do
-  let q = from("users")
-    |> where_(Expr.Eq(Expr.Col("active"), Lit(PBool(true))))
-    |> where_in(Expr.Col("role"), [Lit(PString("admin")), Lit(PString("mod"))])
+  let q = Build.from("users")
+    |> Build.where_(Expr.Eq(Expr.Col("active"), Lit(PBool(true))))
+    |> Build.where_in(Expr.Col("role"), [Lit(PString("admin")), Lit(PString("mod"))])
   match q do
-  Query(f) -> assert list_len(f.wheres) == 2
+  Ast.Query(f) -> assert list_len(f.wheres) == 2
   end
 end
 
 test "where_not_in chains with conditions" do
-  let q = from("users")
-    |> where_(Expr.Eq(Expr.Col("active"), Lit(PBool(true))))
-    |> where_not_in(Expr.Col("status"), [Lit(PString("banned")), Lit(PString("suspended"))])
+  let q = Build.from("users")
+    |> Build.where_(Expr.Eq(Expr.Col("active"), Lit(PBool(true))))
+    |> Build.where_not_in(Expr.Col("status"), [Lit(PString("banned")), Lit(PString("suspended"))])
   match q do
-  Query(f) -> assert list_len(f.wheres) == 2
+  Ast.Query(f) -> assert list_len(f.wheres) == 2
   end
 end
 
 test "where_in single value" do
-  let q = from("users") |> where_in(Expr.Col("id"), [Lit(PInt(42))])
+  let q = Build.from("users") |> Build.where_in(Expr.Col("id"), [Lit(PInt(42))])
   match q do
-  Query(f) -> assert list_len(f.wheres) == 1
+  Ast.Query(f) -> assert list_len(f.wheres) == 1
   end
 end
 
 -- ---- Phase 1.3: where_or / OR condition grouping ----
 
 test "where_or single condition is equivalent to where_" do
-  let q = from("users") |> where_or([Expr.Eq(Expr.Col("active"), Lit(PBool(true)))])
+  let q = Build.from("users") |> Build.where_or([Expr.Eq(Expr.Col("active"), Lit(PBool(true)))])
   match q do
-  Query(f) -> assert list_len(f.wheres) == 1
+  Ast.Query(f) -> assert list_len(f.wheres) == 1
   end
 end
 
 test "where_or two conditions adds one OR clause" do
-  let q = from("users")
-    |> where_or([Expr.Eq(Expr.Col("role"), Lit(PString("admin"))),
+  let q = Build.from("users")
+    |> Build.where_or([Expr.Eq(Expr.Col("role"), Lit(PString("admin"))),
                  Expr.Eq(Expr.Col("role"), Lit(PString("mod")))])
   match q do
-  Query(f) -> assert list_len(f.wheres) == 1
+  Ast.Query(f) -> assert list_len(f.wheres) == 1
   end
 end
 
-test "where_or stores Where(Or(...))" do
-  let q = from("users")
-    |> where_or([Expr.Eq(Expr.Col("role"), Lit(PString("admin"))),
+test "where_or stores Where(Expr.Or(...))" do
+  let q = Build.from("users")
+    |> Build.where_or([Expr.Eq(Expr.Col("role"), Lit(PString("admin"))),
                  Expr.Eq(Expr.Col("role"), Lit(PString("mod")))])
   match q do
-  Query(f) ->
+  Ast.Query(f) ->
     match f.wheres do
     Cons(Where(e), Nil) ->
       match e do
@@ -629,38 +629,38 @@ test "where_or stores Where(Or(...))" do
 end
 
 test "where_or empty list adds FALSE clause" do
-  let q = from("users") |> where_or(Nil)
+  let q = Build.from("users") |> Build.where_or(Nil)
   match q do
-  Query(f) -> assert list_len(f.wheres) == 1
+  Ast.Query(f) -> assert list_len(f.wheres) == 1
   end
 end
 
 test "where_or chains with AND conditions" do
-  let q = from("users")
-    |> where_(Expr.Eq(Expr.Col("active"), Lit(PBool(true))))
-    |> where_or([Expr.Eq(Expr.Col("role"), Lit(PString("admin"))),
+  let q = Build.from("users")
+    |> Build.where_(Expr.Eq(Expr.Col("active"), Lit(PBool(true))))
+    |> Build.where_or([Expr.Eq(Expr.Col("role"), Lit(PString("admin"))),
                  Expr.Eq(Expr.Col("role"), Lit(PString("mod")))])
   match q do
-  Query(f) -> assert list_len(f.wheres) == 2
+  Ast.Query(f) -> assert list_len(f.wheres) == 2
   end
 end
 
 test "where_or three conditions" do
-  let q = from("users")
-    |> where_or([Expr.Eq(Expr.Col("a"), Lit(PInt(1))),
+  let q = Build.from("users")
+    |> Build.where_or([Expr.Eq(Expr.Col("a"), Lit(PInt(1))),
                  Expr.Eq(Expr.Col("b"), Lit(PInt(2))),
                  Expr.Eq(Expr.Col("c"), Lit(PInt(3)))])
   match q do
-  Query(f) -> assert list_len(f.wheres) == 1
+  Ast.Query(f) -> assert list_len(f.wheres) == 1
   end
 end
 
 -- ---- Phase 1.4: fragment/2 ----
 
 test "fragment adds WHERE Fragment clause" do
-  let q = from("users") |> fragment("lower(?) = lower(?)", [Expr.Col("email"), Expr.Col("email")])
+  let q = Build.from("users") |> Build.fragment("lower(?) = lower(?)", [Expr.Col("email"), Expr.Col("email")])
   match q do
-  Query(f) ->
+  Ast.Query(f) ->
     match f.wheres do
     Cons(Where(e), Nil) ->
       match e do
@@ -673,9 +673,9 @@ test "fragment adds WHERE Fragment clause" do
 end
 
 test "fragment stores template string" do
-  let q = from("users") |> fragment("lower(?) = ?", [Expr.Col("email"), Lit(PString("a@b.com"))])
+  let q = Build.from("users") |> Build.fragment("lower(?) = ?", [Expr.Col("email"), Lit(PString("a@b.com"))])
   match q do
-  Query(f) ->
+  Ast.Query(f) ->
     match f.wheres do
     Cons(Where(Fragment(tmpl, _)), Nil) -> assert tmpl == "lower(?) = ?"
     _ -> assert false
@@ -684,9 +684,9 @@ test "fragment stores template string" do
 end
 
 test "fragment stores args list" do
-  let q = from("users") |> fragment("? > ?", [Expr.Col("age"), Lit(PInt(18))])
+  let q = Build.from("users") |> Build.fragment("? > ?", [Expr.Col("age"), Lit(PInt(18))])
   match q do
-  Query(f) ->
+  Ast.Query(f) ->
     match f.wheres do
     Cons(Where(Fragment(_, args)), Nil) -> assert list_len(args) == 2
     _ -> assert false
@@ -695,18 +695,18 @@ test "fragment stores args list" do
 end
 
 test "fragment chains with where_ conditions" do
-  let q = from("users")
-    |> where_(Expr.Eq(Expr.Col("active"), Lit(PBool(true))))
-    |> fragment("lower(?) = ?", [Expr.Col("email"), Lit(PString("alice@test.com"))])
+  let q = Build.from("users")
+    |> Build.where_(Expr.Eq(Expr.Col("active"), Lit(PBool(true))))
+    |> Build.fragment("lower(?) = ?", [Expr.Col("email"), Lit(PString("alice@test.com"))])
   match q do
-  Query(f) -> assert list_len(f.wheres) == 2
+  Ast.Query(f) -> assert list_len(f.wheres) == 2
   end
 end
 
 test "fragment with no placeholders stores empty args" do
-  let q = from("users") |> fragment("1 = 1", Nil)
+  let q = Build.from("users") |> Build.fragment("1 = 1", Nil)
   match q do
-  Query(f) ->
+  Ast.Query(f) ->
     match f.wheres do
     Cons(Where(Fragment(tmpl, _)), Nil) -> assert tmpl == "1 = 1"
     _ -> assert false
@@ -717,9 +717,9 @@ end
 -- ---- Phase 1.5: subquery predicates ----
 
 test "select_col adds SelectField to selects" do
-  let q = from("t") |> select_col("id")
+  let q = Build.from("t") |> Build.select_col("id")
   match q do
-  Query(f) ->
+  Ast.Query(f) ->
     match f.selects do
     Cons(SelectField(_), Nil) -> ()
     _ -> assert false
@@ -728,10 +728,10 @@ test "select_col adds SelectField to selects" do
 end
 
 test "where_in_subquery adds InSubquery WHERE clause" do
-  let subq = from("admins")
-  let q = from("users") |> where_in_subquery("id", subq)
+  let subq = Build.from("admins")
+  let q = Build.from("users") |> Build.where_in_subquery("id", subq)
   match q do
-  Query(f) ->
+  Ast.Query(f) ->
     match f.wheres do
     Cons(Where(e), Nil) ->
       match e do
@@ -744,9 +744,9 @@ test "where_in_subquery adds InSubquery WHERE clause" do
 end
 
 test "where_in_subquery column name is Col expr" do
-  let q = from("users") |> where_in_subquery("dept_id", from("depts"))
+  let q = Build.from("users") |> Build.where_in_subquery("dept_id", Build.from("depts"))
   match q do
-  Query(f) ->
+  Ast.Query(f) ->
     match f.wheres do
     Cons(Where(InSubquery(col_expr, _)), Nil) ->
       match col_expr do
@@ -759,14 +759,14 @@ test "where_in_subquery column name is Col expr" do
 end
 
 test "where_in_subquery stores the subquery" do
-  let subq = from("admins") |> select_col("user_id")
-  let q = from("users") |> where_in_subquery("id", subq)
+  let subq = Build.from("admins") |> Build.select_col("user_id")
+  let q = Build.from("users") |> Build.where_in_subquery("id", subq)
   match q do
-  Query(f) ->
+  Ast.Query(f) ->
     match f.wheres do
     Cons(Where(InSubquery(_, sq)), Nil) ->
       match sq do
-      Query(sf) ->
+      Ast.Query(sf) ->
         match sf.from_ do
         FromTable(t) -> assert t == "admins"
         _ -> assert false
@@ -778,9 +778,9 @@ test "where_in_subquery stores the subquery" do
 end
 
 test "where_exists adds Exists WHERE clause" do
-  let q = from("users") |> where_exists(from("admins"))
+  let q = Build.from("users") |> Build.where_exists(Build.from("admins"))
   match q do
-  Query(f) ->
+  Ast.Query(f) ->
     match f.wheres do
     Cons(Where(e), Nil) ->
       match e do
@@ -793,9 +793,9 @@ test "where_exists adds Exists WHERE clause" do
 end
 
 test "where_not_exists adds NOT(Exists) WHERE clause" do
-  let q = from("users") |> where_not_exists(from("admins"))
+  let q = Build.from("users") |> Build.where_not_exists(Build.from("admins"))
   match q do
-  Query(f) ->
+  Ast.Query(f) ->
     match f.wheres do
     Cons(Where(e), Nil) ->
       match e do
@@ -812,20 +812,20 @@ test "where_not_exists adds NOT(Exists) WHERE clause" do
 end
 
 test "where_in_subquery chains with other conditions" do
-  let q = from("users")
-    |> where_(Expr.Eq(Expr.Col("active"), Lit(PBool(true))))
-    |> where_in_subquery("id", from("admins"))
+  let q = Build.from("users")
+    |> Build.where_(Expr.Eq(Expr.Col("active"), Lit(PBool(true))))
+    |> Build.where_in_subquery("id", Build.from("admins"))
   match q do
-  Query(f) -> assert list_len(f.wheres) == 2
+  Ast.Query(f) -> assert list_len(f.wheres) == 2
   end
 end
 
 test "where_exists chains with other conditions" do
-  let q = from("users")
-    |> where_(Expr.Eq(Expr.Col("active"), Lit(PBool(true))))
-    |> where_exists(from("sessions"))
+  let q = Build.from("users")
+    |> Build.where_(Expr.Eq(Expr.Col("active"), Lit(PBool(true))))
+    |> Build.where_exists(Build.from("sessions"))
   match q do
-  Query(f) -> assert list_len(f.wheres) == 2
+  Ast.Query(f) -> assert list_len(f.wheres) == 2
   end
 end
 

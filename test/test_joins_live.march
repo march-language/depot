@@ -52,12 +52,12 @@ end
 
 test "INNER JOIN returns only rows with a matching key" do
   with_conn(fn conn ->
-    let q = from("j_users")
-           |> select([Expr.QCol("j_users", "name"),
+    let q = Build.from("j_users")
+           |> Build.select([Expr.QCol("j_users", "name"),
                       Expr.QCol("j_posts", "title")])
-           |> join("j_posts", Expr.Eq(Expr.QCol("j_users", "id"),
+           |> Build.join("j_posts", Expr.Eq(Expr.QCol("j_users", "id"),
                                        Expr.QCol("j_posts", "user_id")))
-           |> order_by(Expr.QCol("j_users", "id"), Asc)
+           |> Build.order_by(Expr.QCol("j_users", "id"), SortDir.Asc)
     match run_rows(conn, q) do
       Err(e) -> do
         let _ = println("inner join: " ++ e)
@@ -77,12 +77,12 @@ end
 
 test "LEFT JOIN keeps unmatched left rows and decodes nulls to None" do
   with_conn(fn conn ->
-    let q = from("j_users")
-           |> select([Expr.QCol("j_users", "name"),
+    let q = Build.from("j_users")
+           |> Build.select([Expr.QCol("j_users", "name"),
                       Expr.QCol("j_posts", "title")])
-           |> left_join("j_posts", Expr.Eq(Expr.QCol("j_users", "id"),
+           |> Build.left_join("j_posts", Expr.Eq(Expr.QCol("j_users", "id"),
                                             Expr.QCol("j_posts", "user_id")))
-           |> order_by(Expr.QCol("j_users", "id"), Asc)
+           |> Build.order_by(Expr.QCol("j_users", "id"), SortDir.Asc)
     match run_rows(conn, q) do
       Err(e) -> do
         let _ = println("left join: " ++ e)
@@ -104,12 +104,12 @@ end
 
 test "three-table join: users JOIN posts JOIN tags" do
   with_conn(fn conn ->
-    let q = from("j_users")
-           |> select([Expr.QCol("j_users", "name"),
+    let q = Build.from("j_users")
+           |> Build.select([Expr.QCol("j_users", "name"),
                       Expr.QCol("j_tags", "label")])
-           |> join("j_posts", Expr.Eq(Expr.QCol("j_users", "id"),
+           |> Build.join("j_posts", Expr.Eq(Expr.QCol("j_users", "id"),
                                        Expr.QCol("j_posts", "user_id")))
-           |> join("j_tags",  Expr.Eq(Expr.QCol("j_posts", "id"),
+           |> Build.join("j_tags",  Expr.Eq(Expr.QCol("j_posts", "id"),
                                        Expr.QCol("j_tags", "post_id")))
     match run_rows(conn, q) do
       Err(e) -> do
@@ -129,9 +129,9 @@ end
 test "LEFT JOIN row count >= base row count" do
   with_conn(fn conn ->
     -- Property: |LEFT JOIN result| >= |left table|.
-    let q = from("j_users")
-           |> select([Expr.QCol("j_users", "id")])
-           |> left_join("j_posts", Expr.Eq(Expr.QCol("j_users", "id"),
+    let q = Build.from("j_users")
+           |> Build.select([Expr.QCol("j_users", "id")])
+           |> Build.left_join("j_posts", Expr.Eq(Expr.QCol("j_users", "id"),
                                             Expr.QCol("j_posts", "user_id")))
     match run_rows(conn, q) do
       Err(e) -> do

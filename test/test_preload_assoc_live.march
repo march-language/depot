@@ -65,7 +65,7 @@ pfn with_conn(body) do
 end
 
 pfn load_users(conn) do
-  let q = from("pa_users") |> select([Expr.Col("id"), Expr.Col("name")])
+  let q = Build.from("pa_users") |> Build.select([Expr.Col("id"), Expr.Col("name")])
   let c = Compile.compile_parameterized(q)
   exec_prepared(conn, c.sql, c.params)
 end

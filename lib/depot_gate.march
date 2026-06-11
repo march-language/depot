@@ -291,8 +291,8 @@ that differs from the default is a change.
 Update flow: base is a DB record, so only actual modifications appear
 in `changes`.
 """
-fn cast_record(base, params, fields) do
-  let base_entries = record_entries(base)
+fn cast_record(base_rec, params, fields) do
+  let base_entries = record_entries(base_rec)
   let param_entries = record_entries(params)
   let changes = cast_diff(base_entries, param_entries, fields, Nil)
   Gate(base_entries, changes, Nil, true, Nil)

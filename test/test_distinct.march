@@ -12,42 +12,42 @@ import Build
 import Compile
 
 test "plain DISTINCT renders before the column list" do
-  let q = from("users") |> distinct |> select([Expr.Col("role")])
+  let q = Build.from("users") |> distinct |> Build.select([Expr.Col("role")])
   let r = Compile.compile_parameterized(q)
   assert r.sql == "SELECT DISTINCT \"role\" FROM \"users\""
 end
 
 test "no DISTINCT modifier by default" do
-  let q = from("users") |> select([Expr.Col("id")])
+  let q = Build.from("users") |> Build.select([Expr.Col("id")])
   let r = Compile.compile_parameterized(q)
   assert r.sql == "SELECT \"id\" FROM \"users\""
 end
 
 test "DISTINCT ON (col) renders column list in parens before SELECT list" do
-  let q = from("events")
-         |> distinct_on([Expr.Col("user_id")])
-         |> select([Expr.Col("user_id"), Expr.Col("created_at")])
+  let q = Build.from("events")
+         |> Build.distinct_on([Expr.Col("user_id")])
+         |> Build.select([Expr.Col("user_id"), Expr.Col("created_at")])
   let r = Compile.compile_parameterized(q)
   assert r.sql ==
     "SELECT DISTINCT ON (\"user_id\") \"user_id\", \"created_at\" FROM \"events\""
 end
 
 test "DISTINCT ON with multiple expressions is comma-separated" do
-  let q = from("t")
-         |> distinct_on([Expr.Col("a"), Expr.Col("b")])
-         |> select([Expr.Col("a"), Expr.Col("b"), Expr.Col("c")])
+  let q = Build.from("t")
+         |> Build.distinct_on([Expr.Col("a"), Expr.Col("b")])
+         |> Build.select([Expr.Col("a"), Expr.Col("b"), Expr.Col("c")])
   let r = Compile.compile_parameterized(q)
   assert String.contains(r.sql, "DISTINCT ON (\"a\", \"b\")")
 end
 
 test "DISTINCT ON composes with WHERE, ORDER BY, LIMIT" do
-  let q = from("events")
-         |> distinct_on([Expr.Col("user_id")])
-         |> select([Expr.Col("user_id"), Expr.Col("ts")])
-         |> where_(Expr.Gt(Expr.Col("ts"), Lit(PInt(0))))
-         |> order_by(Expr.Col("user_id"), Asc)
-         |> order_by(Expr.Col("ts"), Desc)
-         |> limit(100)
+  let q = Build.from("events")
+         |> Build.distinct_on([Expr.Col("user_id")])
+         |> Build.select([Expr.Col("user_id"), Expr.Col("ts")])
+         |> Build.where_(Expr.Gt(Expr.Col("ts"), Lit(PInt(0))))
+         |> Build.order_by(Expr.Col("user_id"), SortDir.Asc)
+         |> Build.order_by(Expr.Col("ts"), SortDir.Desc)
+         |> Build.limit(100)
   let r = Compile.compile_parameterized(q)
   let _ = assert String.contains(r.sql, "DISTINCT ON (\"user_id\")")
   let _ = assert String.contains(r.sql, "WHERE \"ts\" > $1")
@@ -56,15 +56,15 @@ test "DISTINCT ON composes with WHERE, ORDER BY, LIMIT" do
 end
 
 test "compile_inline honours DISTINCT" do
-  let q = from("users") |> distinct |> select([Expr.Col("role")])
+  let q = Build.from("users") |> distinct |> Build.select([Expr.Col("role")])
   let r = Compile.compile_inline(q)
   assert r.sql == "SELECT DISTINCT \"role\" FROM \"users\""
 end
 
 test "compile_inline honours DISTINCT ON" do
-  let q = from("events")
-         |> distinct_on([Expr.Col("user_id")])
-         |> select([Expr.Col("user_id")])
+  let q = Build.from("events")
+         |> Build.distinct_on([Expr.Col("user_id")])
+         |> Build.select([Expr.Col("user_id")])
   let r = Compile.compile_inline(q)
   assert r.sql == "SELECT DISTINCT ON (\"user_id\") \"user_id\" FROM \"events\""
 end

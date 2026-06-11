@@ -48,7 +48,29 @@ fn compile_parameterized(q) do
     let limit_f    = f.limit_
     let offset_f   = f.offset_
     let st0 = { param_count = 0, params = Nil }
-    cp2_sel(selects_f, distinct_f, from_f, joins_f, wheres_f, groups_f, havings_f, orders_f, limit_f, offset_f, st0)
+    let (sql, st) = cp2_sel(selects_f, distinct_f, from_f, joins_f, wheres_f, groups_f, havings_f, orders_f, limit_f, offset_f, st0, 64)
+    { sql = sql, params = rev_params(st.params) }
+  end
+  end
+end
+
+--- Compiles a nested Query with an explicit parameter state, so subqueries
+--- share the outer query's `$N` counter (dense numbering, no gaps).
+--- Returns `(sql, st)`.
+pfn compile_query_st(q, st) do
+  match q do
+  Query(f) -> do
+    let selects_f  = f.selects
+    let distinct_f = f.distinct_
+    let from_f     = f.from_
+    let joins_f    = f.joins
+    let wheres_f   = f.wheres
+    let groups_f   = f.group_bys
+    let havings_f  = f.havings
+    let orders_f   = f.orders
+    let limit_f    = f.limit_
+    let offset_f   = f.offset_
+    cp2_sel(selects_f, distinct_f, from_f, joins_f, wheres_f, groups_f, havings_f, orders_f, limit_f, offset_f, st, 64)
   end
   end
 end
@@ -59,41 +81,41 @@ end
 -- `st` is in scope for exactly one function at a time, preventing
 -- simultaneous aliases that would cause RC double-free on the state record.
 
-pfn cp2_sel(sel_f, dp_f, frm_f, jns_f, whr_f, grp_f, hav_f, ord_f, lim_f, off_f, st) do
-  let (sel, st2) = cp_sel(sel_f, st)
-  cp2_frm(dp_f, frm_f, jns_f, whr_f, grp_f, hav_f, ord_f, lim_f, off_f, sel, st2)
+pfn cp2_sel(sel_f, dp_f, frm_f, jns_f, whr_f, grp_f, hav_f, ord_f, lim_f, off_f, st, depth) do
+  let (sel, st2) = cp_sel(sel_f, st, depth - 1)
+  cp2_frm(dp_f, frm_f, jns_f, whr_f, grp_f, hav_f, ord_f, lim_f, off_f, sel, st2, depth)
 end
 
-pfn cp2_frm(dp_f, frm_f, jns_f, whr_f, grp_f, hav_f, ord_f, lim_f, off_f, sel, st) do
+pfn cp2_frm(dp_f, frm_f, jns_f, whr_f, grp_f, hav_f, ord_f, lim_f, off_f, sel, st, depth) do
   let frm = match frm_f do
     FromTable(name)    -> quote_ident(name)
     FromSubquery(_, _) -> "/* FROM subquery not supported in parameterized mode */"
   end
-  cp2_jns(dp_f, jns_f, whr_f, grp_f, hav_f, ord_f, lim_f, off_f, sel, frm, st)
+  cp2_jns(dp_f, jns_f, whr_f, grp_f, hav_f, ord_f, lim_f, off_f, sel, frm, st, depth)
 end
 
-pfn cp2_jns(dp_f, jns_f, whr_f, grp_f, hav_f, ord_f, lim_f, off_f, sel, frm, st) do
-  let (jns, st2) = compile_joins(jns_f, st)
-  cp2_whr(dp_f, whr_f, grp_f, hav_f, ord_f, lim_f, off_f, sel, frm, jns, st2)
+pfn cp2_jns(dp_f, jns_f, whr_f, grp_f, hav_f, ord_f, lim_f, off_f, sel, frm, st, depth) do
+  let (jns, st2) = compile_joins(jns_f, st, depth - 1)
+  cp2_whr(dp_f, whr_f, grp_f, hav_f, ord_f, lim_f, off_f, sel, frm, jns, st2, depth)
 end
 
-pfn cp2_whr(dp_f, whr_f, grp_f, hav_f, ord_f, lim_f, off_f, sel, frm, jns, st) do
-  let (whr, st2) = compile_wheres(whr_f, st)
-  cp2_grp(dp_f, grp_f, hav_f, ord_f, lim_f, off_f, sel, frm, jns, whr, st2)
+pfn cp2_whr(dp_f, whr_f, grp_f, hav_f, ord_f, lim_f, off_f, sel, frm, jns, st, depth) do
+  let (whr, st2) = compile_wheres(whr_f, st, depth - 1)
+  cp2_grp(dp_f, grp_f, hav_f, ord_f, lim_f, off_f, sel, frm, jns, whr, st2, depth)
 end
 
-pfn cp2_grp(dp_f, grp_f, hav_f, ord_f, lim_f, off_f, sel, frm, jns, whr, st) do
-  let (grp, st2) = compile_group_bys(grp_f, st)
-  cp2_hav(dp_f, hav_f, ord_f, lim_f, off_f, sel, frm, jns, whr, grp, st2)
+pfn cp2_grp(dp_f, grp_f, hav_f, ord_f, lim_f, off_f, sel, frm, jns, whr, st, depth) do
+  let (grp, st2) = compile_group_bys(grp_f, st, depth - 1)
+  cp2_hav(dp_f, hav_f, ord_f, lim_f, off_f, sel, frm, jns, whr, grp, st2, depth)
 end
 
-pfn cp2_hav(dp_f, hav_f, ord_f, lim_f, off_f, sel, frm, jns, whr, grp, st) do
-  let (hav, st2) = compile_havings(hav_f, st)
-  cp2_ord(dp_f, ord_f, lim_f, off_f, sel, frm, jns, whr, grp, hav, st2)
+pfn cp2_hav(dp_f, hav_f, ord_f, lim_f, off_f, sel, frm, jns, whr, grp, st, depth) do
+  let (hav, st2) = compile_havings(hav_f, st, depth - 1)
+  cp2_ord(dp_f, ord_f, lim_f, off_f, sel, frm, jns, whr, grp, hav, st2, depth)
 end
 
-pfn cp2_ord(dp_f, ord_f, lim_f, off_f, sel, frm, jns, whr, grp, hav, st) do
-  let (ord, st2) = compile_orders(ord_f, st)
+pfn cp2_ord(dp_f, ord_f, lim_f, off_f, sel, frm, jns, whr, grp, hav, st, depth) do
+  let (ord, st2) = compile_orders(ord_f, st, depth - 1)
   cp2_finish(dp_f, lim_f, off_f, sel, frm, jns, whr, grp, hav, ord, st2)
 end
 
@@ -103,7 +125,8 @@ pfn cp2_finish(dp_f, lim_f, off_f, sel, frm, jns, whr, grp, hav, ord, st) do
   let off = compile_offset(off_f)
   let sql = "SELECT " ++ dp ++ sel ++ " FROM " ++ frm
             ++ jns ++ whr ++ grp ++ hav ++ ord ++ lim ++ off
-  { sql = sql, params = rev_params(st.params) }
+  let out = (sql, st)
+  out
 end
 
 --- Compiles a Query to inline SQL with literal values (no placeholders).
@@ -151,7 +174,7 @@ end
 -- Compile the selects list to (sql, state). Takes the list directly to avoid
 -- passing the record `f` through multiple functions (which triggers RC underflow
 -- with nullary constructors like NoDistinct in March).
-pfn cp_sel(selects, st) do
+pfn cp_sel(selects, st, _depth) do
   match selects do
   Nil -> ("*", st)
   items -> compile_select_exprs(items, st, Nil)
@@ -200,7 +223,7 @@ end
 
 -- ---- JOIN ----
 
-pfn compile_joins(joins, st) do
+pfn compile_joins(joins, st, _depth) do
   match joins do
   Nil -> ("", st)
   js -> compile_joins_acc(js, st, "")
@@ -243,7 +266,7 @@ end
 
 -- ---- WHERE ----
 
-pfn compile_wheres(wheres, st) do
+pfn compile_wheres(wheres, st, _depth) do
   match wheres do
   Nil -> ("", st)
   ws -> do
@@ -324,7 +347,7 @@ end
 
 -- ---- GROUP BY ----
 
-pfn compile_group_bys(exprs, st) do
+pfn compile_group_bys(exprs, st, _depth) do
   match exprs do
   Nil -> ("", st)
   es -> do
@@ -343,7 +366,7 @@ end
 
 -- ---- HAVING ----
 
-pfn compile_havings(havings, st) do
+pfn compile_havings(havings, st, _depth) do
   match havings do
   Nil -> ("", st)
   hs -> do
@@ -365,7 +388,7 @@ end
 
 -- ---- ORDER BY ----
 
-pfn compile_orders(orders, st) do
+pfn compile_orders(orders, st, _depth) do
   match orders do
   Nil -> ("", st)
   os -> do
@@ -582,27 +605,25 @@ pfn compile_expr(e, st) do
     let (parts, s2) = compile_expr_list(args, st, Nil)
     (name ++ "(" ++ join_strs(rev_strs(parts), ", ") ++ ")", s2)
   end
-  -- TODO(1.5): subqueries use inline compilation so their literal values appear
-  -- inline rather than as $N params. Full param-counter threading requires
-  -- breaking the mutual-recursion cycle between the pfn cp_X pipeline and
-  -- compile_expr. Until then, keep subquery literals out of user input paths.
+  -- Subqueries compile through compile_query_st so their literals become
+  -- $N parameters sharing the outer query's counter (dense numbering).
   Exists(subq) -> do
-    let sub = compile_inline(subq)
-    ("EXISTS (" ++ sub.sql ++ ")", st)
+    let (sub_sql, s1) = compile_query_st(subq, st)
+    ("EXISTS (" ++ sub_sql ++ ")", s1)
   end
   SubqueryExpr(subq) -> do
-    let sub = compile_inline(subq)
-    ("(" ++ sub.sql ++ ")", st)
+    let (sub_sql, s1) = compile_query_st(subq, st)
+    ("(" ++ sub_sql ++ ")", s1)
   end
   InSubquery(inner, subq) -> do
     let (s, s1) = compile_expr(inner, st)
-    let sub = compile_inline(subq)
-    (s ++ " IN (" ++ sub.sql ++ ")", s1)
+    let (sub_sql, s2) = compile_query_st(subq, s1)
+    (s ++ " IN (" ++ sub_sql ++ ")", s2)
   end
   NotInSubquery(inner, subq) -> do
     let (s, s1) = compile_expr(inner, st)
-    let sub = compile_inline(subq)
-    (s ++ " NOT IN (" ++ sub.sql ++ ")", s1)
+    let (sub_sql, s2) = compile_query_st(subq, s1)
+    (s ++ " NOT IN (" ++ sub_sql ++ ")", s2)
   end
   Like(inner, pat) -> do
     let (s, st2) = compile_expr(inner, st)

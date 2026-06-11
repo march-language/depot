@@ -62,7 +62,10 @@ import Build
 --                 WHERE conditions added via where_eq / where_gt / etc.
 --                 IS NULL / IS NOT NULL conditions contribute nothing.
 --                 Returned by to_params/1 and used by exec_sql/2.
-type Query = DQuery(a, List(b), c, d, e, f, List(String), List(String))
+-- Named DepotQuery (not Query) so the short name cannot collide with Ast.Query
+-- in whole-program builds (ctor tags, structural eq, and exhaustiveness all
+-- resolve types by short name at the TIR level).
+type DepotQuery = DQuery(a, List(b), c, d, e, f, List(String), List(String))
 
 -- ---------------------------------------------------------------------------
 -- Construction

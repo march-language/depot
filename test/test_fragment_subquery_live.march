@@ -70,9 +70,9 @@ end
 test "fragment with lower() matches email case-insensitively" do
   with_conn(fn conn ->
     -- lower(email) = lower($1) — the '?' placeholder gets parameterised.
-    let q = from("fs_users")
-           |> select([Expr.Col("id")])
-           |> fragment("lower(?) = lower(?)",
+    let q = Build.from("fs_users")
+           |> Build.select([Expr.Col("id")])
+           |> Build.fragment("lower(?) = lower(?)",
                 [Expr.Col("email"), Lit(PString("alice@example.com"))])
     match run_rows(conn, q) do
       Err(e) -> do
@@ -93,11 +93,11 @@ end
 test "where_in_subquery restricts to ids present in subselect" do
   with_conn(fn conn ->
     -- Users whose id is in fs_admins.user_id.
-    let admins = from("fs_admins") |> select([Expr.Col("user_id")])
-    let q = from("fs_users")
-           |> select([Expr.Col("id")])
-           |> where_in_subquery("id", admins)
-           |> order_by(Expr.Col("id"), Asc)
+    let admins = Build.from("fs_admins") |> Build.select([Expr.Col("user_id")])
+    let q = Build.from("fs_users")
+           |> Build.select([Expr.Col("id")])
+           |> Build.where_in_subquery("id", admins)
+           |> Build.order_by(Expr.Col("id"), SortDir.Asc)
     match run_rows(conn, q) do
       Err(e) -> do
         let _ = println("in subquery: " ++ e)
@@ -116,14 +116,14 @@ end
 test "where_exists keeps rows with a matching admin record" do
   with_conn(fn conn ->
     -- EXISTS (SELECT 1 FROM fs_admins WHERE user_id = fs_users.id)
-    let admins = from("fs_admins")
-                |> select([Lit(PInt(1))])
-                |> where_(Expr.Eq(Expr.QCol("fs_admins", "user_id"),
+    let admins = Build.from("fs_admins")
+                |> Build.select([Lit(PInt(1))])
+                |> Build.where_(Expr.Eq(Expr.QCol("fs_admins", "user_id"),
                                    Expr.QCol("fs_users",  "id")))
-    let q = from("fs_users")
-           |> select([Expr.Col("id")])
-           |> where_exists(admins)
-           |> order_by(Expr.Col("id"), Asc)
+    let q = Build.from("fs_users")
+           |> Build.select([Expr.Col("id")])
+           |> Build.where_exists(admins)
+           |> Build.order_by(Expr.Col("id"), SortDir.Asc)
     match run_rows(conn, q) do
       Err(e) -> do
         let _ = println("exists: " ++ e)
@@ -141,13 +141,13 @@ end
 
 test "where_not_exists is the complement of where_exists" do
   with_conn(fn conn ->
-    let admins = from("fs_admins")
-                |> select([Lit(PInt(1))])
-                |> where_(Expr.Eq(Expr.QCol("fs_admins", "user_id"),
+    let admins = Build.from("fs_admins")
+                |> Build.select([Lit(PInt(1))])
+                |> Build.where_(Expr.Eq(Expr.QCol("fs_admins", "user_id"),
                                    Expr.QCol("fs_users",  "id")))
-    let q = from("fs_users")
-           |> select([Expr.Col("id")])
-           |> where_not_exists(admins)
+    let q = Build.from("fs_users")
+           |> Build.select([Expr.Col("id")])
+           |> Build.where_not_exists(admins)
     match run_rows(conn, q) do
       Err(e) -> do
         let _ = println("not exists: " ++ e)
@@ -167,13 +167,13 @@ test "subquery param indices are dense across nesting" do
   with_conn(fn conn ->
     -- Outer WHERE id > $? combined with subquery containing its own
     -- parameterised WHERE — compile must number params 1, 2 with no gaps.
-    let admins = from("fs_admins")
-                |> select([Expr.Col("user_id")])
-                |> where_(Expr.Gt(Expr.Col("user_id"), Lit(PInt(0))))
-    let q = from("fs_users")
-           |> select([Expr.Col("id")])
-           |> where_(Expr.Gt(Expr.Col("id"), Lit(PInt(1))))
-           |> where_in_subquery("id", admins)
+    let admins = Build.from("fs_admins")
+                |> Build.select([Expr.Col("user_id")])
+                |> Build.where_(Expr.Gt(Expr.Col("user_id"), Lit(PInt(0))))
+    let q = Build.from("fs_users")
+           |> Build.select([Expr.Col("id")])
+           |> Build.where_(Expr.Gt(Expr.Col("id"), Lit(PInt(1))))
+           |> Build.where_in_subquery("id", admins)
     let c = Compile.compile_parameterized(q)
     -- Assert SQL uses $1 and $2 with no gap (no "$3" in output).
     let _ = assert String.contains(c.sql, "$1")

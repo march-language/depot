@@ -8,11 +8,11 @@ import Build
 import Compile
 
 test "where_between appends a Between predicate" do
-  let q = from("users")
-         |> select([Expr.Col("id")])
-         |> where_between(Expr.Col("age"), Lit(PInt(18)), Lit(PInt(65)))
+  let q = Build.from("users")
+         |> Build.select([Expr.Col("id")])
+         |> Build.where_between(Expr.Col("age"), Lit(PInt(18)), Lit(PInt(65)))
   match q do
-  Query(f) -> match f.wheres do
+  Ast.Query(f) -> match f.wheres do
     Cons(Where(Between(_, _, _)), Nil) -> assert true
     _                                  -> assert false
   end
@@ -20,9 +20,9 @@ test "where_between appends a Between predicate" do
 end
 
 test "where_between compiles to SQL BETWEEN with two placeholders" do
-  let q = from("users")
-         |> select([Expr.Col("id")])
-         |> where_between(Expr.Col("age"), Lit(PInt(18)), Lit(PInt(65)))
+  let q = Build.from("users")
+         |> Build.select([Expr.Col("id")])
+         |> Build.where_between(Expr.Col("age"), Lit(PInt(18)), Lit(PInt(65)))
   let r = Compile.compile_parameterized(q)
   let _ = assert String.contains(r.sql, "BETWEEN")
   let _ = assert String.contains(r.sql, "$1")
@@ -30,12 +30,12 @@ test "where_between compiles to SQL BETWEEN with two placeholders" do
 end
 
 test "where_between is equivalent to Gte+Lte on the inclusive bounds" do
-  let q1 = from("t")
-          |> select([Expr.Col("x")])
-          |> where_between(Expr.Col("x"), Lit(PInt(1)), Lit(PInt(10)))
-  let q2 = from("t")
-          |> select([Expr.Col("x")])
-          |> where_(Expr.And(
+  let q1 = Build.from("t")
+          |> Build.select([Expr.Col("x")])
+          |> Build.where_between(Expr.Col("x"), Lit(PInt(1)), Lit(PInt(10)))
+  let q2 = Build.from("t")
+          |> Build.select([Expr.Col("x")])
+          |> Build.where_(Expr.And(
                Expr.Gte(Expr.Col("x"), Lit(PInt(1))),
                Expr.Lte(Expr.Col("x"), Lit(PInt(10)))
              ))

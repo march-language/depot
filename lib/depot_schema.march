@@ -194,7 +194,7 @@ end
 -- Public API
 -- ---------------------------------------------------------------------------
 
-fn define(table, spec) do
+fn define(table_name, spec) do
   let parsed_fields = parse_fields(spec.fields)
   let pk = match record_get(spec, "primary_key") do
     Some(k) -> to_string(k)
@@ -205,7 +205,7 @@ fn define(table, spec) do
   let ho = parse_assocs_for(spec, "has_one", "has_one")
   let mm = parse_assocs_for(spec, "many_to_many", "many_to_many")
   let all_assocs = List.append(List.append(List.append(bt, hm), ho), mm)
-  Schema(table, parsed_fields, all_assocs, pk)
+  Schema(table_name, parsed_fields, all_assocs, pk)
 end
 
 fn table(schema) do
@@ -288,8 +288,8 @@ end
 -- Explicit tail-recursive fold that threads the record through put_field_default
 -- for each field. Avoids List.fold_left, which (in the installed stdlib) has a
 -- runtime non-exhaustive match on non-empty record accumulators.
-pfn blank_fold(fields, acc) do
-  match fields do
+pfn blank_fold(fs, acc) do
+  match fs do
     Nil -> acc
     Cons(entry, rest) -> blank_fold(rest, put_field_default(acc, entry))
   end
