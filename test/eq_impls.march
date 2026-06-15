@@ -1,0 +1,25 @@
+-- test/eq_impls.march
+-- Test-scoped universal Eq implementation.
+--
+-- March's typechecker discharges `==` through the `Eq` interface; only
+-- Int/Float/String/Bool/Unit/Atom (plus explicit impls) satisfy it.  Depot's
+-- tests compare ADTs, lists, options and records with `==` extensively, which
+-- is sound at runtime: both the interpreter and the native emitter implement
+-- structural equality for data values.  This wildcard impl discharges the
+-- typechecker's Eq constraints for the whole test compilation unit without
+-- weakening `forge check`/`forge build` for library consumers (it lives under
+-- test/, which only `forge test` loads).
+--
+-- The body is never invoked: the runtime dispatches `==` on the value's
+-- concrete type name and falls back to structural equality when no concrete
+-- impl is registered (a TVar-typed impl is not keyed under any type name).
+
+mod TestEqImpls do
+
+impl Eq(a) do
+  fn eq(x, y) do
+    eq(x, y)
+  end
+end
+
+end
