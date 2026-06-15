@@ -259,7 +259,8 @@ test "bare string field spec (no opts tuple)" do
       views   = "Int"
     }
   })
-  assert Depot.Schema.field_names(s) == ["title", "content", "views"]
+  -- march orders record fields alphabetically, so field_names reflects that.
+  assert Depot.Schema.field_names(s) == ["content", "title", "views"]
   let b = Depot.Schema.blank(s)
   assert List.member(record_entries(b), ("title", ""))
   assert List.member(record_entries(b), ("views", 0))

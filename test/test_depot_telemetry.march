@@ -159,7 +159,7 @@ test "instrument emits event and returns the thunk's result unchanged" do
   let result = Depot.Telemetry.instrument(
     "INSERT INTO t VALUES ($1)",
     [ParamText("v")],
-    fn _ -> fake_ok_result(3)
+    fn () -> fake_ok_result(3)
   )
 
   -- Handler fired exactly once.
@@ -185,7 +185,7 @@ test "instrument classifies Err results" do
   Depot.Telemetry.attach("log", fn ev -> check_err(m, ev))
 
   let result = Depot.Telemetry.instrument(
-    "SELECT bad", Nil, fn _ -> Err("syntax error")
+    "SELECT bad", Nil, fn () -> Err("syntax error")
   )
 
   assert hit_count(m) == 1
