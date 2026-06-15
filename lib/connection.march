@@ -96,7 +96,7 @@ end
 
 pfn scram_parse_server_first(server_first) do
   -- Parse "r=combined-nonce,s=base64-salt,i=iterations"
-  fn parse_fields(s, acc) do
+  fn parse_field_list(s, acc) do
     match String.split_first(s, ",") do
     None -> do
       let (k, v) = parse_kv(s)
@@ -104,11 +104,11 @@ pfn scram_parse_server_first(server_first) do
     end
     Some((field, rest)) -> do
       let (k, v) = parse_kv(field)
-      parse_fields(rest, Cons((k, v), acc))
+      parse_field_list(rest, Cons((k, v), acc))
     end
     end
   end
-  parse_fields(server_first, Nil)
+  parse_field_list(server_first, Nil)
 end
 
 fn parse_kv(field) do
@@ -139,7 +139,10 @@ pfn scram_xor_bytes(a, b) do
 end
 
 pfn scram_hmac(key_bytes, msg) do
-  hmac_sha256(key_bytes, Bytes.from_string(msg))
+  -- Bytes-domain HMAC: SCRAM operates on raw bytes throughout (salted password,
+  -- client/server keys).  hmac_sha256 is the String-domain variant (returns a
+  -- Result); hmac_sha256_bytes takes and returns bare Bytes.
+  hmac_sha256_bytes(key_bytes, Bytes.from_string(msg))
 end
 
 pfn scram_compute_proof(password, salt_b64, iterations, client_first_bare, server_first, client_final_no_proof) do
