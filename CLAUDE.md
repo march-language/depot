@@ -2,6 +2,31 @@
 
 March data/storage library.
 
+## Project layout
+
+`lib/` source is grouped by domain. `depot.march` (the framework entry point)
+stays at the `lib/` root, and `lib/forge/` (CLI tasks referenced by `forge.toml`)
+is left untouched.
+
+```
+lib/
+├── depot.march      # entry point — stays at lib/ root
+├── sql/             # query engine: ast, build, compile, cursor, schema
+├── mutation/        # write path: mutation(+_build/_compile/_exec)
+├── wire/            # postgres wire protocol: message, encode, decode, connection, pool
+├── data/            # data shaping: depot_schema, depot_type, depot_embed, depot_gate
+├── api/             # public Depot.* API: depot_query, depot_repo, depot_migration,
+│                    #   transaction, depot_explain, depot_telemetry, depot_test, preload
+└── forge/           # forge CLI tasks (cmd_depot) — referenced by forge.toml
+```
+
+> **Module resolution & lib/ subfolders.** Modules are imported by name
+> (`import Ast`), and the compiler resolves `import X` to `x.march` by filename.
+> `forge` puts `lib/` **and all of its subdirectories** on the module search
+> path (`MARCH_LIB_PATH`), so modules can live in any subfolder without changing
+> a single `import`. Keep module filenames unique across the whole `lib/` tree —
+> two files with the same basename in different folders would collide.
+
 ## Build & test
 
 ```bash

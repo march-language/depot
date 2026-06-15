@@ -2,7 +2,7 @@
 -- Phase 2.3 — query-based `update_all` / `delete_all`.
 --
 -- The ROADMAP example is `from("users") |> where_lt("age", 13) |> delete_all`.
--- Phase 2.3 wires the Query ADT from lib/build.march (the SELECT DSL) into
+-- Phase 2.3 wires the Query ADT from lib/sql/build.march (the SELECT DSL) into
 -- the Mutation Delete/Update ADTs by reading the query's `from_` table and
 -- copying its `wheres` directly. Everything else (sets, RETURNING) is
 -- layered on with the existing mutation builders.
