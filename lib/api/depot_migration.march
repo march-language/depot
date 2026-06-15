@@ -472,7 +472,10 @@ fn run(conn, migration_fn) do
   -- (e.g. an assertion in a user-supplied helper) must NOT leave the log
   -- half-populated for the next migration.  Either we get a clean log
   -- and proceed, or we short-circuit with Err and the log is drained.
-  match __try_call(fn _ -> migration_fn()) do
+  -- The thunk must return Bool (native __try_call carries only an immediate
+  -- Ok payload).  migration_fn's own return value is unused here — the build
+  -- output is the SQL log we drain below — so discard it and signal Bool.
+  match __try_call(fn _ -> do let _ = migration_fn() true end) do
     Err(panic) -> do
       let _ = drain_log()
       Err("migration build panicked: " ++ panic)

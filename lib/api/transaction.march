@@ -107,7 +107,10 @@ fn run(conn, callback) do
       -- in an open transaction.  The callback still returns its normal
       -- Result(a, String) on the non-panic path, so we get a nested
       -- Result and flatten it below.
-      let guarded = __try_call(fn _ -> callback(conn))
+      -- __try_call_val (not __try_call): the callback returns Result(a, String),
+      -- a heap value, which the value-carrying variant preserves in its Ok
+      -- payload.  Bare __try_call only carries an immediate Bool.
+      let guarded = __try_call_val(fn _ -> callback(conn))
       let _ = set_depth(conn.fd, depth)
       let outcome = match guarded do
         Ok(inner)  -> inner

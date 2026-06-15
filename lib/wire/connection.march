@@ -139,7 +139,10 @@ pfn scram_xor_bytes(a, b) do
 end
 
 pfn scram_hmac(key_bytes, msg) do
-  hmac_sha256(key_bytes, Bytes.from_string(msg))
+  -- Bytes-domain HMAC: SCRAM (RFC 5802) keys with SaltedPassword/StoredKey
+  -- bytes. `hmac_sha256` is the String-domain variant (returns Result); the
+  -- bytes-domain primitive is `hmac_sha256_bytes` and yields bare Bytes.
+  hmac_sha256_bytes(key_bytes, Bytes.from_string(msg))
 end
 
 pfn scram_compute_proof(password, salt_b64, iterations, client_first_bare, server_first, client_final_no_proof) do
