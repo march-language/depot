@@ -231,4 +231,35 @@ fn parse_text_value(t, text) do
   end
 end
 
+impl Eq(MarchType) do
+  fn eq(a, b) do
+    match (a, b) do
+    (MarchType.TBool,     MarchType.TBool)     -> true
+    (TInt16,              TInt16)              -> true
+    (TInt32,              TInt32)              -> true
+    (TInt64,              TInt64)              -> true
+    (TFloat32,            TFloat32)            -> true
+    (TFloat64,            TFloat64)            -> true
+    (TNumeric,            TNumeric)            -> true
+    (TText,               TText)               -> true
+    (TVarchar,            TVarchar)            -> true
+    (TChar,               TChar)               -> true
+    (TBytea,              TBytea)              -> true
+    (TDate,               TDate)               -> true
+    (TTime,               TTime)               -> true
+    (TTimestamp,          TTimestamp)          -> true
+    (TTimestampTz,        TTimestampTz)        -> true
+    (TInterval,           TInterval)           -> true
+    (TJson,               TJson)               -> true
+    (TJsonb,              TJsonb)              -> true
+    (TUuid,               TUuid)               -> true
+    (MarchType.TArray(x), MarchType.TArray(y)) -> x == y
+    (TUnknown(x),         TUnknown(y))         -> x == y
+    _ -> false
+    end
+  end
+end
+
+derive Eq for TypedValue
+
 end

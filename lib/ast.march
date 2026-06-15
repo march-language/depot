@@ -110,4 +110,61 @@ type SqlValue =
   | PBool(Bool)
   | PNull
 
+derive Eq for SqlValue
+derive Eq for SortDir
+derive Eq for JoinKind
+derive Eq for JoinClause
+derive Eq for SelectExpr
+derive Eq for WhereExpr
+derive Eq for OrderExpr
+derive Eq for FromClause
+derive Eq for DistinctMode
+derive Eq for QueryFields
+derive Eq for Query
+
+impl Eq(Expr) do
+  fn eq(a, b) do
+    match (a, b) do
+    (Lit(x),               Lit(y))              -> x == y
+    (Expr.Col(x),          Expr.Col(y))         -> x == y
+    (QCol(t1, c1),         QCol(t2, c2))        -> t1 == t2 && c1 == c2
+    (Expr.Eq(x1, x2),      Expr.Eq(y1, y2))     -> x1 == y1 && x2 == y2
+    (Expr.Neq(x1, x2),     Expr.Neq(y1, y2))    -> x1 == y1 && x2 == y2
+    (Expr.Lt(x1, x2),      Expr.Lt(y1, y2))     -> x1 == y1 && x2 == y2
+    (Expr.Gt(x1, x2),      Expr.Gt(y1, y2))     -> x1 == y1 && x2 == y2
+    (Expr.Lte(x1, x2),     Expr.Lte(y1, y2))    -> x1 == y1 && x2 == y2
+    (Expr.Gte(x1, x2),     Expr.Gte(y1, y2))    -> x1 == y1 && x2 == y2
+    (Expr.And(x1, x2),     Expr.And(y1, y2))    -> x1 == y1 && x2 == y2
+    (Expr.Or(x1, x2),      Expr.Or(y1, y2))     -> x1 == y1 && x2 == y2
+    (Expr.Not(x),          Expr.Not(y))          -> x == y
+    (Expr.Add(x1, x2),     Expr.Add(y1, y2))    -> x1 == y1 && x2 == y2
+    (Expr.Sub(x1, x2),     Expr.Sub(y1, y2))    -> x1 == y1 && x2 == y2
+    (Expr.Mul(x1, x2),     Expr.Mul(y1, y2))    -> x1 == y1 && x2 == y2
+    (Expr.Div(x1, x2),     Expr.Div(y1, y2))    -> x1 == y1 && x2 == y2
+    (Expr.IsNull(x),       Expr.IsNull(y))      -> x == y
+    (Expr.IsNotNull(x),    Expr.IsNotNull(y))   -> x == y
+    (In(x, xs),            In(y, ys))           -> x == y && xs == ys
+    (NotIn(x, xs),         NotIn(y, ys))        -> x == y && xs == ys
+    (Between(x1, x2, x3),  Between(y1, y2, y3)) -> x1 == y1 && x2 == y2 && x3 == y3
+    (Like(x, p1),          Like(y, p2))         -> x == y && p1 == p2
+    (ILike(x, p1),         ILike(y, p2))        -> x == y && p1 == p2
+    (Expr.Count(x),        Expr.Count(y))       -> x == y
+    (Expr.Sum(x),          Expr.Sum(y))         -> x == y
+    (Expr.Avg(x),          Expr.Avg(y))         -> x == y
+    (Expr.Min(x),          Expr.Min(y))         -> x == y
+    (Expr.Max(x),          Expr.Max(y))         -> x == y
+    (CountAll,             CountAll)            -> true
+    (Exists(x),            Exists(y))           -> x == y
+    (SubqueryExpr(x),      SubqueryExpr(y))     -> x == y
+    (FnCall(n1, xs),       FnCall(n2, ys))      -> n1 == n2 && xs == ys
+    (ExprParam(x),         ExprParam(y))        -> x == y
+    (Raw(x),               Raw(y))              -> x == y
+    (Fragment(t1, xs),     Fragment(t2, ys))    -> t1 == t2 && xs == ys
+    (InSubquery(x, q1),    InSubquery(y, q2))   -> x == y && q1 == q2
+    (NotInSubquery(x, q1), NotInSubquery(y, q2)) -> x == y && q1 == q2
+    _ -> false
+    end
+  end
+end
+
 end

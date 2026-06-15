@@ -240,12 +240,26 @@ end
 -- Private helpers for execute
 -- ---------------------------------------------------------------------------
 
+-- Filter rows by a single predicate using pattern match on Bool to avoid
+-- tagged-Bool issues with the `if` branch in List.filter.
+pfn filter_by_pred(rows, pred, acc) do
+  match rows do
+  Nil -> List.reverse(acc)
+  Cons(h, t) ->
+    if pred(h) == true do
+      filter_by_pred(t, pred, Cons(h, acc))
+    else
+      filter_by_pred(t, pred, acc)
+    end
+  end
+end
+
 -- Apply all where predicates to a list of rows (AND-combined).
 pfn apply_wheres(rows, predicates) do
   match predicates do
     Nil -> rows
     Cons(pred, rest) ->
-      let filtered = List.filter(rows, pred)
+      let filtered = filter_by_pred(rows, pred, Nil)
       apply_wheres(filtered, rest)
   end
 end

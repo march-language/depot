@@ -234,7 +234,7 @@ pfn cast_diff_entry(base_entries, k, v, rest, fields, acc) do
   if str_member(fields, k) do
     let base_val = alist_get(base_entries, k)
     let is_changed = match base_val do
-      Some(bv) -> bv != v
+      Some(bv) -> to_string(bv) != to_string(v)
       None     -> true
     end
     if is_changed do

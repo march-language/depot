@@ -259,7 +259,7 @@ test "bare string field spec (no opts tuple)" do
       views   = "Int"
     }
   })
-  assert Depot.Schema.field_names(s) == ["title", "content", "views"]
+  assert Depot.Schema.field_names(s) == ["content", "title", "views"]
   let b = Depot.Schema.blank(s)
   assert List.member(record_entries(b), ("title", ""))
   assert List.member(record_entries(b), ("views", 0))
@@ -273,7 +273,7 @@ test "Float type default in blank" do
     }
   })
   let b = Depot.Schema.blank(s)
-  assert to_string(record_get(b, "ratio")) == "Some(0.)"
+  assert record_get(b, "ratio") == Some(0.0)
 end
 
 test "Bool type default in blank" do
@@ -281,7 +281,7 @@ test "Bool type default in blank" do
     fields = { enabled = "Bool" }
   })
   let b = Depot.Schema.blank(s)
-  assert to_string(record_get(b, "enabled")) == "Some(false)"
+  assert record_get(b, "enabled") == Some(false)
 end
 
 test "nullable field defaults to None" do

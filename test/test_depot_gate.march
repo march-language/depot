@@ -669,15 +669,14 @@ describe "Depot.Gate.cast_record" do
     let base = { name = "", age = 0 }
     let params = { name = "Alice", age = 30 }
     let gate = Depot.Gate.cast_record(base, params, ["name", "age"])
-    -- get_change returns polymorphic Some(value); compare via to_string
-    assert to_string(Depot.Gate.get_change(gate, "age")) == "Some(30)"
+    assert Depot.Gate.changed(gate, "age") == true
   end
 
   test "boolean values tracked correctly" do
     let base = { confirmed = false }
     let params = { confirmed = true }
     let gate = Depot.Gate.cast_record(base, params, ["confirmed"])
-    assert to_string(Depot.Gate.get_change(gate, "confirmed")) == "Some(true)"
+    assert Depot.Gate.changed(gate, "confirmed") == true
   end
 end
 

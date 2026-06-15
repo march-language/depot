@@ -77,4 +77,12 @@ type ErrorFields = {
   position : Option(Int)
 }
 
+derive Eq for TransactionStatus
+derive Eq for Param
+derive Eq for CloseTarget
+derive Eq for DescribeTarget
+derive Eq for FieldDesc
+derive Eq for ErrorFields
+derive Eq for BackendMessage
+
 end
