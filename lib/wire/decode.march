@@ -116,11 +116,11 @@ fn parse_field_descs(b, pos, n, acc) do
     end
 end
 
-fn parse_data_columns(b, pos, n, acc) do
-  if n == 0 then List.reverse(acc)
+fn parse_data_columns(b, pos, n) do
+  if n == 0 then Nil
   else
     match read_bytes_field(b, pos) do
-    (col, next) -> parse_data_columns(b, next, n - 1, Cons(col, acc))
+    (col, next) -> Cons(col, parse_data_columns(b, next, n - 1))
     end
 end
 
@@ -194,7 +194,7 @@ fn decode(type_byte, payload) do
   83  -> decode_param_status(payload)
   90  -> decode_ready(payload)
   84  -> Ok(RowDescription(parse_field_descs(payload, 2, read_u16(payload, 0), Nil)))
-  68  -> Ok(DataRow(parse_data_columns(payload, 2, read_u16(payload, 0), Nil)))
+  68  -> Ok(DataRow(parse_data_columns(payload, 2, read_u16(payload, 0))))
   67  -> decode_command_complete(payload)
   73  -> Ok(EmptyQueryResponse)
   69  -> Ok(ErrorResponse(parse_error_fields(payload, 0)))

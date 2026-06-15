@@ -47,32 +47,79 @@ fn matches_clauses(record, clause_entries) do
   match clause_entries do
     Nil -> true
     Cons((k, v), rest) ->
-      let matches = match record_get(record, k) do
-        Some(rv) -> rv == v
-        None     -> false
+      match record_get(record, k) do
+        Some(rv) ->
+          if to_string(rv) == to_string(v) do
+            matches_clauses(record, rest)
+          else
+            false
+          end
+        None -> false
       end
-      if matches do matches_clauses(record, rest) else false end
+  end
+end
+
+-- Key under which the IDs list is stored in a table.
+pfn ids_key() do "__depot_ids__" end
+
+-- Retrieve the list of IDs for a table (or empty if none stored yet).
+pfn get_ids(table) do
+  match Vault.get(table, ids_key()) do
+    Some(ids) -> ids
+    None      -> Nil
+  end
+end
+
+-- Append an ID to the tracked list.
+pfn add_id(table, id) do
+  Vault.set(table, ids_key(), Cons(id, get_ids(table)))
+end
+
+-- Remove an ID from the tracked list.
+pfn remove_id(table, id) do
+  let new_ids = filter_ids(get_ids(table), id, Nil)
+  Vault.set(table, ids_key(), new_ids)
+end
+
+pfn filter_ids(ids, target, acc) do
+  match ids do
+    Nil -> List.reverse(acc)
+    Cons(h, t) ->
+      if h == target do filter_ids(t, target, acc)
+      else filter_ids(t, target, Cons(h, acc))
+      end
   end
 end
 
 -- Collect all rows from a Vault table as a list of records.
 pfn collect_rows(table, keys) do
-  fn go(rem, acc) do
-    match rem do
-      Nil -> List.reverse(acc)
-      Cons(k, rest) ->
+  match keys do
+    Nil -> Nil
+    Cons(k, rest) ->
+      if k == ids_key() do collect_rows(table, rest)
+      else
         match Vault.get(table, k) do
-          Some(row) -> go(rest, Cons(row, acc))
-          None      -> go(rest, acc)
+          Some(row) -> Cons(row, collect_rows(table, rest))
+          None      -> collect_rows(table, rest)
         end
-    end
+      end
   end
-  go(keys, Nil)
 end
 
--- Filter rows by clause entries.
+-- Filter rows by clause entries (inlined to avoid List.filter closure issues).
 pfn filter_by_clauses(rows, clause_entries) do
-  List.filter(rows, fn row -> matches_clauses(row, clause_entries))
+  filter_clauses_acc(rows, clause_entries, Nil)
+end
+
+pfn filter_clauses_acc(rows, clause_entries, acc) do
+  match rows do
+  Nil -> List.reverse(acc)
+  Cons(row, rest) ->
+    match matches_clauses(row, clause_entries) do
+    true  -> filter_clauses_acc(rest, clause_entries, Cons(row, acc))
+    false -> filter_clauses_acc(rest, clause_entries, acc)
+    end
+  end
 end
 
 -- Drop all keys from a Vault table.
@@ -107,6 +154,7 @@ fn insert(schema, gate) do
     let id = to_string(uuid_v7())
     let record = build_record(schema, merged, id)
     Vault.set(table, id, record)
+    add_id(table, id)
     Ok(record)
   else
     Err(gate)
@@ -161,6 +209,7 @@ fn delete(schema, id) do
     None    -> Err("not found")
     Some(_) ->
       Vault.drop(table, id)
+      remove_id(table, id)
       Ok(id)
   end
 end
@@ -176,8 +225,18 @@ Return all records for a schema as a list.
 """
 fn all(schema) do
   let table = ensure_table(schema)
-  let keys = Vault.keys(table)
-  collect_rows(table, keys)
+  all_from_ids(schema, table, get_ids(table), Nil)
+end
+
+pfn all_from_ids(schema, table, ids, acc) do
+  match ids do
+  Nil -> List.reverse(acc)
+  Cons(id, rest) ->
+    match Vault.get(table, id ++ "") do
+      Some(row) -> all_from_ids(schema, table, rest, Cons(row, acc))
+      None      -> all_from_ids(schema, table, rest, acc)
+    end
+  end
 end
 
 doc """
@@ -243,7 +302,7 @@ Count the number of records for a schema.
 """
 fn count(schema) do
   let table = ensure_table(schema)
-  Vault.size(table)
+  List.length(get_ids(table))
 end
 
 doc """
@@ -262,9 +321,10 @@ Delete all records for a schema. Returns the count of deleted records.
 """
 fn delete_all(schema) do
   let table = ensure_table(schema)
-  let keys = Vault.keys(table)
-  let n = List.length(keys)
-  drop_all_keys(table, keys)
+  let ids = get_ids(table)
+  let n = List.length(ids)
+  drop_all_keys(table, ids)
+  Vault.set(table, ids_key(), Nil)
   n
 end
 

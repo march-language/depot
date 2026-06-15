@@ -79,7 +79,7 @@ end
 test "sandboxed function auto-rolls back" do
   Depot.Test.start_sandbox()
   clear_users()
-  let result = Depot.Test.sandboxed(["depot_test_users"], sandboxed_insert_count)
+  let result = Depot.Test.sandboxed(["depot_test_users"], fn () -> sandboxed_insert_count())
   assert result == 1
   assert Depot.Repo.count(user_schema()) == 0
   Depot.Test.stop_sandbox()

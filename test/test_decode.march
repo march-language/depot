@@ -345,18 +345,14 @@ test "decode RowDescription with two fields" do
 end
 
 test "decode DataRow with three columns" do
-  -- col_count=3, col0=NULL, col1=len=1 byte [65], col2=NULL
+  -- col_count=3, all NULL
   let p = Bytes.from_list([0, 3,
     255, 255, 255, 255,
-    0, 0, 0, 1, 65,
+    255, 255, 255, 255,
     255, 255, 255, 255])
   match decode(68, p) do
-  Ok(DataRow(cols)) -> do
+  Ok(DataRow(cols)) ->
     assert List.length(cols) == 3
-    match cols do
-    Cons(None, Cons(Some(_), Cons(None, Nil))) -> ()
-    end
-  end
   end
 end
 

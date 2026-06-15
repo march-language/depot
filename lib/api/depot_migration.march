@@ -78,46 +78,66 @@ fn sql_type(march_type) do
   end
 end
 
--- Parse a column spec into (type_string, opts_alist).
--- Bare string "String" -> ("String", Nil)
--- Tuple ("String", { null = false }) -> ("String", [(k,v)...])
-fn parse_col_spec(spec) do
-  match spec do
-    (typ, opts) -> (to_string(typ), record_entries(opts))
-    other       -> (to_string(other), Nil)
-  end
-end
-
--- Build SQL for a single column definition.
-fn column_sql(name, spec) do
-  let (type_str, opts) = parse_col_spec(spec)
+-- Build SQL for a column with opts record.
+-- Uses record_get (not alist_get_opt) so each field lookup has an
+-- independent type variable — avoids the shared-alist unification bug
+-- where matching Some(false) for "null" forces all values to Bool.
+pfn column_sql_with_opts(name, type_str, opts) do
   let base = "\"" ++ name ++ "\" " ++ sql_type(type_str)
-  let with_null = match alist_get_opt(opts, "null") do
+  let with_null = match record_get(opts, "null") do
     Some(false) -> base ++ " NOT NULL"
     _           -> base
   end
-  let with_default = match alist_get_opt(opts, "default") do
+  let with_default = match record_get(opts, "default") do
     Some(val) -> with_null ++ " DEFAULT '" ++ to_string(val) ++ "'"
     None      -> with_null
   end
-  let with_pk = match alist_get_opt(opts, "primary_key") do
+  let with_pk = match record_get(opts, "primary_key") do
     Some(true) -> with_default ++ " PRIMARY KEY"
     _          -> with_default
   end
-  let with_ref = match alist_get_opt(opts, "references") do
+  let with_ref = match record_get(opts, "references") do
     Some(ref_rec) ->
-      let ref_entries = record_entries(ref_rec)
-      let ref_table = alist_get(ref_entries, "table", "unknown")
-      let ref_col = alist_get(ref_entries, "column", "id")
-      let on_del = alist_get(ref_entries, "on_delete", "nothing")
-      let on_upd = alist_get(ref_entries, "on_update", "nothing")
-      let ref_part = with_pk ++ " REFERENCES \"" ++ to_string(ref_table) ++ "\"(\"" ++ to_string(ref_col) ++ "\")"
-      let with_del = if on_del == "nothing" do ref_part else ref_part ++ " ON DELETE " ++ to_string(on_del) end
-      let with_upd = if on_upd == "nothing" do with_del else with_del ++ " ON UPDATE " ++ to_string(on_upd) end
+      let ref_table = match record_get(ref_rec, "table") do
+        Some(t) -> to_string(t)
+        None    -> "unknown"
+      end
+      let ref_col = match record_get(ref_rec, "column") do
+        Some(c) -> to_string(c)
+        None    -> "id"
+      end
+      let on_del = match record_get(ref_rec, "on_delete") do
+        Some(d) -> to_string(d)
+        None    -> "nothing"
+      end
+      let on_upd = match record_get(ref_rec, "on_update") do
+        Some(u) -> to_string(u)
+        None    -> "nothing"
+      end
+      let ref_part = with_pk ++ " REFERENCES \"" ++ ref_table ++ "\"(\"" ++ ref_col ++ "\")"
+      let with_del = if on_del == "nothing" do ref_part else ref_part ++ " ON DELETE " ++ on_del end
+      let with_upd = if on_upd == "nothing" do with_del else with_del ++ " ON UPDATE " ++ on_upd end
       with_upd
     None -> with_pk
   end
   with_ref
+end
+
+-- Build SQL for a single column definition.
+-- Bare string spec ("String") generates plain type; tuple spec includes opts.
+fn column_sql(name, spec) do
+  match spec do
+    (typ, opts) -> column_sql_with_opts(name, to_string(typ), opts)
+    other       -> "\"" ++ name ++ "\" " ++ sql_type(to_string(other))
+  end
+end
+
+-- parse_col_spec is kept for alter_modify_entry which only needs the type.
+fn parse_col_spec(spec) do
+  match spec do
+    (typ, _opts) -> to_string(typ)
+    other        -> to_string(other)
+  end
 end
 
 fn col_entry_sql(entry) do
@@ -180,7 +200,7 @@ end
 
 fn alter_modify_entry(prefix, entry) do
   let (col_name, spec) = entry
-  let (type_str, _opts) = parse_col_spec(spec)
+  let type_str = parse_col_spec(spec)
   prefix ++ "ALTER COLUMN \"" ++ col_name ++ "\" TYPE " ++ sql_type(type_str)
 end
 

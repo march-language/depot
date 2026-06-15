@@ -69,10 +69,10 @@ end
 fn build_preload_query(child_table, fk_col, vals) do
   match vals do
   Nil ->
-    from(child_table) |> where_(Raw("FALSE"))
+    Build.from(child_table) |> Build.where_(Raw("FALSE"))
   _ -> do
     let exprs = map_strings_to_lit(dedup_strings(vals))
-    from(child_table) |> where_(In(Expr.Col(fk_col), exprs))
+    Build.from(child_table) |> Build.where_(In(Expr.Col(fk_col), exprs))
   end
   end
 end
