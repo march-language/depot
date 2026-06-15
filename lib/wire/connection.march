@@ -94,21 +94,26 @@ pfn scram_client_first_msg(user, nonce) do
   "n,," ++ scram_client_first_bare(user, nonce)
 end
 
+-- Accumulate "k=v,k=v,..." pairs. Module-level (not nested in
+-- scram_parse_server_first) so march's arity check records its 2-arg arity
+-- correctly — a nested recursive helper currently trips a false-positive
+-- "expects 1 argument" here.
+fn scram_parse_fields(s, acc) do
+  match String.split_first(s, ",") do
+  None -> do
+    let (k, v) = parse_kv(s)
+    Cons((k, v), acc)
+  end
+  Some((field, rest)) -> do
+    let (k, v) = parse_kv(field)
+    scram_parse_fields(rest, Cons((k, v), acc))
+  end
+  end
+end
+
 pfn scram_parse_server_first(server_first) do
   -- Parse "r=combined-nonce,s=base64-salt,i=iterations"
-  fn parse_fields(s, acc) do
-    match String.split_first(s, ",") do
-    None -> do
-      let (k, v) = parse_kv(s)
-      Cons((k, v), acc)
-    end
-    Some((field, rest)) -> do
-      let (k, v) = parse_kv(field)
-      parse_fields(rest, Cons((k, v), acc))
-    end
-    end
-  end
-  parse_fields(server_first, Nil)
+  scram_parse_fields(server_first, Nil)
 end
 
 fn parse_kv(field) do
