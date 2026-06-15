@@ -521,6 +521,10 @@ end
 -- compile_binop/compile_agg inlined here to avoid mutual recursion.
 -- Self-recursion is allowed (produces warnings, not errors).
 
+-- Tree recursion over the Expr ADT (recurses into multiple sub-expressions);
+-- not tail-convertible without an explicit work stack, and safe on bounded
+-- query ASTs. Mark as intentional rather than warn.
+@[no_warn_recursion]
 pfn compile_expr(e, st) do
   match e do
   Lit(v) -> do
@@ -702,6 +706,8 @@ end
 
 -- ---- Expression compiler (inline) ----
 
+-- Tree recursion over the Expr ADT (see compile_expr); intentional.
+@[no_warn_recursion]
 pfn compile_expr_inline(e) do
   match e do
   Lit(v)         -> sql_value_to_string(v)
@@ -904,6 +910,8 @@ end
 
 -- Self-contained expression compiler for subqueries. Treats nested
 -- subqueries as placeholders.
+-- Tree recursion over the Expr ADT (subquery expressions); intentional.
+@[no_warn_recursion]
 pfn subq_expr(e) do
   match e do
   Lit(v)         -> sql_value_to_string(v)

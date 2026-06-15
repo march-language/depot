@@ -233,6 +233,8 @@ end
 
 -- Parameterized expression compiler for mutation context.
 -- Mirrors compile_expr from Compile but with MutState.
+-- Tree recursion over the Expr ADT; not tail-convertible, safe on bounded ASTs.
+@[no_warn_recursion]
 fn compile_expr_m(e, st) do
   match e do
   Lit(v) -> do

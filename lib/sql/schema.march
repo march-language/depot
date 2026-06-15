@@ -114,6 +114,9 @@ end
 ---
 --- march> type_name(MarchType.TArray(TText))
 --- "text[]"
+-- Tree recursion over the MarchType ADT (TArray nests an inner type);
+-- intentional, safe on bounded type structures.
+@[no_warn_recursion]
 fn type_name(t) do
   match t do
   MarchType.TBool -> "bool"
