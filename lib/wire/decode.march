@@ -117,10 +117,14 @@ fn parse_field_descs(b, pos, n, acc) do
 end
 
 fn parse_data_columns(b, pos, n) do
-  if n == 0 then Nil
+  parse_data_columns_acc(b, pos, n, Nil)
+end
+
+pfn parse_data_columns_acc(b, pos, n, acc) do
+  if n == 0 then List.reverse(acc)
   else
     match read_bytes_field(b, pos) do
-    (col, next) -> Cons(col, parse_data_columns(b, next, n - 1))
+    (col, next) -> parse_data_columns_acc(b, next, n - 1, Cons(col, acc))
     end
 end
 

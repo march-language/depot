@@ -247,6 +247,10 @@ pfn compile_joins_acc(joins, st, acc) do
         Right    -> " RIGHT JOIN "
         FullOuter -> " FULL OUTER JOIN "
         Cross    -> " CROSS JOIN "
+        -- Unreachable for Ast.JoinKind (all 5 ctors handled above); the catch-all
+        -- only satisfies the exhaustiveness checker, which merges this with the
+        -- stdlib DataFrame.JoinKind (a same-named type that has an `Outer` ctor).
+        _        -> " JOIN "
       end
       let (on_sql, st2) = compile_expr(on_expr, st_)
       go(rest, st2, acc_ ++ k ++ quote_ident(table) ++ " ON " ++ on_sql)
@@ -267,6 +271,10 @@ pfn compile_joins_inline(joins) do
         Right    -> " RIGHT JOIN "
         FullOuter -> " FULL OUTER JOIN "
         Cross    -> " CROSS JOIN "
+        -- Unreachable for Ast.JoinKind (all 5 ctors handled above); the catch-all
+        -- only satisfies the exhaustiveness checker, which merges this with the
+        -- stdlib DataFrame.JoinKind (a same-named type that has an `Outer` ctor).
+        _        -> " JOIN "
       end
       go(rest, acc ++ k ++ quote_ident(table) ++ " ON " ++ compile_expr_inline(on_expr))
     end
@@ -711,23 +719,23 @@ end
 pfn compile_expr_inline(e) do
   match e do
   Lit(v)         -> sql_value_to_string(v)
-  Col(name)      -> quote_ident(name)
+  Expr.Col(name)      -> quote_ident(name)
   QCol(t, name)  -> quote_ident(t) ++ "." ++ quote_ident(name)
-  Eq(l, r)       -> compile_expr_inline(l) ++ " = "   ++ compile_expr_inline(r)
-  Neq(l, r)      -> compile_expr_inline(l) ++ " <> "  ++ compile_expr_inline(r)
-  Lt(l, r)       -> compile_expr_inline(l) ++ " < "   ++ compile_expr_inline(r)
-  Gt(l, r)       -> compile_expr_inline(l) ++ " > "   ++ compile_expr_inline(r)
-  Lte(l, r)      -> compile_expr_inline(l) ++ " <= "  ++ compile_expr_inline(r)
-  Gte(l, r)      -> compile_expr_inline(l) ++ " >= "  ++ compile_expr_inline(r)
-  And(l, r)      -> "(" ++ compile_expr_inline(l) ++ " AND " ++ compile_expr_inline(r) ++ ")"
-  Or(l, r)       -> "(" ++ compile_expr_inline(l) ++ " OR "  ++ compile_expr_inline(r) ++ ")"
-  Not(inner)     -> "NOT (" ++ compile_expr_inline(inner) ++ ")"
-  Add(l, r)      -> compile_expr_inline(l) ++ " + " ++ compile_expr_inline(r)
-  Sub(l, r)      -> compile_expr_inline(l) ++ " - " ++ compile_expr_inline(r)
-  Mul(l, r)      -> compile_expr_inline(l) ++ " * " ++ compile_expr_inline(r)
-  Div(l, r)      -> compile_expr_inline(l) ++ " / " ++ compile_expr_inline(r)
-  IsNull(inner)  -> compile_expr_inline(inner) ++ " IS NULL"
-  IsNotNull(inner) -> compile_expr_inline(inner) ++ " IS NOT NULL"
+  Expr.Eq(l, r)       -> compile_expr_inline(l) ++ " = "   ++ compile_expr_inline(r)
+  Expr.Neq(l, r)      -> compile_expr_inline(l) ++ " <> "  ++ compile_expr_inline(r)
+  Expr.Lt(l, r)       -> compile_expr_inline(l) ++ " < "   ++ compile_expr_inline(r)
+  Expr.Gt(l, r)       -> compile_expr_inline(l) ++ " > "   ++ compile_expr_inline(r)
+  Expr.Lte(l, r)      -> compile_expr_inline(l) ++ " <= "  ++ compile_expr_inline(r)
+  Expr.Gte(l, r)      -> compile_expr_inline(l) ++ " >= "  ++ compile_expr_inline(r)
+  Expr.And(l, r)      -> "(" ++ compile_expr_inline(l) ++ " AND " ++ compile_expr_inline(r) ++ ")"
+  Expr.Or(l, r)       -> "(" ++ compile_expr_inline(l) ++ " OR "  ++ compile_expr_inline(r) ++ ")"
+  Expr.Not(inner)     -> "NOT (" ++ compile_expr_inline(inner) ++ ")"
+  Expr.Add(l, r)      -> compile_expr_inline(l) ++ " + " ++ compile_expr_inline(r)
+  Expr.Sub(l, r)      -> compile_expr_inline(l) ++ " - " ++ compile_expr_inline(r)
+  Expr.Mul(l, r)      -> compile_expr_inline(l) ++ " * " ++ compile_expr_inline(r)
+  Expr.Div(l, r)      -> compile_expr_inline(l) ++ " / " ++ compile_expr_inline(r)
+  Expr.IsNull(inner)  -> compile_expr_inline(inner) ++ " IS NULL"
+  Expr.IsNotNull(inner) -> compile_expr_inline(inner) ++ " IS NOT NULL"
   In(inner, vals) ->
     compile_expr_inline(inner) ++ " IN (" ++ join_strs(compile_exprs_inline(vals), ", ") ++ ")"
   NotIn(inner, vals) ->
@@ -744,11 +752,11 @@ pfn compile_expr_inline(e) do
     compile_expr_inline(inner) ++ " NOT IN (" ++ compile_subquery_inline(subq) ++ ")"
   Like(inner, pat)  -> compile_expr_inline(inner) ++ " LIKE "  ++ quote_string(pat)
   ILike(inner, pat) -> compile_expr_inline(inner) ++ " ILIKE " ++ quote_string(pat)
-  Count(inner)   -> "COUNT(" ++ compile_expr_inline(inner) ++ ")"
-  Sum(inner)     -> "SUM("   ++ compile_expr_inline(inner) ++ ")"
+  Expr.Count(inner)   -> "COUNT(" ++ compile_expr_inline(inner) ++ ")"
+  Expr.Sum(inner)     -> "SUM("   ++ compile_expr_inline(inner) ++ ")"
   Avg(inner)     -> "AVG("   ++ compile_expr_inline(inner) ++ ")"
-  Min(inner)     -> "MIN("   ++ compile_expr_inline(inner) ++ ")"
-  Max(inner)     -> "MAX("   ++ compile_expr_inline(inner) ++ ")"
+  Expr.Min(inner)     -> "MIN("   ++ compile_expr_inline(inner) ++ ")"
+  Expr.Max(inner)     -> "MAX("   ++ compile_expr_inline(inner) ++ ")"
   CountAll       -> "COUNT(*)"
   ExprParam(n)   -> "$" ++ int_to_string(n)
   Raw(sql)       -> sql
@@ -915,23 +923,23 @@ end
 pfn subq_expr(e) do
   match e do
   Lit(v)         -> sql_value_to_string(v)
-  Col(name)      -> quote_ident(name)
+  Expr.Col(name)      -> quote_ident(name)
   QCol(t, name)  -> quote_ident(t) ++ "." ++ quote_ident(name)
-  Eq(l, r)       -> subq_expr(l) ++ " = "   ++ subq_expr(r)
-  Neq(l, r)      -> subq_expr(l) ++ " <> "  ++ subq_expr(r)
-  Lt(l, r)       -> subq_expr(l) ++ " < "   ++ subq_expr(r)
-  Gt(l, r)       -> subq_expr(l) ++ " > "   ++ subq_expr(r)
-  Lte(l, r)      -> subq_expr(l) ++ " <= "  ++ subq_expr(r)
-  Gte(l, r)      -> subq_expr(l) ++ " >= "  ++ subq_expr(r)
-  And(l, r)      -> "(" ++ subq_expr(l) ++ " AND " ++ subq_expr(r) ++ ")"
-  Or(l, r)       -> "(" ++ subq_expr(l) ++ " OR "  ++ subq_expr(r) ++ ")"
-  Not(inner)     -> "NOT (" ++ subq_expr(inner) ++ ")"
-  Add(l, r)      -> subq_expr(l) ++ " + " ++ subq_expr(r)
-  Sub(l, r)      -> subq_expr(l) ++ " - " ++ subq_expr(r)
-  Mul(l, r)      -> subq_expr(l) ++ " * " ++ subq_expr(r)
-  Div(l, r)      -> subq_expr(l) ++ " / " ++ subq_expr(r)
-  IsNull(inner)  -> subq_expr(inner) ++ " IS NULL"
-  IsNotNull(inner) -> subq_expr(inner) ++ " IS NOT NULL"
+  Expr.Eq(l, r)       -> subq_expr(l) ++ " = "   ++ subq_expr(r)
+  Expr.Neq(l, r)      -> subq_expr(l) ++ " <> "  ++ subq_expr(r)
+  Expr.Lt(l, r)       -> subq_expr(l) ++ " < "   ++ subq_expr(r)
+  Expr.Gt(l, r)       -> subq_expr(l) ++ " > "   ++ subq_expr(r)
+  Expr.Lte(l, r)      -> subq_expr(l) ++ " <= "  ++ subq_expr(r)
+  Expr.Gte(l, r)      -> subq_expr(l) ++ " >= "  ++ subq_expr(r)
+  Expr.And(l, r)      -> "(" ++ subq_expr(l) ++ " AND " ++ subq_expr(r) ++ ")"
+  Expr.Or(l, r)       -> "(" ++ subq_expr(l) ++ " OR "  ++ subq_expr(r) ++ ")"
+  Expr.Not(inner)     -> "NOT (" ++ subq_expr(inner) ++ ")"
+  Expr.Add(l, r)      -> subq_expr(l) ++ " + " ++ subq_expr(r)
+  Expr.Sub(l, r)      -> subq_expr(l) ++ " - " ++ subq_expr(r)
+  Expr.Mul(l, r)      -> subq_expr(l) ++ " * " ++ subq_expr(r)
+  Expr.Div(l, r)      -> subq_expr(l) ++ " / " ++ subq_expr(r)
+  Expr.IsNull(inner)  -> subq_expr(inner) ++ " IS NULL"
+  Expr.IsNotNull(inner) -> subq_expr(inner) ++ " IS NOT NULL"
   In(inner, vals) -> subq_expr(inner) ++ " IN (" ++ join_strs(subq_exprs(vals), ", ") ++ ")"
   NotIn(inner, vals) -> subq_expr(inner) ++ " NOT IN (" ++ join_strs(subq_exprs(vals), ", ") ++ ")"
   Between(e, lo, hi) -> subq_expr(e) ++ " BETWEEN " ++ subq_expr(lo) ++ " AND " ++ subq_expr(hi)
@@ -942,11 +950,11 @@ pfn subq_expr(e) do
   NotInSubquery(_, _) -> "/* nested subquery */"
   Like(inner, pat)  -> subq_expr(inner) ++ " LIKE "  ++ quote_string(pat)
   ILike(inner, pat) -> subq_expr(inner) ++ " ILIKE " ++ quote_string(pat)
-  Count(inner)   -> "COUNT(" ++ subq_expr(inner) ++ ")"
-  Sum(inner)     -> "SUM("   ++ subq_expr(inner) ++ ")"
+  Expr.Count(inner)   -> "COUNT(" ++ subq_expr(inner) ++ ")"
+  Expr.Sum(inner)     -> "SUM("   ++ subq_expr(inner) ++ ")"
   Avg(inner)     -> "AVG("   ++ subq_expr(inner) ++ ")"
-  Min(inner)     -> "MIN("   ++ subq_expr(inner) ++ ")"
-  Max(inner)     -> "MAX("   ++ subq_expr(inner) ++ ")"
+  Expr.Min(inner)     -> "MIN("   ++ subq_expr(inner) ++ ")"
+  Expr.Max(inner)     -> "MAX("   ++ subq_expr(inner) ++ ")"
   CountAll       -> "COUNT(*)"
   ExprParam(n)   -> "$" ++ int_to_string(n)
   Raw(sql)       -> sql

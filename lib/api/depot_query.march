@@ -62,7 +62,11 @@ import Build
 --                 WHERE conditions added via where_eq / where_gt / etc.
 --                 IS NULL / IS NOT NULL conditions contribute nothing.
 --                 Returned by to_params/1 and used by exec_sql/2.
-type Query = DQuery(a, List(b), c, d, e, f, List(String), List(String))
+-- Named `DQuery` (matching its sole constructor) rather than `Query` to avoid a
+-- type-name collision with `Build.Query`: when both types are named `Query`, the
+-- exhaustiveness checker merges their constructors and flags every `match` on a
+-- DQuery as missing the `Query(QueryFields)` case.
+type DQuery = DQuery(a, List(b), c, d, e, f, List(String), List(String))
 
 -- ---------------------------------------------------------------------------
 -- Construction
@@ -560,6 +564,9 @@ pfn zip_cols_acc(cols, vals, acc) do
   (Nil, _) -> List.reverse(acc)
   (_, Nil) -> List.reverse(acc)
   (Cons(c, cr), Cons(v, vr)) -> zip_cols_acc(cr, vr, Cons((c, v), acc))
+  -- Logically unreachable; satisfies the exhaustiveness checker, which doesn't
+  -- prove tuple-of-lists matches exhaustive from the three arms above.
+  _ -> List.reverse(acc)
   end
 end
 

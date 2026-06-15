@@ -91,21 +91,6 @@ pfn filter_ids(ids, target, acc) do
   end
 end
 
--- Collect all rows from a Vault table as a list of records.
-pfn collect_rows(table, keys) do
-  match keys do
-    Nil -> Nil
-    Cons(k, rest) ->
-      if k == ids_key() do collect_rows(table, rest)
-      else
-        match Vault.get(table, k) do
-          Some(row) -> Cons(row, collect_rows(table, rest))
-          None      -> collect_rows(table, rest)
-        end
-      end
-  end
-end
-
 -- Filter rows by clause entries (inlined to avoid List.filter closure issues).
 pfn filter_by_clauses(rows, clause_entries) do
   filter_clauses_acc(rows, clause_entries, Nil)

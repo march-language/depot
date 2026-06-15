@@ -242,57 +242,57 @@ fn compile_expr_m(e, st) do
     let param = sqlval_to_param(v)
     ("$" ++ int_to_string(nc), { param_count = nc, acc_params = Cons(param, st.acc_params) })
   end
-  Col(name)     -> (quote_ident(name), st)
+  Expr.Col(name)     -> (quote_ident(name), st)
   QCol(t, name) -> (quote_ident(t) ++ "." ++ quote_ident(name), st)
-  Eq(l, r) -> do
+  Expr.Eq(l, r) -> do
     let (ls, s1) = compile_expr_m(l, st)
     let (rs, s2) = compile_expr_m(r, s1)
     (ls ++ " = " ++ rs, s2)
   end
-  Neq(l, r) -> do
+  Expr.Neq(l, r) -> do
     let (ls, s1) = compile_expr_m(l, st)
     let (rs, s2) = compile_expr_m(r, s1)
     (ls ++ " <> " ++ rs, s2)
   end
-  Lt(l, r) -> do
+  Expr.Lt(l, r) -> do
     let (ls, s1) = compile_expr_m(l, st)
     let (rs, s2) = compile_expr_m(r, s1)
     (ls ++ " < " ++ rs, s2)
   end
-  Gt(l, r) -> do
+  Expr.Gt(l, r) -> do
     let (ls, s1) = compile_expr_m(l, st)
     let (rs, s2) = compile_expr_m(r, s1)
     (ls ++ " > " ++ rs, s2)
   end
-  Lte(l, r) -> do
+  Expr.Lte(l, r) -> do
     let (ls, s1) = compile_expr_m(l, st)
     let (rs, s2) = compile_expr_m(r, s1)
     (ls ++ " <= " ++ rs, s2)
   end
-  Gte(l, r) -> do
+  Expr.Gte(l, r) -> do
     let (ls, s1) = compile_expr_m(l, st)
     let (rs, s2) = compile_expr_m(r, s1)
     (ls ++ " >= " ++ rs, s2)
   end
-  And(l, r) -> do
+  Expr.And(l, r) -> do
     let (ls, s1) = compile_expr_m(l, st)
     let (rs, s2) = compile_expr_m(r, s1)
     ("(" ++ ls ++ " AND " ++ rs ++ ")", s2)
   end
-  Or(l, r) -> do
+  Expr.Or(l, r) -> do
     let (ls, s1) = compile_expr_m(l, st)
     let (rs, s2) = compile_expr_m(r, s1)
     ("(" ++ ls ++ " OR " ++ rs ++ ")", s2)
   end
-  Not(inner) -> do
+  Expr.Not(inner) -> do
     let (s, st2) = compile_expr_m(inner, st)
     ("NOT (" ++ s ++ ")", st2)
   end
-  IsNull(inner) -> do
+  Expr.IsNull(inner) -> do
     let (s, st2) = compile_expr_m(inner, st)
     (s ++ " IS NULL", st2)
   end
-  IsNotNull(inner) -> do
+  Expr.IsNotNull(inner) -> do
     let (s, st2) = compile_expr_m(inner, st)
     (s ++ " IS NOT NULL", st2)
   end
@@ -349,7 +349,7 @@ end
 fn compile_expr_inline_m(e) do
   match e do
   Lit(v)         -> sql_val_str(v)
-  Col(name)      -> quote_ident(name)
+  Expr.Col(name)      -> quote_ident(name)
   QCol(t, name)  -> quote_ident(t) ++ "." ++ quote_ident(name)
   Raw(sql)       -> sql
   _              -> "/* unsupported */"

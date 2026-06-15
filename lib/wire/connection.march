@@ -138,6 +138,9 @@ pfn scram_xor_bytes(a, b) do
     (Nil, _) -> List.reverse(acc)
     (_, Nil) -> List.reverse(acc)
     (Cons(x, xr), Cons(y, yr)) -> zip_xor(xr, yr, Cons(int_xor(x, y), acc))
+    -- Logically unreachable (the three arms above cover all pairs); satisfies
+    -- the checker, which doesn't prove tuple-of-lists matches exhaustive.
+    _ -> List.reverse(acc)
     end
   end
   Bytes.from_list(zip_xor(Bytes.to_list(a), Bytes.to_list(b), Nil))
