@@ -236,24 +236,33 @@ end
 -- ---- Private list helpers ----
 
 fn append_row(rows, row) do
-  match rows do
-  Nil -> Cons(row, Nil)
-  Cons(x, rest) -> Cons(x, append_row(rest, row))
+  fn go(rem, acc) do
+    match rem do
+    Nil -> List.reverse(Cons(row, acc))
+    Cons(x, rest) -> go(rest, Cons(x, acc))
+    end
   end
+  go(rows, Nil)
 end
 
 fn append_set(sets, pair) do
-  match sets do
-  Nil -> Cons(pair, Nil)
-  Cons(x, rest) -> Cons(x, append_set(rest, pair))
+  fn go(rem, acc) do
+    match rem do
+    Nil -> List.reverse(Cons(pair, acc))
+    Cons(x, rest) -> go(rest, Cons(x, acc))
+    end
   end
+  go(sets, Nil)
 end
 
 fn append_where(wheres, w) do
-  match wheres do
-  Nil -> Cons(w, Nil)
-  Cons(x, rest) -> Cons(x, append_where(rest, w))
+  fn go(rem, acc) do
+    match rem do
+    Nil -> List.reverse(Cons(w, acc))
+    Cons(x, rest) -> go(rest, Cons(x, acc))
+    end
   end
+  go(wheres, Nil)
 end
 
 end

@@ -125,10 +125,13 @@ pfn str_list_contains(lst, s) do
 end
 
 pfn map_strings_to_lit(strs) do
-  match strs do
-  Nil -> Nil
-  Cons(s, rest) -> Cons(Lit(PString(s)), map_strings_to_lit(rest))
+  fn go(rem, acc) do
+    match rem do
+    Nil -> List.reverse(acc)
+    Cons(s, rest) -> go(rest, Cons(Lit(PString(s)), acc))
+    end
   end
+  go(strs, Nil)
 end
 
 pfn list_rev(lst) do list_rev_acc(lst, Nil) end

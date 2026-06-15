@@ -57,14 +57,17 @@ end
 
 -- Collect all rows from a Vault table as a list of records.
 pfn collect_rows(table, keys) do
-  match keys do
-    Nil -> Nil
-    Cons(k, rest) ->
-      match Vault.get(table, k) do
-        Some(row) -> Cons(row, collect_rows(table, rest))
-        None      -> collect_rows(table, rest)
-      end
+  fn go(rem, acc) do
+    match rem do
+      Nil -> List.reverse(acc)
+      Cons(k, rest) ->
+        match Vault.get(table, k) do
+          Some(row) -> go(rest, Cons(row, acc))
+          None      -> go(rest, acc)
+        end
+    end
   end
+  go(keys, Nil)
 end
 
 -- Filter rows by clause entries.

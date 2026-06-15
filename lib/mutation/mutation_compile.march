@@ -98,12 +98,14 @@ fn compile_conflict_target(target) do
 end
 
 fn map_conflict_sets(sets) do
-  match sets do
-  Nil -> Nil
-  Cons((col, expr), rest) ->
-    Cons(quote_ident(col) ++ " = " ++ compile_expr_inline_m(expr),
-         map_conflict_sets(rest))
+  fn go(rem, acc) do
+    match rem do
+    Nil -> List.reverse(acc)
+    Cons((col, expr), rest) ->
+      go(rest, Cons(quote_ident(col) ++ " = " ++ compile_expr_inline_m(expr), acc))
+    end
   end
+  go(sets, Nil)
 end
 
 -- ---- UPDATE ----
@@ -213,17 +215,20 @@ fn compile_returning(exprs) do
 end
 
 fn map_returning(exprs) do
-  match exprs do
-  Nil -> Nil
-  Cons(e, rest) -> do
-    let s = match e do
-      SelectAll      -> "*"
-      SelectField(x) -> compile_expr_inline_m(x)
-      SelectAs(x, a) -> compile_expr_inline_m(x) ++ " AS " ++ quote_ident(a)
+  fn go(rem, acc) do
+    match rem do
+    Nil -> List.reverse(acc)
+    Cons(e, rest) -> do
+      let s = match e do
+        SelectAll      -> "*"
+        SelectField(x) -> compile_expr_inline_m(x)
+        SelectAs(x, a) -> compile_expr_inline_m(x) ++ " AS " ++ quote_ident(a)
+      end
+      go(rest, Cons(s, acc))
     end
-    Cons(s, map_returning(rest))
+    end
   end
-  end
+  go(exprs, Nil)
 end
 
 -- Parameterized expression compiler for mutation context.
@@ -326,12 +331,16 @@ end
 fn expr_param_str(n) do "$" ++ int_to_string(n) end
 
 fn compile_expr_list_m(exprs, st, acc) do
-  match exprs do
-  Nil -> (acc, st)
-  Cons(e, rest) ->
-    let (s, st2) = compile_expr_m(e, st)
-    compile_expr_list_m(rest, st2, Cons(s, acc))
+  fn go(rem, state, a) do
+    match rem do
+    Nil -> (a, state)
+    Cons(e, rest) -> do
+      let (s, st2) = compile_expr_m(e, state)
+      go(rest, st2, Cons(s, a))
+    end
+    end
   end
+  go(exprs, st, acc)
 end
 
 -- Inline expression compiler (for ON CONFLICT DO UPDATE, no params).
@@ -398,17 +407,25 @@ end
 fn quote_ident(name) do "\"" ++ escape_ident(name) ++ "\"" end
 
 fn map_quoted(strs) do
-  match strs do
-  Nil -> Nil
-  Cons(s, rest) -> Cons(quote_ident(s), map_quoted(rest))
+  fn go(rem, acc) do
+    match rem do
+    Nil -> List.reverse(acc)
+    Cons(s, rest) -> go(rest, Cons(quote_ident(s), acc))
+    end
   end
+  go(strs, Nil)
 end
 
 fn join_strs(parts, sep) do
+  fn go(rem, acc) do
+    match rem do
+    Nil -> acc
+    Cons(x, rest) -> go(rest, acc ++ sep ++ x)
+    end
+  end
   match parts do
   Nil -> ""
-  Cons(first, Nil) -> first
-  Cons(first, rest) -> first ++ sep ++ join_strs(rest, sep)
+  Cons(first, rest) -> go(rest, first)
   end
 end
 

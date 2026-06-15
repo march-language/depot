@@ -57,12 +57,13 @@ pfn remove_applied(version) do
     ()
 end
 
-pfn filter_out(lst, n) do
+pfn filter_out(lst, n) do filter_out_acc(lst, n, Nil) end
+pfn filter_out_acc(lst, n, acc) do
   match lst do
-  Nil -> Nil
+  Nil -> list_reverse(acc)
   Cons(x, rest) ->
-    if x == n then filter_out(rest, n)
-    else Cons(x, filter_out(rest, n))
+    if x == n then filter_out_acc(rest, n, acc)
+    else filter_out_acc(rest, n, Cons(x, acc))
   end
 end
 
@@ -91,10 +92,11 @@ pfn discover_migrations() : List(MigFile) do
     end
 end
 
-pfn prepend_dir(names, dir) do
+pfn prepend_dir(names, dir) do prepend_dir_acc(names, dir, Nil) end
+pfn prepend_dir_acc(names, dir, acc) do
   match names do
-  Nil               -> Nil
-  Cons(name, rest)  -> Cons(Path.join(dir, name), prepend_dir(rest, dir))
+  Nil               -> list_reverse(acc)
+  Cons(name, rest)  -> prepend_dir_acc(rest, dir, Cons(Path.join(dir, name), acc))
   end
 end
 
@@ -139,11 +141,14 @@ pfn sort_mig_acc(lst : List(MigFile), acc : List(MigFile)) : List(MigFile) do
 end
 
 pfn insert_mig(item : MigFile, lst : List(MigFile)) : List(MigFile) do
+  insert_mig_acc(item, lst, Nil)
+end
+pfn insert_mig_acc(item : MigFile, lst : List(MigFile), acc : List(MigFile)) : List(MigFile) do
   match lst do
-  Nil -> Cons(item, Nil)
+  Nil -> list_rev_acc(acc, Cons(item, Nil))
   Cons(h, rest) ->
-    if item.version <= h.version then Cons(item, Cons(h, rest))
-    else Cons(h, insert_mig(item, rest))
+    if item.version <= h.version then list_rev_acc(acc, Cons(item, Cons(h, rest)))
+    else insert_mig_acc(item, rest, Cons(h, acc))
   end
 end
 
@@ -295,12 +300,13 @@ pfn sort_int_acc(lst, acc) do
   end
 end
 
-pfn insert_int(n, lst) do
+pfn insert_int(n, lst) do insert_int_acc(n, lst, Nil) end
+pfn insert_int_acc(n, lst, acc) do
   match lst do
-  Nil -> Cons(n, Nil)
+  Nil -> list_rev_acc(acc, Cons(n, Nil))
   Cons(h, rest) ->
-    if n <= h then Cons(n, Cons(h, rest))
-    else Cons(h, insert_int(n, rest))
+    if n <= h then list_rev_acc(acc, Cons(n, Cons(h, rest)))
+    else insert_int_acc(n, rest, Cons(h, acc))
   end
 end
 -- ---- Commands ----
@@ -316,11 +322,14 @@ pfn find_migration(all : List(MigFile), version : Int) : Option(MigFile) do
 end
 
 pfn filter_pending(all : List(MigFile), applied : List(Int)) : List(MigFile) do
+  filter_pending_acc(all, applied, Nil)
+end
+pfn filter_pending_acc(all : List(MigFile), applied : List(Int), acc : List(MigFile)) : List(MigFile) do
   match all do
-  Nil           -> Nil
+  Nil           -> list_reverse(acc)
   Cons(m, rest) ->
-    if int_list_contains(applied, m.version) then filter_pending(rest, applied)
-    else Cons(m, filter_pending(rest, applied))
+    if int_list_contains(applied, m.version) then filter_pending_acc(rest, applied, acc)
+    else filter_pending_acc(rest, applied, Cons(m, acc))
   end
 end
 

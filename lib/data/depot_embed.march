@@ -34,14 +34,17 @@ fn put_embed(e, field, value) do
 end
 
 pfn put_assoc(pairs, field, value) do
-  match pairs do
-  Nil -> [(field, value)]
-  Cons((k, v), rest) ->
-    if k == field then
-      Cons((k, value), rest)
-    else
-      Cons((k, v), put_assoc(rest, field, value))
+  fn go(rem, acc) do
+    match rem do
+    Nil -> List.append(List.reverse(acc), Cons((field, value), Nil))
+    Cons((k, v), rest) ->
+      if k == field then
+        List.append(List.reverse(acc), Cons((k, value), rest))
+      else
+        go(rest, Cons((k, v), acc))
+    end
   end
+  go(pairs, Nil)
 end
 
 --- Look up a field. Returns Some(value) or None.

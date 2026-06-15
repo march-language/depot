@@ -358,11 +358,14 @@ pfn sq_map_field_names(fields, acc) do
 end
 
 fn sq_row_to_strings(cells) do
-  match cells do
-  Nil -> Nil
-  Cons(None, rest)    -> Cons(None, sq_row_to_strings(rest))
-  Cons(Some(b), rest) -> Cons(Some(Bytes.to_string(b)), sq_row_to_strings(rest))
+  fn go(rem, acc) do
+    match rem do
+    Nil -> List.reverse(acc)
+    Cons(None, rest)    -> go(rest, Cons(None, acc))
+    Cons(Some(b), rest) -> go(rest, Cons(Some(Bytes.to_string(b)), acc))
+    end
   end
+  go(cells, Nil)
 end
 
 pfn sq_recv(fd, columns, rows, tag) do

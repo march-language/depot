@@ -565,12 +565,13 @@ end
 
 -- Sort migrations by version ascending (insertion sort — migration
 -- counts are tiny in practice).
-pfn insert_sorted(m, acc) do
+pfn insert_sorted(m, acc) do insert_sorted_go(m, acc, Nil) end
+pfn insert_sorted_go(m, acc, scanned) do
   match acc do
-    Nil -> Cons(m, Nil)
+    Nil -> reverse_migrations(scanned, Cons(m, Nil))
     Cons(h, t) ->
-      if m.version < h.version do Cons(m, Cons(h, t))
-      else Cons(h, insert_sorted(m, t))
+      if m.version < h.version do reverse_migrations(scanned, Cons(m, Cons(h, t)))
+      else insert_sorted_go(m, t, Cons(h, scanned))
       end
   end
 end
@@ -620,9 +621,10 @@ end
 
 -- Run each pending migration's `up` in order, recording the version
 -- after success.  Stop on first failure.
-pfn run_pending(conn, pending) do
+pfn run_pending(conn, pending) do run_pending_acc(conn, pending, 0) end
+pfn run_pending_acc(conn, pending, acc) do
   match pending do
-    Nil -> Ok(0)
+    Nil -> Ok(acc)
     Cons(m, rest) ->
       match run_statements(conn, m.up) do
         Err(e) -> Err("migration " ++ int_to_string(m.version) ++ ": " ++ e)
@@ -631,11 +633,7 @@ pfn run_pending(conn, pending) do
                         ++ int_to_string(m.version) ++ ")"
           match Connection.simple_query(conn, insert_sql) do
             Err(e) -> Err("record migration " ++ int_to_string(m.version) ++ ": " ++ e)
-            Ok(_) ->
-              match run_pending(conn, rest) do
-                Err(e) -> Err(e)
-                Ok(n)  -> Ok(n + 1)
-              end
+            Ok(_) -> run_pending_acc(conn, rest, acc + 1)
           end
       end
   end
@@ -696,9 +694,10 @@ end
 -- Run `down` for each version in `versions` (already in the order to
 -- run — most recent first), deleting the schema_migrations row after
 -- success.
-pfn run_downs(conn, migrations, versions) do
+pfn run_downs(conn, migrations, versions) do run_downs_acc(conn, migrations, versions, 0) end
+pfn run_downs_acc(conn, migrations, versions, acc) do
   match versions do
-    Nil -> Ok(0)
+    Nil -> Ok(acc)
     Cons(v, rest) ->
       match find_migration(migrations, v) do
         None -> Err("rollback: migration " ++ int_to_string(v) ++ " missing from code")
@@ -710,11 +709,7 @@ pfn run_downs(conn, migrations, versions) do
                             ++ int_to_string(v)
               match Connection.simple_query(conn, delete_sql) do
                 Err(e) -> Err("rollback record " ++ int_to_string(v) ++ ": " ++ e)
-                Ok(_) ->
-                  match run_downs(conn, migrations, rest) do
-                    Err(e) -> Err(e)
-                    Ok(n)  -> Ok(n + 1)
-                  end
+                Ok(_) -> run_downs_acc(conn, migrations, rest, acc + 1)
               end
           end
       end
@@ -722,10 +717,11 @@ pfn run_downs(conn, migrations, versions) do
 end
 
 -- Take the last n elements of a list (as an ordered take-from-tail).
-pfn list_length(xs) do
+pfn list_length(xs) do list_length_acc(xs, 0) end
+pfn list_length_acc(xs, acc) do
   match xs do
-    Nil -> 0
-    Cons(_, t) -> 1 + list_length(t)
+    Nil -> acc
+    Cons(_, t) -> list_length_acc(t, acc + 1)
   end
 end
 

@@ -82,11 +82,14 @@ pfn build_opt_list(opts) do
 end
 
 pfn join_commas(parts) do
-  match parts do
-  Nil -> ""
-  Cons(p, Nil) -> p
-  Cons(p, rest) -> p ++ ", " ++ join_commas(rest)
+  fn go(rem, acc) do
+    match rem do
+    Nil -> acc
+    Cons(p, Nil) -> acc ++ p
+    Cons(p, rest) -> go(rest, acc ++ p ++ ", ")
+    end
   end
+  go(parts, "")
 end
 
 --- Parse a single PostgreSQL plan line into a `PlanNode`. Recognises the

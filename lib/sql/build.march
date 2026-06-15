@@ -360,55 +360,128 @@ end
 -- Folds a non-empty list of Expr values into a right-associated Or tree.
 -- Callers must guarantee the list has at least one element.
 pfn fold_or(exprs) do
+  fn rev(rem, acc) do
+    match rem do
+    Nil -> acc
+    Cons(x, rest) -> rev(rest, Cons(x, acc))
+    end
+  end
+  -- Fold a reversed list left-to-right so the resulting Or tree stays
+  -- right-associated: [a, b, c] -> Or(a, Or(b, c)), matching the original.
+  fn go(rem, acc) do
+    match rem do
+    Nil -> acc
+    Cons(e, rest) -> go(rest, Expr.Or(e, acc))
+    end
+  end
   match exprs do
-  Cons(e, Nil)  -> e
-  Cons(e, rest) -> Expr.Or(e, fold_or(rest))
-  Nil           -> Raw("FALSE")
+  Nil          -> Raw("FALSE")
+  Cons(e, Nil) -> e
+  Cons(_, _)   -> match rev(exprs, Nil) do
+    Cons(last, rest) -> go(rest, last)
+    Nil              -> Raw("FALSE")
+    end
   end
 end
 
 -- ---- Per-type list helpers (March pfn are monomorphic) ----
 
 pfn map_exprs_to_select(exprs) do
-  match exprs do
-  Nil -> Nil
-  Cons(e, rest) -> Cons(SelectField(e), map_exprs_to_select(rest))
+  fn rev(rem, acc) do
+    match rem do
+    Nil -> acc
+    Cons(x, rest) -> rev(rest, Cons(x, acc))
+    end
   end
+  fn go(rem, acc) do
+    match rem do
+    Nil -> acc
+    Cons(e, rest) -> go(rest, Cons(SelectField(e), acc))
+    end
+  end
+  -- Build the mapped list reversed, then reverse to restore source order.
+  rev(go(exprs, Nil), Nil)
 end
 
 fn concat_selects(xs, ys) do
-  match xs do
-  Nil -> ys
-  Cons(x, rest) -> Cons(x, concat_selects(rest, ys))
+  fn prepend(rem, acc) do
+    match rem do
+    Nil -> acc
+    Cons(x, rest) -> prepend(rest, Cons(x, acc))
+    end
   end
+  fn go(rem, acc) do
+    match rem do
+    Nil -> acc
+    Cons(x, rest) -> go(rest, Cons(x, acc))
+    end
+  end
+  -- Reverse xs into a stack, then prepend each onto ys (restoring order).
+  go(prepend(xs, Nil), ys)
 end
 
 fn concat_wheres(xs, ys) do
-  match xs do
-  Nil -> ys
-  Cons(x, rest) -> Cons(x, concat_wheres(rest, ys))
+  fn prepend(rem, acc) do
+    match rem do
+    Nil -> acc
+    Cons(x, rest) -> prepend(rest, Cons(x, acc))
+    end
   end
+  fn go(rem, acc) do
+    match rem do
+    Nil -> acc
+    Cons(x, rest) -> go(rest, Cons(x, acc))
+    end
+  end
+  go(prepend(xs, Nil), ys)
 end
 
 fn concat_joins(xs, ys) do
-  match xs do
-  Nil -> ys
-  Cons(x, rest) -> Cons(x, concat_joins(rest, ys))
+  fn prepend(rem, acc) do
+    match rem do
+    Nil -> acc
+    Cons(x, rest) -> prepend(rest, Cons(x, acc))
+    end
   end
+  fn go(rem, acc) do
+    match rem do
+    Nil -> acc
+    Cons(x, rest) -> go(rest, Cons(x, acc))
+    end
+  end
+  go(prepend(xs, Nil), ys)
 end
 
 fn concat_orders(xs, ys) do
-  match xs do
-  Nil -> ys
-  Cons(x, rest) -> Cons(x, concat_orders(rest, ys))
+  fn prepend(rem, acc) do
+    match rem do
+    Nil -> acc
+    Cons(x, rest) -> prepend(rest, Cons(x, acc))
+    end
   end
+  fn go(rem, acc) do
+    match rem do
+    Nil -> acc
+    Cons(x, rest) -> go(rest, Cons(x, acc))
+    end
+  end
+  go(prepend(xs, Nil), ys)
 end
 
 fn concat_exprs(xs, ys) do
-  match xs do
-  Nil -> ys
-  Cons(x, rest) -> Cons(x, concat_exprs(rest, ys))
+  fn prepend(rem, acc) do
+    match rem do
+    Nil -> acc
+    Cons(x, rest) -> prepend(rest, Cons(x, acc))
+    end
   end
+  fn go(rem, acc) do
+    match rem do
+    Nil -> acc
+    Cons(x, rest) -> go(rest, Cons(x, acc))
+    end
+  end
+  go(prepend(xs, Nil), ys)
 end
 
 end

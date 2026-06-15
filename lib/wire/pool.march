@@ -41,10 +41,13 @@ type PoolStats = {
 -- ---- Pool actor helper pfns ----
 
 fn list_len(lst) do
-  match lst do
-  Nil -> 0
-  Cons(_, rest) -> 1 + list_len(rest)
+  fn go(rem, acc) do
+    match rem do
+    Nil -> acc
+    Cons(_, rest) -> go(rest, acc + 1)
+    end
   end
+  go(lst, 0)
 end
 
 fn rev_conns_acc(lst, acc) do

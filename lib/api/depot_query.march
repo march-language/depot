@@ -230,10 +230,13 @@ end
 
 -- Build the ", item, item, ..." suffix for ORDER BY (after the first item).
 pfn suffix_order_parts(parts) do
-  match parts do
-    Nil           -> ""
-    Cons(p, rest) -> ", " ++ p ++ suffix_order_parts(rest)
+  fn go(rem, acc) do
+    match rem do
+      Nil           -> acc
+      Cons(p, rest) -> go(rest, acc ++ ", " ++ p)
+    end
   end
+  go(parts, "")
 end
 
 -- ---------------------------------------------------------------------------
