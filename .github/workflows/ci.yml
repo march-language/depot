@@ -14,6 +14,11 @@ jobs:
 
     runs-on: ${{ matrix.os }}
 
+    # Bound the job: the native test runner can deadlock at process exit on
+    # some suites, and an unbounded hang would otherwise consume the full
+    # default job limit before failing.
+    timeout-minutes: 30
+
     services:
       postgres:
         image: postgres:17
@@ -39,6 +44,26 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      # The march compiler links native compression/hash stubs
+      # (compress_stubs.c → -DMARCH_HAVE_BROTLI -DMARCH_HAVE_ZSTD, plus blake3).
+      # setup-march builds these during a cache miss but does not persist the
+      # system libraries across cache hits, so install the dev headers + libs
+      # unconditionally before setup so the toolchain build always finds them.
+      - name: Install native deps (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libbrotli-dev libzstd-dev
+          # blake3 is not packaged in the default Ubuntu repos — build from source.
+          git clone --depth 1 https://github.com/BLAKE3-team/BLAKE3.git /tmp/blake3-ci
+          cd /tmp/blake3-ci/c
+          cc -shared -fPIC -O2 -o libblake3.so \
+            blake3.c blake3_dispatch.c blake3_portable.c \
+            blake3_sse2_x86-64_unix.S blake3_sse41_x86-64_unix.S \
+            blake3_avx2_x86-64_unix.S blake3_avx512_x86-64_unix.S
+          sudo install -m 755 libblake3.so /usr/local/lib/libblake3.so
+          sudo ldconfig
 
       - name: Set up March
         uses: march-language/setup-march@main
