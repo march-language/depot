@@ -89,7 +89,10 @@ fn preload(pool, parent_result, parent_fk_col, child_table, child_fk_col) do
   let fk_vals = extract_col_values(parent_result, parent_fk_col)
   let q = build_preload_query(child_table, child_fk_col, fk_vals)
   let compiled = compile(q)
-  with_conn(pool, fn (conn) -> exec_prepared(conn, compiled.sql, compiled.params))
+  -- Qualified (Pool.with_conn) so march's arity check resolves the 2-arg
+  -- Pool helper rather than colliding with the 1-arg with_conn test helpers
+  -- when lib + tests compile as one unit (forge test).
+  Pool.with_conn(pool, fn (conn) -> exec_prepared(conn, compiled.sql, compiled.params))
   |> flatten_result()
 end
 
