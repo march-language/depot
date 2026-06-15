@@ -182,22 +182,25 @@ pfn cp_sel(selects, st, _depth) do
 end
 
 pfn compile_select_exprs(items, st, acc) do
-  match items do
-  Nil -> (join_strs(rev_strs(acc), ", "), st)
-  Cons(item, rest) ->
-    match item do
-    SelectAll ->
-      compile_select_exprs(rest, st, Cons("*", acc))
-    SelectField(e) -> do
-      let (s, st2) = compile_expr(e, st)
-      compile_select_exprs(rest, st2, Cons(s, acc))
-    end
-    SelectAs(e, a) -> do
-      let (s, st2) = compile_expr(e, st)
-      compile_select_exprs(rest, st2, Cons(s ++ " AS " ++ quote_ident(a), acc))
-    end
+  fn go(rem, st_, acc_) do
+    match rem do
+    Nil -> (join_strs(rev_strs(acc_), ", "), st_)
+    Cons(item, rest) ->
+      match item do
+      SelectAll ->
+        go(rest, st_, Cons("*", acc_))
+      SelectField(e) -> do
+        let (s, st2) = compile_expr(e, st_)
+        go(rest, st2, Cons(s, acc_))
+      end
+      SelectAs(e, a) -> do
+        let (s, st2) = compile_expr(e, st_)
+        go(rest, st2, Cons(s ++ " AS " ++ quote_ident(a), acc_))
+      end
+      end
     end
   end
+  go(items, st, acc)
 end
 
 pfn compile_select_inline(selects) do
@@ -208,17 +211,20 @@ pfn compile_select_inline(selects) do
 end
 
 pfn compile_select_items_inline(items) do
-  match items do
-  Nil -> Nil
-  Cons(item, rest) -> do
-    let s = match item do
-      SelectAll -> "*"
-      SelectField(e) -> compile_expr_inline(e)
-      SelectAs(e, a) -> compile_expr_inline(e) ++ " AS " ++ quote_ident(a)
+  fn go(rem, acc) do
+    match rem do
+    Nil -> List.reverse(acc)
+    Cons(item, rest) -> do
+      let s = match item do
+        SelectAll -> "*"
+        SelectField(e) -> compile_expr_inline(e)
+        SelectAs(e, a) -> compile_expr_inline(e) ++ " AS " ++ quote_ident(a)
+      end
+      go(rest, Cons(s, acc))
     end
-    Cons(s, compile_select_items_inline(rest))
+    end
   end
-  end
+  go(items, Nil)
 end
 
 -- ---- JOIN ----
@@ -231,37 +237,42 @@ pfn compile_joins(joins, st, _depth) do
 end
 
 pfn compile_joins_acc(joins, st, acc) do
-  match joins do
-  Nil -> (acc, st)
-  Cons(JoinClause(kind, table, on_expr), rest) -> do
-    let k = match kind do
-      Inner    -> " INNER JOIN "
-      Left     -> " LEFT JOIN "
-      Right    -> " RIGHT JOIN "
-      FullOuter -> " FULL OUTER JOIN "
-      Cross    -> " CROSS JOIN "
+  fn go(rem, st_, acc_) do
+    match rem do
+    Nil -> (acc_, st_)
+    Cons(JoinClause(kind, table, on_expr), rest) -> do
+      let k = match kind do
+        Inner    -> " INNER JOIN "
+        Left     -> " LEFT JOIN "
+        Right    -> " RIGHT JOIN "
+        FullOuter -> " FULL OUTER JOIN "
+        Cross    -> " CROSS JOIN "
+      end
+      let (on_sql, st2) = compile_expr(on_expr, st_)
+      go(rest, st2, acc_ ++ k ++ quote_ident(table) ++ " ON " ++ on_sql)
     end
-    let (on_sql, st2) = compile_expr(on_expr, st)
-    compile_joins_acc(rest, st2, acc ++ k ++ quote_ident(table) ++ " ON " ++ on_sql)
+    end
   end
-  end
+  go(joins, st, acc)
 end
 
 pfn compile_joins_inline(joins) do
-  match joins do
-  Nil -> ""
-  Cons(JoinClause(kind, table, on_expr), rest) -> do
-    let k = match kind do
-      Inner    -> " INNER JOIN "
-      Left     -> " LEFT JOIN "
-      Right    -> " RIGHT JOIN "
-      FullOuter -> " FULL OUTER JOIN "
-      Cross    -> " CROSS JOIN "
+  fn go(rem, acc) do
+    match rem do
+    Nil -> acc
+    Cons(JoinClause(kind, table, on_expr), rest) -> do
+      let k = match kind do
+        Inner    -> " INNER JOIN "
+        Left     -> " LEFT JOIN "
+        Right    -> " RIGHT JOIN "
+        FullOuter -> " FULL OUTER JOIN "
+        Cross    -> " CROSS JOIN "
+      end
+      go(rest, acc ++ k ++ quote_ident(table) ++ " ON " ++ compile_expr_inline(on_expr))
     end
-    k ++ quote_ident(table) ++ " ON " ++ compile_expr_inline(on_expr)
-    ++ compile_joins_inline(rest)
+    end
   end
-  end
+  go(joins, "")
 end
 
 -- ---- WHERE ----
@@ -277,20 +288,23 @@ pfn compile_wheres(wheres, st, _depth) do
 end
 
 pfn compile_where_parts(wheres, st, acc) do
-  match wheres do
-  Nil -> (acc, st)
-  Cons(w, rest) ->
-    match w do
-    Where(e) -> do
-      let (s, st2) = compile_expr(e, st)
-      compile_where_parts(rest, st2, Cons(("AND", s), acc))
-    end
-    OrWhere(e) -> do
-      let (s, st2) = compile_expr(e, st)
-      compile_where_parts(rest, st2, Cons(("OR", s), acc))
-    end
+  fn go(rem, st_, acc_) do
+    match rem do
+    Nil -> (acc_, st_)
+    Cons(w, rest) ->
+      match w do
+      Where(e) -> do
+        let (s, st2) = compile_expr(e, st_)
+        go(rest, st2, Cons(("AND", s), acc_))
+      end
+      OrWhere(e) -> do
+        let (s, st2) = compile_expr(e, st_)
+        go(rest, st2, Cons(("OR", s), acc_))
+      end
+      end
     end
   end
+  go(wheres, st, acc)
 end
 
 pfn join_where_parts(parts) do
@@ -318,16 +332,19 @@ pfn compile_wheres_inline(wheres) do
 end
 
 pfn compile_where_parts_inline(wheres) do
-  match wheres do
-  Nil -> Nil
-  Cons(w, rest) -> do
-    let pair = match w do
-      Where(e)   -> ("AND", compile_expr_inline(e))
-      OrWhere(e) -> ("OR",  compile_expr_inline(e))
+  fn go(rem, acc) do
+    match rem do
+    Nil -> List.reverse(acc)
+    Cons(w, rest) -> do
+      let pair = match w do
+        Where(e)   -> ("AND", compile_expr_inline(e))
+        OrWhere(e) -> ("OR",  compile_expr_inline(e))
+      end
+      go(rest, Cons(pair, acc))
     end
-    Cons(pair, compile_where_parts_inline(rest))
+    end
   end
-  end
+  go(wheres, Nil)
 end
 
 -- ---- DISTINCT ----
@@ -399,33 +416,36 @@ pfn compile_orders(orders, st, _depth) do
 end
 
 pfn compile_order_parts(orders, st, acc) do
-  match orders do
-  Nil -> (acc, st)
-  Cons(OrderExpr(e, Asc), rest) -> do
-    let (s, st2) = compile_expr(e, st)
-    compile_order_parts(rest, st2, Cons(s ++ " ASC", acc))
+  fn go(rem, st_, acc_) do
+    match rem do
+    Nil -> (acc_, st_)
+    Cons(OrderExpr(e, Asc), rest) -> do
+      let (s, st2) = compile_expr(e, st_)
+      go(rest, st2, Cons(s ++ " ASC", acc_))
+    end
+    Cons(OrderExpr(e, Desc), rest) -> do
+      let (s, st2) = compile_expr(e, st_)
+      go(rest, st2, Cons(s ++ " DESC", acc_))
+    end
+    Cons(OrderExpr(e, AscNullsFirst), rest) -> do
+      let (s, st2) = compile_expr(e, st_)
+      go(rest, st2, Cons(s ++ " ASC NULLS FIRST", acc_))
+    end
+    Cons(OrderExpr(e, AscNullsLast), rest) -> do
+      let (s, st2) = compile_expr(e, st_)
+      go(rest, st2, Cons(s ++ " ASC NULLS LAST", acc_))
+    end
+    Cons(OrderExpr(e, DescNullsFirst), rest) -> do
+      let (s, st2) = compile_expr(e, st_)
+      go(rest, st2, Cons(s ++ " DESC NULLS FIRST", acc_))
+    end
+    Cons(OrderExpr(e, DescNullsLast), rest) -> do
+      let (s, st2) = compile_expr(e, st_)
+      go(rest, st2, Cons(s ++ " DESC NULLS LAST", acc_))
+    end
+    end
   end
-  Cons(OrderExpr(e, Desc), rest) -> do
-    let (s, st2) = compile_expr(e, st)
-    compile_order_parts(rest, st2, Cons(s ++ " DESC", acc))
-  end
-  Cons(OrderExpr(e, AscNullsFirst), rest) -> do
-    let (s, st2) = compile_expr(e, st)
-    compile_order_parts(rest, st2, Cons(s ++ " ASC NULLS FIRST", acc))
-  end
-  Cons(OrderExpr(e, AscNullsLast), rest) -> do
-    let (s, st2) = compile_expr(e, st)
-    compile_order_parts(rest, st2, Cons(s ++ " ASC NULLS LAST", acc))
-  end
-  Cons(OrderExpr(e, DescNullsFirst), rest) -> do
-    let (s, st2) = compile_expr(e, st)
-    compile_order_parts(rest, st2, Cons(s ++ " DESC NULLS FIRST", acc))
-  end
-  Cons(OrderExpr(e, DescNullsLast), rest) -> do
-    let (s, st2) = compile_expr(e, st)
-    compile_order_parts(rest, st2, Cons(s ++ " DESC NULLS LAST", acc))
-  end
-  end
+  go(orders, st, acc)
 end
 
 pfn compile_orders_inline(orders) do
@@ -445,13 +465,13 @@ pfn compile_order_items_concat(orders) do
   Nil -> ""
   Cons(order_expr, rest) -> do
     let first = compile_one_order_inline(order_expr)
-    match rest do
-    Nil  -> first
-    more -> do
-      let others = compile_order_items_concat(more)
-      first ++ ", " ++ others
+    fn go(rem, acc) do
+      match rem do
+      Nil -> acc
+      Cons(oe, more) -> go(more, acc ++ ", " ++ compile_one_order_inline(oe))
+      end
     end
-    end
+    go(rest, first)
   end
   end
 end
@@ -469,13 +489,16 @@ end
 
 -- Build ORDER BY items as a list (used by compile_subquery_inline via subq_orders).
 pfn compile_order_items_inline(orders) do
-  match orders do
-  Nil -> Nil
-  Cons(order_expr, rest) -> do
-    let item_sql = compile_one_order_inline(order_expr)
-    Cons(item_sql, compile_order_items_inline(rest))
+  fn go(rem, acc) do
+    match rem do
+    Nil -> List.reverse(acc)
+    Cons(order_expr, rest) -> do
+      let item_sql = compile_one_order_inline(order_expr)
+      go(rest, Cons(item_sql, acc))
+    end
+    end
   end
-  end
+  go(orders, Nil)
 end
 
 -- ---- LIMIT / OFFSET ----
@@ -666,12 +689,15 @@ pfn compile_expr(e, st) do
 end
 
 pfn compile_expr_list(exprs, st, acc) do
-  match exprs do
-  Nil -> (acc, st)
-  Cons(e, rest) ->
-    let (s, st2) = compile_expr(e, st)
-    compile_expr_list(rest, st2, Cons(s, acc))
+  fn go(rem, st_, acc_) do
+    match rem do
+    Nil -> (acc_, st_)
+    Cons(e, rest) ->
+      let (s, st2) = compile_expr(e, st_)
+      go(rest, st2, Cons(s, acc_))
+    end
   end
+  go(exprs, st, acc)
 end
 
 -- ---- Expression compiler (inline) ----
@@ -726,10 +752,13 @@ pfn compile_expr_inline(e) do
 end
 
 pfn compile_exprs_inline(exprs) do
-  match exprs do
-  Nil -> Nil
-  Cons(e, rest) -> Cons(compile_expr_inline(e), compile_exprs_inline(rest))
+  fn go(rem, acc) do
+    match rem do
+    Nil -> List.reverse(acc)
+    Cons(e, rest) -> go(rest, Cons(compile_expr_inline(e), acc))
+    end
   end
+  go(exprs, Nil)
 end
 
 -- Compiles a single-level subquery to inline SQL. Does NOT support nested
@@ -782,17 +811,20 @@ pfn subq_select(items) do
 end
 
 pfn subq_select_items(items) do
-  match items do
-  Nil -> Nil
-  Cons(item, rest) -> do
-    let s = match item do
-      SelectAll -> "*"
-      SelectField(e) -> subq_expr(e)
-      SelectAs(e, a) -> subq_expr(e) ++ " AS " ++ quote_ident(a)
+  fn go(rem, acc) do
+    match rem do
+    Nil -> List.reverse(acc)
+    Cons(item, rest) -> do
+      let s = match item do
+        SelectAll -> "*"
+        SelectField(e) -> subq_expr(e)
+        SelectAs(e, a) -> subq_expr(e) ++ " AS " ++ quote_ident(a)
+      end
+      go(rest, Cons(s, acc))
     end
-    Cons(s, subq_select_items(rest))
+    end
   end
-  end
+  go(items, Nil)
 end
 
 pfn subq_wheres(wheres) do
@@ -803,16 +835,19 @@ pfn subq_wheres(wheres) do
 end
 
 pfn subq_where_parts(wheres) do
-  match wheres do
-  Nil -> Nil
-  Cons(w, rest) -> do
-    let pair = match w do
-      Where(e)   -> ("AND", subq_expr(e))
-      OrWhere(e) -> ("OR",  subq_expr(e))
+  fn go(rem, acc) do
+    match rem do
+    Nil -> List.reverse(acc)
+    Cons(w, rest) -> do
+      let pair = match w do
+        Where(e)   -> ("AND", subq_expr(e))
+        OrWhere(e) -> ("OR",  subq_expr(e))
+      end
+      go(rest, Cons(pair, acc))
     end
-    Cons(pair, subq_where_parts(rest))
+    end
   end
-  end
+  go(wheres, Nil)
 end
 
 pfn subq_group_bys(exprs) do
@@ -837,28 +872,34 @@ pfn subq_orders(orders) do
 end
 
 pfn subq_order_items(orders) do
-  match orders do
-  Nil -> Nil
-  Cons(OrderExpr(e, Asc), rest) ->
-    Cons(subq_expr(e) ++ " ASC", subq_order_items(rest))
-  Cons(OrderExpr(e, Desc), rest) ->
-    Cons(subq_expr(e) ++ " DESC", subq_order_items(rest))
-  Cons(OrderExpr(e, AscNullsFirst), rest) ->
-    Cons(subq_expr(e) ++ " ASC NULLS FIRST", subq_order_items(rest))
-  Cons(OrderExpr(e, AscNullsLast), rest) ->
-    Cons(subq_expr(e) ++ " ASC NULLS LAST", subq_order_items(rest))
-  Cons(OrderExpr(e, DescNullsFirst), rest) ->
-    Cons(subq_expr(e) ++ " DESC NULLS FIRST", subq_order_items(rest))
-  Cons(OrderExpr(e, DescNullsLast), rest) ->
-    Cons(subq_expr(e) ++ " DESC NULLS LAST", subq_order_items(rest))
+  fn go(rem, acc) do
+    match rem do
+    Nil -> List.reverse(acc)
+    Cons(OrderExpr(e, Asc), rest) ->
+      go(rest, Cons(subq_expr(e) ++ " ASC", acc))
+    Cons(OrderExpr(e, Desc), rest) ->
+      go(rest, Cons(subq_expr(e) ++ " DESC", acc))
+    Cons(OrderExpr(e, AscNullsFirst), rest) ->
+      go(rest, Cons(subq_expr(e) ++ " ASC NULLS FIRST", acc))
+    Cons(OrderExpr(e, AscNullsLast), rest) ->
+      go(rest, Cons(subq_expr(e) ++ " ASC NULLS LAST", acc))
+    Cons(OrderExpr(e, DescNullsFirst), rest) ->
+      go(rest, Cons(subq_expr(e) ++ " DESC NULLS FIRST", acc))
+    Cons(OrderExpr(e, DescNullsLast), rest) ->
+      go(rest, Cons(subq_expr(e) ++ " DESC NULLS LAST", acc))
+    end
   end
+  go(orders, Nil)
 end
 
 pfn subq_exprs(exprs) do
-  match exprs do
-  Nil -> Nil
-  Cons(e, rest) -> Cons(subq_expr(e), subq_exprs(rest))
+  fn go(rem, acc) do
+    match rem do
+    Nil -> List.reverse(acc)
+    Cons(e, rest) -> go(rest, Cons(subq_expr(e), acc))
+    end
   end
+  go(exprs, Nil)
 end
 
 -- Self-contained expression compiler for subqueries. Treats nested
@@ -921,20 +962,23 @@ pfn compile_frag(bytes_in, args, st, acc) do
 end
 
 pfn compile_frag_bytes(bytes, args, st, acc) do
-  match bytes do
-  Nil -> (acc, st)
-  Cons(b, rest) ->
-    if b == 63 then
-      match args do
-      Nil -> compile_frag_bytes(rest, Nil, st, acc ++ "?")
-      Cons(arg, rest_args) -> do
-        let (s, st2) = compile_expr(arg, st)
-        compile_frag_bytes(rest, rest_args, st2, acc ++ s)
-      end
-      end
-    else
-      compile_frag_bytes(rest, args, st, acc ++ Bytes.to_string(Bytes.from_list(Cons(b, Nil))))
+  fn go(rem, args_, st_, acc_) do
+    match rem do
+    Nil -> (acc_, st_)
+    Cons(b, rest) ->
+      if b == 63 then
+        match args_ do
+        Nil -> go(rest, Nil, st_, acc_ ++ "?")
+        Cons(arg, rest_args) -> do
+          let (s, st2) = compile_expr(arg, st_)
+          go(rest, rest_args, st2, acc_ ++ s)
+        end
+        end
+      else
+        go(rest, args_, st_, acc_ ++ Bytes.to_string(Bytes.from_list(Cons(b, Nil))))
+    end
   end
+  go(bytes, args, st, acc)
 end
 
 pfn compile_frag_inline(tmpl, args, acc) do
@@ -943,18 +987,21 @@ pfn compile_frag_inline(tmpl, args, acc) do
 end
 
 pfn compile_frag_bytes_inline(bytes, args, acc) do
-  match bytes do
-  Nil -> acc
-  Cons(b, rest) ->
-    if b == 63 then
-      match args do
-      Nil -> compile_frag_bytes_inline(rest, Nil, acc ++ "?")
-      Cons(arg, rest_args) ->
-        compile_frag_bytes_inline(rest, rest_args, acc ++ compile_expr_inline(arg))
-      end
-    else
-      compile_frag_bytes_inline(rest, args, acc ++ Bytes.to_string(Bytes.from_list(Cons(b, Nil))))
+  fn go(rem, args_, acc_) do
+    match rem do
+    Nil -> acc_
+    Cons(b, rest) ->
+      if b == 63 then
+        match args_ do
+        Nil -> go(rest, Nil, acc_ ++ "?")
+        Cons(arg, rest_args) ->
+          go(rest, rest_args, acc_ ++ compile_expr_inline(arg))
+        end
+      else
+        go(rest, args_, acc_ ++ Bytes.to_string(Bytes.from_list(Cons(b, Nil))))
+    end
   end
+  go(bytes, args, acc)
 end
 
 -- ---- String helpers ----
@@ -1001,8 +1048,15 @@ pfn quote_string(s) do "'" ++ escape_sql_str(s) ++ "'" end
 pfn join_strs(parts, sep) do
   match parts do
   Nil -> ""
-  Cons(first, Nil) -> first
-  Cons(first, rest) -> first ++ sep ++ join_strs(rest, sep)
+  Cons(first, rest) -> do
+    fn go(rem, acc) do
+      match rem do
+      Nil -> acc
+      Cons(x, more) -> go(more, acc ++ sep ++ x)
+      end
+    end
+    go(rest, first)
+  end
   end
 end
 
