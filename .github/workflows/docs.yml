@@ -15,6 +15,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # march loads native compression/hash stubs at runtime (libblake3, brotli,
+      # zstd). setup-march builds them on a cache miss but doesn't persist the
+      # system libs across cache hits, so install them before setup (mirrors the
+      # CI workflow) — otherwise `forge march_doc.doc` fails with
+      # "libblake3.so: cannot open shared object file".
+      - name: Install native deps (Ubuntu)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libbrotli-dev libzstd-dev
+          git clone --depth 1 https://github.com/BLAKE3-team/BLAKE3.git /tmp/blake3-ci
+          cd /tmp/blake3-ci/c
+          cc -shared -fPIC -O2 -o libblake3.so \
+            blake3.c blake3_dispatch.c blake3_portable.c \
+            blake3_sse2_x86-64_unix.S blake3_sse41_x86-64_unix.S \
+            blake3_avx2_x86-64_unix.S blake3_avx512_x86-64_unix.S
+          sudo install -m 755 libblake3.so /usr/local/lib/libblake3.so
+          sudo ldconfig
+
       - name: Set up March
         uses: march-language/setup-march@main
 
