@@ -456,9 +456,13 @@ end
 --- Sends Parse + Bind + Execute + Sync and collects all result rows.
 --- Returns `Ok({ columns, rows, tag })` on success, `Err(String)` on failure.
 fn exec_prepared(conn, sql, params) do
+  -- Describe the portal after Bind so the server returns a RowDescription
+  -- (column names). Without it the extended-query flow yields only DataRows,
+  -- leaving result.columns empty (breaks column-name lookups, e.g. preload).
   let msgs = [
     Parse("", sql, Nil),
     Bind("", "", params),
+    Describe(DescribePortal("")),
     Execute("", 0),
     Sync
   ]
