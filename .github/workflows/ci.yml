@@ -26,6 +26,11 @@ jobs:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: depot_test
+          # The live tests use default_config(...) with password=None (they assume
+          # a Postgres that trusts local connections). postgres:17 otherwise
+          # requires scram-sha-256, so passwordless connects time out. Trust all
+          # connections to match the test fixture.
+          POSTGRES_HOST_AUTH_METHOD: trust
         ports:
           - 5432:5432
         options: >-
