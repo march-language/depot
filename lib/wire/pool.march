@@ -108,14 +108,12 @@ end
 --   1: config      : Option(PoolConfig)
 --   2: idle        : List(ConnState)
 --   3: idle_count  : Int
---   4: last_conn   : Option(ConnState)
 
 type PoolState = {
   checked_out : Int,
   config      : Option(PoolConfig),
   idle        : List(ConnState),
-  idle_count  : Int,
-  last_conn   : Option(ConnState)
+  idle_count  : Int
 }
 
 actor Pool do
@@ -123,15 +121,13 @@ actor Pool do
     checked_out : Int,
     config      : Option(PoolConfig),
     idle        : List(ConnState),
-    idle_count  : Int,
-    last_conn   : Option(ConnState)
+    idle_count  : Int
   }
   init {
     checked_out = 0,
     config      = None,
     idle        = Nil,
-    idle_count  = 0,
-    last_conn   = None
+    idle_count  = 0
   }
 
   -- Initialises the pool with a config and pre-connects min_size connections.
@@ -139,9 +135,12 @@ actor Pool do
     handle_pool_init(state, cfg)
   end
 
-  -- Checks out a connection; result is readable via get_actor_field(pool, "last_conn").
-  on Checkout() do
-    handle_checkout(state)
+  -- actor_call reads only the tag from the message; reply_to is injected by
+  -- the runtime as field[0], so the handler receives it here as a parameter.
+  on Checkout(reply_to) do
+    let result = handle_checkout(state)
+    let _ = actor_reply(reply_to, result.conn)
+    result.new_state
   end
 
   -- Returns a connection to the idle pool.
@@ -149,8 +148,7 @@ actor Pool do
     { state with
       idle        = Cons(conn, state.idle),
       idle_count  = state.idle_count + 1,
-      checked_out = state.checked_out - 1,
-      last_conn   = None }
+      checked_out = state.checked_out - 1 }
   end
 
   -- Pings all idle connections and replenishes to min_size.
@@ -158,13 +156,13 @@ actor Pool do
     let healthy  = ping_conns(state.idle, Nil)
     let new_idle = replenish_idle(state.config, healthy)
     let new_n    = list_len(new_idle)
-    { state with idle = new_idle, idle_count = new_n, last_conn = None }
+    { state with idle = new_idle, idle_count = new_n }
   end
 
   -- Closes all idle connections.
   on Shutdown() do
     let _ = close_all(state.idle)
-    { state with idle = Nil, idle_count = 0, last_conn = None }
+    { state with idle = Nil, idle_count = 0 }
   end
 end
 
@@ -174,29 +172,32 @@ fn handle_pool_init(state : PoolState, cfg : PoolConfig) do
   None -> do
     let conns = warm_up(cfg.conn_config, cfg.min_size, Nil, 0)
     let n = list_len(conns)
-    { state with config = Some(cfg), idle = conns, idle_count = n, last_conn = None }
+    { state with config = Some(cfg), idle = conns, idle_count = n }
   end
   end
 end
 
+-- Returns {conn = Option(ConnState), new_state = PoolState}.
 fn handle_checkout(state : PoolState) do
   match state.config do
-  None -> { state with last_conn = None }
+  None -> { conn = None, new_state = state }
   Some(cfg) ->
     match state.idle do
     Cons(conn, rest) ->
-      { state with idle = rest, idle_count = state.idle_count - 1,
-                   checked_out = state.checked_out + 1, last_conn = Some(conn) }
+      { conn = Some(conn),
+        new_state = { state with idle = rest, idle_count = state.idle_count - 1,
+                                 checked_out = state.checked_out + 1 } }
     Nil ->
       if state.checked_out < cfg.max_size then
         match connect(cfg.conn_config) do
         Ok(new_conn) ->
-          { state with checked_out = state.checked_out + 1, last_conn = Some(new_conn) }
+          { conn = Some(new_conn),
+            new_state = { state with checked_out = state.checked_out + 1 } }
         Err(_) ->
-          { state with last_conn = None }
+          { conn = None, new_state = state }
         end
       else
-        { state with last_conn = None }
+        { conn = None, new_state = state }
     end
   end
 end
@@ -217,19 +218,23 @@ end
 ---
 --- Connects a new connection if the idle list is empty and the pool has capacity.
 --- Returns `Ok(ConnState)` or `Err(String)` if no connection is available.
+---
+--- Uses actor_call (synchronous) via task_spawn so the caller blocks until
+--- the pool actor processes the request.  `Checkout(0)` passes typechecking
+--- (Checkout is 1-arg from the handler definition); the runtime reads only
+--- the tag and discards all fields, injecting reply_to itself as field[0].
 fn checkout(pool) do
-  match send(pool, Checkout()) do
-  None -> Err("pool actor is dead")
-  Some(_) ->
-    match get_actor_field(pool, "last_conn") do
-    None -> Err("no connection available")
-    Some(maybe_conn) ->
+  let t = task_spawn(fn _ ->
+    match actor_call(pool, Checkout(0), 5000) do
+    Err(e) -> Err("pool actor: " ++ e)
+    Ok(maybe_conn) ->
       match maybe_conn do
-      None      -> Err("no connection available")
+      None       -> Err("no connection available")
       Some(conn) -> Ok(conn)
       end
     end
-  end
+  )
+  task_await_unwrap(t)
 end
 
 --- Returns a connection to the pool.
