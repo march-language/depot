@@ -125,7 +125,7 @@ test "decode AuthMD5" do
 end
 
 test "decode BackendKeyData" do
-  -- pid=42, secret=123
+  -- pid=42, secret:123
   let p = Bytes.from_list([0, 0, 0, 42, 0, 0, 0, 123])
   assert decode(75, p) == Ok(BackendKeyData(42, 123))
 end
@@ -184,7 +184,7 @@ test "decode unknown type returns Err" do
 end
 
 test "decode RowDescription with one column" do
-  -- field_count=1, name="id\0", table_oid=0, attr_num=1, type_oid=23, type_size=4, type_mod=-1, format=0
+  -- field_count=1, name:"id\0", table_oid:0, attr_num:1, type_oid:23, type_size:4, type_mod:-1, format:0
   let p = Bytes.from_list([0, 1,
     105, 100, 0,
     0, 0, 0, 0,
@@ -207,7 +207,7 @@ test "decode RowDescription with one column" do
 end
 
 test "decode DataRow with NULL and data columns" do
-  -- col_count=2, col0=NULL, col1=len=5 "Hello"
+  -- col_count=2, col0:NULL, col1:len=5 "Hello"
   let p = Bytes.from_list([0, 2,
     255, 255, 255, 255,
     0, 0, 0, 5,
@@ -321,8 +321,8 @@ end
 
 test "decode RowDescription with two fields" do
   -- field_count=2
-  -- field1: name="a\0", table_oid=0, attr_num=1, type_oid=23, type_size=4, type_mod=-1, format=0
-  -- field2: name="b\0", table_oid=0, attr_num=2, type_oid=25, type_size=-1, type_mod=-1, format=0
+  -- field1: name="a\0", table_oid:0, attr_num:1, type_oid:23, type_size:4, type_mod:-1, format:0
+  -- field2: name="b\0", table_oid:0, attr_num:2, type_oid:25, type_size:-1, type_mod:-1, format:0
   let p = Bytes.from_list([
     0, 2,
     97, 0,

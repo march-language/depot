@@ -254,7 +254,7 @@ doc """
 Get a single record matching the given field clauses.
 Returns Some(record) or None.
 
-    Depot.Repo.get_by(schema, { email = "alice@test.com" })
+    Depot.Repo.get_by(schema, { email: "alice@test.com" })
 """
 fn get_by(schema, clauses) do
   let rows = all(schema)

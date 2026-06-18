@@ -6,13 +6,13 @@
 -- Usage:
 --
 --   Depot.Migration.create_table("users", {
---     id    = ("UUID", { primary_key = true }),
+--     id    = ("UUID", { primary_key: true }),
 --     name  = "String",
---     email = ("String", { null = false }),
---     role  = ("String", { default = "user" })
+--     email = ("String", { null: false }),
+--     role  = ("String", { default: "user" })
 --   })
 --
---   Depot.Migration.create_index("users", ["email"], { unique = true })
+--   Depot.Migration.create_index("users", ["email"], { unique: true })
 --   Depot.Migration.drop_table("old_table")
 
 mod Depot.Migration do
@@ -163,12 +163,12 @@ doc """
 Generate a CREATE TABLE statement.
 
 columns is a record where each field is either a bare type string
-like "String" or a tuple ("String", { null = false, default = "user" }).
+like "String" or a tuple ("String", { null: false, default: "user" }).
 
     Depot.Migration.create_table("users", {
-      id    = ("UUID", { primary_key = true }),
-      name  = "String",
-      email = ("String", { null = false })
+      id: ("UUID", { primary_key: true }),
+      name: "String",
+      email: ("String", { null: false })
     })
 """
 fn create_table(name, columns) do
@@ -188,8 +188,8 @@ changes is a record with optional fields:
   remove — list of column name strings
 
     Depot.Migration.alter_table("users", {
-      add = { avatar = "String" },
-      remove = ["legacy_field"]
+      add: { avatar: "String" },
+      remove: ["legacy_field"]
     })
 """
 fn alter_add_entry(prefix, entry) do
@@ -252,7 +252,7 @@ doc """
 Generate a CREATE TABLE IF NOT EXISTS statement. Idempotent — safe to
 re-run against a database that already has the table.
 
-    Depot.Migration.create_table_if_not_exists("users", { id = ("UUID", { primary_key = true }) })
+    Depot.Migration.create_table_if_not_exists("users", { id: ("UUID", { primary_key: true }) })
 """
 fn create_table_if_not_exists(name, columns) do
   let entries = record_entries(columns)
@@ -270,7 +270,7 @@ opts is a record with optional fields:
   unique — Bool (default false)
   name   — custom index name string
 
-    Depot.Migration.create_index("users", ["email"], { unique = true })
+    Depot.Migration.create_index("users", ["email"], { unique: true })
 """
 fn create_index(table, columns, opts) do
   let opts_entries = record_entries(opts)
@@ -316,14 +316,14 @@ Build a foreign key references descriptor record.
 Returns a record with table, column, on_delete, on_update fields,
 merged with any overrides from opts.
 
-    let ref = Depot.Migration.references("posts", { column = "post_id", on_delete = "CASCADE" })
+    let ref = Depot.Migration.references("posts", { column: "post_id", on_delete: "CASCADE" })
 """
 fn references(table, opts) do
   let opts_entries = record_entries(opts)
   let col = alist_get(opts_entries, "column", "id")
   let on_del = alist_get(opts_entries, "on_delete", "nothing")
   let on_upd = alist_get(opts_entries, "on_update", "nothing")
-  { table = table, column = col, on_delete = on_del, on_update = on_upd }
+  { table: table, column: col, on_delete: on_del, on_update: on_upd }
 end
 
 doc """
@@ -480,8 +480,8 @@ do not leave stale pending statements behind.
 
     Depot.Migration.run(conn, fn () ->
       Depot.Migration.create_table_if_not_exists("users", {
-        id = ("UUID", { primary_key = true }),
-        email = ("String", { null = false })
+        id: ("UUID", { primary_key: true }),
+        email: ("String", { null: false })
       })
     )
 """

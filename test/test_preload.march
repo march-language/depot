@@ -15,7 +15,7 @@ fn list_len(lst) do
 end
 
 fn make_result(cols, rows) do
-  { columns = cols, rows = rows, tag = "" }
+  { columns: cols, rows: rows, tag: "" }
 end
 
 -- ---- Tests ----
@@ -143,199 +143,199 @@ test "compile_inline GROUP BY HAVING in preload module" do
 end
 
 test "compile_inline HAVING OrWhere in preload module" do
-  let q = Query({ from_ = FromTable("t"), selects = Nil,
-    group_bys = [Col("x")],
-    havings = [Where(Gt(CountAll, Lit(PInt(1)))),
+  let q = Query({ from_: FromTable("t"), selects: Nil,
+    group_bys: [Col("x")],
+    havings: [Where(Gt(CountAll, Lit(PInt(1)))),
                OrWhere(Gt(CountAll, Lit(PInt(10))))],
-    wheres = Nil, joins = Nil, orders = Nil,
-    limit_ = None, offset_ = None, distinct_ = NoDistinct })
+    wheres: Nil, joins: Nil, orders: Nil,
+    limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
   assert String.contains(r.sql, "OR") == true
 end
 
 test "compile_inline ORDER BY NULLS variants in preload module" do
-  let q1 = Query({ from_ = FromTable("t"), selects = Nil,
-    orders = [OrderExpr(Col("x"), AscNullsFirst)],
-    wheres = Nil, joins = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = NoDistinct })
+  let q1 = Query({ from_: FromTable("t"), selects: Nil,
+    orders: [OrderExpr(Col("x"), AscNullsFirst)],
+    wheres: Nil, joins: Nil, group_bys: Nil, havings: Nil,
+    limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q1)).sql, "ASC NULLS FIRST") == true
-  let q2 = Query({ from_ = FromTable("t"), selects = Nil,
-    orders = [OrderExpr(Col("x"), AscNullsLast)],
-    wheres = Nil, joins = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = NoDistinct })
+  let q2 = Query({ from_: FromTable("t"), selects: Nil,
+    orders: [OrderExpr(Col("x"), AscNullsLast)],
+    wheres: Nil, joins: Nil, group_bys: Nil, havings: Nil,
+    limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q2)).sql, "ASC NULLS LAST") == true
-  let q3 = Query({ from_ = FromTable("t"), selects = Nil,
-    orders = [OrderExpr(Col("x"), DescNullsFirst)],
-    wheres = Nil, joins = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = NoDistinct })
+  let q3 = Query({ from_: FromTable("t"), selects: Nil,
+    orders: [OrderExpr(Col("x"), DescNullsFirst)],
+    wheres: Nil, joins: Nil, group_bys: Nil, havings: Nil,
+    limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q3)).sql, "DESC NULLS FIRST") == true
-  let q4 = Query({ from_ = FromTable("t"), selects = Nil,
-    orders = [OrderExpr(Col("x"), DescNullsLast)],
-    wheres = Nil, joins = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = NoDistinct })
+  let q4 = Query({ from_: FromTable("t"), selects: Nil,
+    orders: [OrderExpr(Col("x"), DescNullsLast)],
+    wheres: Nil, joins: Nil, group_bys: Nil, havings: Nil,
+    limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q4)).sql, "DESC NULLS LAST") == true
 end
 
 test "compile_inline SelectAll SelectAs in preload module" do
-  let q1 = Query({ from_ = FromTable("t"), selects = [SelectAll],
-    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = NoDistinct })
+  let q1 = Query({ from_: FromTable("t"), selects: [SelectAll],
+    wheres: Nil, joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
+    limit_: None, offset_: None, distinct_: NoDistinct })
   assert (compile_inline(q1)).sql == "SELECT * FROM \"t\""
-  let q2 = Query({ from_ = FromTable("t"),
-    selects = [SelectAs(Col("id"), "pk")],
-    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = NoDistinct })
+  let q2 = Query({ from_: FromTable("t"),
+    selects: [SelectAs(Col("id"), "pk")],
+    wheres: Nil, joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
+    limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q2)).sql, "AS \"pk\"") == true
 end
 
 test "compile_inline arithmetic operators in preload module" do
-  let q1 = Query({ from_ = FromTable("t"), selects = Nil,
-    wheres = [Where(Gt(Add(Col("a"), Col("b")), Lit(PInt(0))))],
-    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = NoDistinct })
+  let q1 = Query({ from_: FromTable("t"), selects: Nil,
+    wheres: [Where(Gt(Add(Col("a"), Col("b")), Lit(PInt(0))))],
+    joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
+    limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q1)).sql, "+") == true
-  let q2 = Query({ from_ = FromTable("t"), selects = Nil,
-    wheres = [Where(Gt(Sub(Col("a"), Col("b")), Lit(PInt(0))))],
-    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = NoDistinct })
+  let q2 = Query({ from_: FromTable("t"), selects: Nil,
+    wheres: [Where(Gt(Sub(Col("a"), Col("b")), Lit(PInt(0))))],
+    joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
+    limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q2)).sql, "-") == true
-  let q3 = Query({ from_ = FromTable("t"), selects = Nil,
-    wheres = [Where(Gt(Mul(Col("a"), Col("b")), Lit(PInt(0))))],
-    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = NoDistinct })
+  let q3 = Query({ from_: FromTable("t"), selects: Nil,
+    wheres: [Where(Gt(Mul(Col("a"), Col("b")), Lit(PInt(0))))],
+    joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
+    limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q3)).sql, "*") == true
-  let q4 = Query({ from_ = FromTable("t"), selects = Nil,
-    wheres = [Where(Gt(Div(Col("a"), Col("b")), Lit(PInt(0))))],
-    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = NoDistinct })
+  let q4 = Query({ from_: FromTable("t"), selects: Nil,
+    wheres: [Where(Gt(Div(Col("a"), Col("b")), Lit(PInt(0))))],
+    joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
+    limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q4)).sql, "/") == true
 end
 
 test "compile_inline boolean And Or Not in preload module" do
-  let q1 = Query({ from_ = FromTable("t"), selects = Nil,
-    wheres = [Where(And(Gt(Col("x"), Lit(PInt(0))), Lt(Col("x"), Lit(PInt(10)))))],
-    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = NoDistinct })
+  let q1 = Query({ from_: FromTable("t"), selects: Nil,
+    wheres: [Where(And(Gt(Col("x"), Lit(PInt(0))), Lt(Col("x"), Lit(PInt(10)))))],
+    joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
+    limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q1)).sql, " AND ") == true
-  let q2 = Query({ from_ = FromTable("t"), selects = Nil,
-    wheres = [Where(Or(Eq(Col("x"), Lit(PInt(1))), Eq(Col("x"), Lit(PInt(2)))))],
-    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = NoDistinct })
+  let q2 = Query({ from_: FromTable("t"), selects: Nil,
+    wheres: [Where(Or(Eq(Col("x"), Lit(PInt(1))), Eq(Col("x"), Lit(PInt(2)))))],
+    joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
+    limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q2)).sql, " OR ") == true
-  let q3 = Query({ from_ = FromTable("t"), selects = Nil,
-    wheres = [Where(Not(Eq(Col("x"), Lit(PInt(0)))))],
-    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = NoDistinct })
+  let q3 = Query({ from_: FromTable("t"), selects: Nil,
+    wheres: [Where(Not(Eq(Col("x"), Lit(PInt(0)))))],
+    joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
+    limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q3)).sql, "NOT") == true
 end
 
 test "compile_inline Neq Lt Lte Gte in preload module" do
-  let q1 = Query({ from_ = FromTable("t"), selects = Nil,
-    wheres = [Where(Neq(Col("x"), Lit(PInt(0))))],
-    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = NoDistinct })
+  let q1 = Query({ from_: FromTable("t"), selects: Nil,
+    wheres: [Where(Neq(Col("x"), Lit(PInt(0))))],
+    joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
+    limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q1)).sql, "<>") == true
-  let q2 = Query({ from_ = FromTable("t"), selects = Nil,
-    wheres = [Where(Lte(Col("x"), Lit(PInt(5))))],
-    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = NoDistinct })
+  let q2 = Query({ from_: FromTable("t"), selects: Nil,
+    wheres: [Where(Lte(Col("x"), Lit(PInt(5))))],
+    joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
+    limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q2)).sql, "<=") == true
-  let q3 = Query({ from_ = FromTable("t"), selects = Nil,
-    wheres = [Where(Gte(Col("x"), Lit(PInt(5))))],
-    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = NoDistinct })
+  let q3 = Query({ from_: FromTable("t"), selects: Nil,
+    wheres: [Where(Gte(Col("x"), Lit(PInt(5))))],
+    joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
+    limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q3)).sql, ">=") == true
 end
 
 test "compile_inline IsNull IsNotNull In NotIn Between in preload module" do
-  let q1 = Query({ from_ = FromTable("t"), selects = Nil,
-    wheres = [Where(IsNull(Col("x")))],
-    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = NoDistinct })
+  let q1 = Query({ from_: FromTable("t"), selects: Nil,
+    wheres: [Where(IsNull(Col("x")))],
+    joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
+    limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q1)).sql, "IS NULL") == true
-  let q2 = Query({ from_ = FromTable("t"), selects = Nil,
-    wheres = [Where(IsNotNull(Col("x")))],
-    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = NoDistinct })
+  let q2 = Query({ from_: FromTable("t"), selects: Nil,
+    wheres: [Where(IsNotNull(Col("x")))],
+    joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
+    limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q2)).sql, "IS NOT NULL") == true
-  let q3 = Query({ from_ = FromTable("t"), selects = Nil,
-    wheres = [Where(In(Col("id"), [Lit(PInt(1)), Lit(PInt(2))]))],
-    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = NoDistinct })
+  let q3 = Query({ from_: FromTable("t"), selects: Nil,
+    wheres: [Where(In(Col("id"), [Lit(PInt(1)), Lit(PInt(2))]))],
+    joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
+    limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q3)).sql, "IN (1, 2)") == true
-  let q4 = Query({ from_ = FromTable("t"), selects = Nil,
-    wheres = [Where(Between(Col("x"), Lit(PInt(1)), Lit(PInt(10))))],
-    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = NoDistinct })
+  let q4 = Query({ from_: FromTable("t"), selects: Nil,
+    wheres: [Where(Between(Col("x"), Lit(PInt(1)), Lit(PInt(10))))],
+    joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
+    limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q4)).sql, "BETWEEN 1 AND 10") == true
 end
 
 test "compile_inline FnCall Like ILike aggregates in preload module" do
-  let qf = Query({ from_ = FromTable("t"), selects = Nil,
-    wheres = [Where(Eq(FnCall("LOWER", [Col("email")]), Lit(PString("x"))))],
-    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = NoDistinct })
+  let qf = Query({ from_: FromTable("t"), selects: Nil,
+    wheres: [Where(Eq(FnCall("LOWER", [Col("email")]), Lit(PString("x"))))],
+    joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
+    limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(qf)).sql, "LOWER") == true
-  let ql = Query({ from_ = FromTable("t"), selects = Nil,
-    wheres = [Where(Like(Col("n"), "%a%"))],
-    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = NoDistinct })
+  let ql = Query({ from_: FromTable("t"), selects: Nil,
+    wheres: [Where(Like(Col("n"), "%a%"))],
+    joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
+    limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(ql)).sql, "LIKE") == true
-  let qi = Query({ from_ = FromTable("t"), selects = Nil,
-    wheres = [Where(ILike(Col("n"), "%a%"))],
-    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = NoDistinct })
+  let qi = Query({ from_: FromTable("t"), selects: Nil,
+    wheres: [Where(ILike(Col("n"), "%a%"))],
+    joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
+    limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(qi)).sql, "ILIKE") == true
-  let q_sum = Query({ from_ = FromTable("t"), selects = Nil, group_bys = [Col("x")],
-    havings = [Where(Gt(Sum(Col("v")), Lit(PInt(0))))],
-    wheres = Nil, joins = Nil, orders = Nil, limit_ = None, offset_ = None, distinct_ = NoDistinct })
+  let q_sum = Query({ from_: FromTable("t"), selects: Nil, group_bys: [Col("x")],
+    havings: [Where(Gt(Sum(Col("v")), Lit(PInt(0))))],
+    wheres: Nil, joins: Nil, orders: Nil, limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q_sum)).sql, "SUM") == true
-  let q_avg = Query({ from_ = FromTable("t"), selects = Nil, group_bys = [Col("x")],
-    havings = [Where(Gt(Avg(Col("v")), Lit(PFloat(0.0))))],
-    wheres = Nil, joins = Nil, orders = Nil, limit_ = None, offset_ = None, distinct_ = NoDistinct })
+  let q_avg = Query({ from_: FromTable("t"), selects: Nil, group_bys: [Col("x")],
+    havings: [Where(Gt(Avg(Col("v")), Lit(PFloat(0.0))))],
+    wheres: Nil, joins: Nil, orders: Nil, limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q_avg)).sql, "AVG") == true
-  let q_min = Query({ from_ = FromTable("t"), selects = Nil, group_bys = [Col("x")],
-    havings = [Where(Gt(Min(Col("v")), Lit(PInt(0))))],
-    wheres = Nil, joins = Nil, orders = Nil, limit_ = None, offset_ = None, distinct_ = NoDistinct })
+  let q_min = Query({ from_: FromTable("t"), selects: Nil, group_bys: [Col("x")],
+    havings: [Where(Gt(Min(Col("v")), Lit(PInt(0))))],
+    wheres: Nil, joins: Nil, orders: Nil, limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q_min)).sql, "MIN") == true
-  let q_max = Query({ from_ = FromTable("t"), selects = Nil, group_bys = [Col("x")],
-    havings = [Where(Lt(Max(Col("v")), Lit(PInt(1000))))],
-    wheres = Nil, joins = Nil, orders = Nil, limit_ = None, offset_ = None, distinct_ = NoDistinct })
+  let q_max = Query({ from_: FromTable("t"), selects: Nil, group_bys: [Col("x")],
+    havings: [Where(Lt(Max(Col("v")), Lit(PInt(1000))))],
+    wheres: Nil, joins: Nil, orders: Nil, limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q_max)).sql, "MAX") == true
 end
 
 test "compile_inline Exists SubqueryExpr in preload module" do
-  let sub = Query({ from_ = FromTable("orders"), selects = Nil,
-    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = NoDistinct })
-  let qe = Query({ from_ = FromTable("users"), selects = Nil,
-    wheres = [Where(Exists(sub))],
-    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = NoDistinct })
+  let sub = Query({ from_: FromTable("orders"), selects: Nil,
+    wheres: Nil, joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
+    limit_: None, offset_: None, distinct_: NoDistinct })
+  let qe = Query({ from_: FromTable("users"), selects: Nil,
+    wheres: [Where(Exists(sub))],
+    joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
+    limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(qe)).sql, "EXISTS") == true
-  let qs = Query({ from_ = FromTable("t"), selects = Nil,
-    wheres = [Where(Gt(Col("score"), SubqueryExpr(sub)))],
-    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = NoDistinct })
+  let qs = Query({ from_: FromTable("t"), selects: Nil,
+    wheres: [Where(Gt(Col("score"), SubqueryExpr(sub)))],
+    joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
+    limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(qs)).sql, "SELECT") == true
 end
 
 test "compile ORDER BY NULLS in preload module" do
-  let q = Query({ from_ = FromTable("t"), selects = Nil,
-    orders = [OrderExpr(Col("x"), AscNullsFirst)],
-    wheres = Nil, joins = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = NoDistinct })
+  let q = Query({ from_: FromTable("t"), selects: Nil,
+    orders: [OrderExpr(Col("x"), AscNullsFirst)],
+    wheres: Nil, joins: Nil, group_bys: Nil, havings: Nil,
+    limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile(q)).sql, "ASC NULLS FIRST") == true
 end
 
 test "compile Exists parameterized in preload module" do
-  let sub = Query({ from_ = FromTable("orders"), selects = Nil,
-    wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = NoDistinct })
-  let q = Query({ from_ = FromTable("users"), selects = Nil,
-    wheres = [Where(Exists(sub))],
-    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = NoDistinct })
+  let sub = Query({ from_: FromTable("orders"), selects: Nil,
+    wheres: Nil, joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
+    limit_: None, offset_: None, distinct_: NoDistinct })
+  let q = Query({ from_: FromTable("users"), selects: Nil,
+    wheres: [Where(Exists(sub))],
+    joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
+    limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile(q)).sql, "EXISTS") == true
 end
 

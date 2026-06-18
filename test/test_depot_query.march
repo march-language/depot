@@ -9,11 +9,11 @@ mod TestDepotQuery do
 -- Sample rows as typed record literals — no Depot.Schema.define needed.
 fn sample_rows() do
   [
-    { id = "1", name = "Alice",   age = 30, active = true },
-    { id = "2", name = "Bob",     age = 25, active = false },
-    { id = "3", name = "Charlie", age = 35, active = true },
-    { id = "4", name = "Diana",   age = 28, active = true },
-    { id = "5", name = "Eve",     age = 22, active = false }
+    { id: "1", name: "Alice",   age: 30, active: true },
+    { id: "2", name: "Bob",     age: 25, active: false },
+    { id: "3", name: "Charlie", age: 35, active: true },
+    { id: "4", name: "Diana",   age: 28, active: true },
+    { id: "5", name: "Eve",     age: 22, active: false }
   ]
 end
 
@@ -37,9 +37,9 @@ test "multiple where_ calls are AND-combined" do
   -- March stores predicates in a polymorphic list; same-field predicates
   -- unify cleanly. Mixed-field predicates should use a single combined fn.
   let rows = [
-    { id = "1", name = "Alice", age = 30, active = true },
-    { id = "2", name = "Alice", age = 25, active = false },
-    { id = "3", name = "Bob",   age = 28, active = true }
+    { id: "1", name: "Alice", age: 30, active: true },
+    { id: "2", name: "Alice", age: 25, active: false },
+    { id: "3", name: "Bob",   age: 28, active: true }
   ]
   let q = Depot.Query.from_table("t")
     |> Depot.Query.where_(fn row -> row.active)

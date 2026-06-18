@@ -40,12 +40,12 @@ end
 
 test "error fields record" do
   let ef = {
-    severity = "ERROR",
-    code = "42P01",
-    message = "relation does not exist",
-    detail = None,
-    hint = None,
-    position = None
+    severity: "ERROR",
+    code: "42P01",
+    message: "relation does not exist",
+    detail: None,
+    hint: None,
+    position: None
   }
   assert ef.severity == "ERROR"
   assert ef.code == "42P01"
@@ -55,12 +55,12 @@ end
 
 test "error fields with detail" do
   let ef = {
-    severity = "ERROR",
-    code = "23505",
-    message = "duplicate key",
-    detail = Some("Key (id)=(1) already exists."),
-    hint = None,
-    position = None
+    severity: "ERROR",
+    code: "23505",
+    message: "duplicate key",
+    detail: Some("Key (id)=(1) already exists."),
+    hint: None,
+    position: None
   }
   assert ef.detail == Some("Key (id)=(1) already exists.")
 end

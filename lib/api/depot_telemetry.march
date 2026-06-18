@@ -163,12 +163,12 @@ fn instrument(sql, params, thunk) do
     Err(msg) -> Some(msg)
   end
   emit(QueryEvent({
-    sql         = sql,
-    params      = params,
-    duration_ms = t1 - t0,
-    row_count   = row_count,
-    ok          = ok_flag,
-    error       = err_msg
+    sql: sql,
+    params: params,
+    duration_ms: t1 - t0,
+    row_count: row_count,
+    ok: ok_flag,
+    error: err_msg
   }))
   result
 end
@@ -180,20 +180,20 @@ end
 fn event_of(sql, params, duration_ms, result) do
   match result do
     Ok(r) -> QueryEvent({
-      sql         = sql,
-      params      = params,
-      duration_ms = duration_ms,
-      row_count   = List.length(r.rows),
-      ok          = true,
-      error       = None
+      sql: sql,
+      params: params,
+      duration_ms: duration_ms,
+      row_count: List.length(r.rows),
+      ok: true,
+      error: None
     })
     Err(msg) -> QueryEvent({
-      sql         = sql,
-      params      = params,
-      duration_ms = duration_ms,
-      row_count   = 0,
-      ok          = false,
-      error       = Some(msg)
+      sql: sql,
+      params: params,
+      duration_ms: duration_ms,
+      row_count: 0,
+      ok: false,
+      error: Some(msg)
     })
   end
 end

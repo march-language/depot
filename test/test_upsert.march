@@ -97,7 +97,7 @@ end
 test "ON CONFLICT compile is deterministic — idempotence stand-in" do
   -- Compile the same Insert twice; SQL and params must be byte-identical.
   -- This stands in for the ROADMAP's runtime idempotence property
-  -- (`insert(g, on_conflict=:replace)` twice ≡ once) until a real-Postgres
+  -- (`insert(g, on_conflict::replace)` twice ≡ once) until a real-Postgres
   -- test fixture lands; the compile layer is the part Depot owns.
   let i1 = insert_into("users")
         |> insert_cols(["id", "email"])

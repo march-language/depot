@@ -5,11 +5,11 @@ mod TestDepotRepo do
 -- Helper: define a simple users schema for testing.
 fn user_schema() do
   Depot.Schema.define("test_repo_users", {
-    fields = {
-      name  = "String",
-      email = "String",
-      age   = ("Int", { default = 0 }),
-      role  = ("String", { default = "user" })
+    fields: {
+      name: "String",
+      email: "String",
+      age: ("Int", { default: 0 }),
+      role: ("String", { default: "user" })
     }
   })
 end
@@ -58,7 +58,7 @@ end
 fn insert_user(name, email, age, role) do
   let schema = user_schema()
   let blank = Depot.Schema.blank(schema)
-  let params = { name = name, email = email, age = age, role = role }
+  let params = { name: name, email: email, age: age, role: role }
   let gate = Depot.Gate.cast_record(blank, params, ["name", "email", "age", "role"])
   unwrap_ok(Depot.Repo.insert(schema, gate))
 end
@@ -76,7 +76,7 @@ test "insert returns Ok with a record" do
   clear_users()
   let schema = user_schema()
   let blank = Depot.Schema.blank(schema)
-  let params = { name = "Alice", email = "alice@test.com", age = 30, role = "admin" }
+  let params = { name: "Alice", email: "alice@test.com", age: 30, role: "admin" }
   let gate = Depot.Gate.cast_record(blank, params, ["name", "email", "age", "role"])
   let record = unwrap_ok(Depot.Repo.insert(schema, gate))
   assert record.name == "Alice"
@@ -89,7 +89,7 @@ test "insert auto-generates a primary key (id)" do
   clear_users()
   let schema = user_schema()
   let blank = Depot.Schema.blank(schema)
-  let params = { name = "Bob", email = "bob@test.com", age = 25, role = "user" }
+  let params = { name: "Bob", email: "bob@test.com", age: 25, role: "user" }
   let gate = Depot.Gate.cast_record(blank, params, ["name", "email", "age", "role"])
   let record = unwrap_ok(Depot.Repo.insert(schema, gate))
   assert String.byte_size(record.id) > 0
@@ -99,7 +99,7 @@ test "insert returns Err when gate is invalid" do
   clear_users()
   let schema = user_schema()
   let blank = Depot.Schema.blank(schema)
-  let params = { name = "", email = "", age = 0, role = "user" }
+  let params = { name: "", email: "", age: 0, role: "user" }
   let gate = Depot.Gate.cast_record(blank, params, ["name", "email"])
     |> Depot.Gate.validate_required(["name", "email"])
   let result = Depot.Repo.insert(schema, gate)
@@ -177,7 +177,7 @@ test "get_by finds record matching single field" do
   clear_users()
   insert_user("Alice", "alice@test.com", 30, "admin")
   insert_user("Bob", "bob@test.com", 25, "user")
-  let found = unwrap_some(Depot.Repo.get_by(user_schema(), { email = "bob@test.com" }))
+  let found = unwrap_some(Depot.Repo.get_by(user_schema(), { email: "bob@test.com" }))
   assert found.name == "Bob"
 end
 
@@ -186,14 +186,14 @@ test "get_by finds record matching multiple fields" do
   insert_user("Alice", "alice@test.com", 30, "admin")
   insert_user("Bob", "bob@test.com", 25, "user")
   insert_user("Charlie", "charlie@test.com", 35, "user")
-  let found = unwrap_some(Depot.Repo.get_by(user_schema(), { role = "user", name = "Charlie" }))
+  let found = unwrap_some(Depot.Repo.get_by(user_schema(), { role: "user", name: "Charlie" }))
   assert found.email == "charlie@test.com"
 end
 
 test "get_by returns None when no match" do
   clear_users()
   insert_user("Alice", "alice@test.com", 30, "admin")
-  assert is_none(Depot.Repo.get_by(user_schema(), { email = "nobody@test.com" })) == true
+  assert is_none(Depot.Repo.get_by(user_schema(), { email: "nobody@test.com" })) == true
 end
 
 -- =========================================================================
@@ -304,7 +304,7 @@ test "update changes fields on existing record" do
   clear_users()
   let record = insert_user("Alice", "alice@test.com", 30, "user")
   let schema = user_schema()
-  let params = { name = "Alicia", email = "alice@test.com", age = 30, role = "admin" }
+  let params = { name: "Alicia", email: "alice@test.com", age: 30, role: "admin" }
   let gate = Depot.Gate.cast_record(record, params, ["name", "role"])
   let updated = unwrap_ok(Depot.Repo.update(schema, gate))
   assert updated.name == "Alicia"
@@ -316,7 +316,7 @@ test "update persists to Vault" do
   clear_users()
   let record = insert_user("Alice", "alice@test.com", 30, "user")
   let schema = user_schema()
-  let params = { name = "Alicia", email = "alice@test.com", age = 30, role = "admin" }
+  let params = { name: "Alicia", email: "alice@test.com", age: 30, role: "admin" }
   let gate = Depot.Gate.cast_record(record, params, ["name", "role"])
   Depot.Repo.update(schema, gate)
   let fetched = unwrap_some(Depot.Repo.get(schema, record.id))
@@ -328,7 +328,7 @@ test "update returns Err when gate is invalid" do
   clear_users()
   let record = insert_user("Alice", "alice@test.com", 30, "user")
   let schema = user_schema()
-  let params = { name = "", email = "alice@test.com", age = 30, role = "admin" }
+  let params = { name: "", email: "alice@test.com", age: 30, role: "admin" }
   let gate = Depot.Gate.cast_record(record, params, ["name", "role"])
     |> Depot.Gate.validate_required(["name"])
   let result = Depot.Repo.update(schema, gate)
@@ -339,8 +339,8 @@ end
 
 test "update returns Err when pk not in gate base" do
   let schema = user_schema()
-  let base_no_pk = { name = "Alice", email = "alice@test.com" }
-  let params = { name = "Bob", email = "bob@test.com" }
+  let base_no_pk = { name: "Alice", email: "alice@test.com" }
+  let params = { name: "Bob", email: "bob@test.com" }
   let gate = Depot.Gate.cast_record(base_no_pk, params, ["name", "email"])
   let result = Depot.Repo.update(schema, gate)
   assert is_err(result) == true
@@ -392,7 +392,7 @@ test "update changes field value" do
   clear_users()
   let record = insert_user("Greta", "g@test.com", 30, "user")
   let schema = user_schema()
-  let params = { name = "Greta Updated", email = "g@test.com", age = 30, role = "user" }
+  let params = { name: "Greta Updated", email: "g@test.com", age: 30, role: "user" }
   let gate = Depot.Gate.cast_record(record, params, ["name"])
   let result = Depot.Repo.update(schema, gate)
   assert is_err(result) == false

@@ -11,41 +11,41 @@ import Depot.Schema
 
 --- Creates a new INSERT query for the given table.
 fn insert_into(table) do
-  Insert({ table_ = table, columns = Nil, rows = Nil, on_conflict = None, returning_ = Nil })
+  Insert({ table_: table, columns: Nil, rows: Nil, on_conflict: None, returning_: Nil })
 end
 
 --- Sets the column list for the INSERT.
 fn insert_cols(i, cols) do
   match i do
-  Insert(f) -> Insert({ f with columns = cols })
+  Insert(f) -> Insert({ f with columns: cols })
   end
 end
 
 --- Appends one row of values to the INSERT.
 fn insert_row(i, vals) do
   match i do
-  Insert(f) -> Insert({ f with rows = append_row(f.rows, vals) })
+  Insert(f) -> Insert({ f with rows: append_row(f.rows, vals) })
   end
 end
 
 --- Adds ON CONFLICT DO NOTHING.
 fn on_conflict_do_nothing(i) do
   match i do
-  Insert(f) -> Insert({ f with on_conflict = Some(DoNothing) })
+  Insert(f) -> Insert({ f with on_conflict: Some(DoNothing) })
   end
 end
 
 --- Adds ON CONFLICT DO UPDATE SET for the given column/expr pairs.
 fn on_conflict_do_update(i, sets) do
   match i do
-  Insert(f) -> Insert({ f with on_conflict = Some(DoUpdate(sets)) })
+  Insert(f) -> Insert({ f with on_conflict: Some(DoUpdate(sets)) })
   end
 end
 
 --- Adds `ON CONFLICT <target> DO NOTHING` — target-specified no-op on conflict.
 fn on_conflict_do_nothing_on(i, target) do
   match i do
-  Insert(f) -> Insert({ f with on_conflict = Some(DoNothingOn(target)) })
+  Insert(f) -> Insert({ f with on_conflict: Some(DoNothingOn(target)) })
   end
 end
 
@@ -55,34 +55,34 @@ end
 --- `QCol("excluded", "col")`) to reference the would-be-inserted row.
 fn on_conflict_do_update_on(i, target, sets) do
   match i do
-  Insert(f) -> Insert({ f with on_conflict = Some(DoUpdateOn(target, sets)) })
+  Insert(f) -> Insert({ f with on_conflict: Some(DoUpdateOn(target, sets)) })
   end
 end
 
 --- Sets RETURNING * on the INSERT.
 fn insert_returning_all(i) do
   match i do
-  Insert(f) -> Insert({ f with returning_ = [SelectAll] })
+  Insert(f) -> Insert({ f with returning_: [SelectAll] })
   end
 end
 
 --- Sets RETURNING with specific expressions.
 fn insert_returning(i, exprs) do
   match i do
-  Insert(f) -> Insert({ f with returning_ = exprs })
+  Insert(f) -> Insert({ f with returning_: exprs })
   end
 end
 
 --- Builds a batch INSERT for multiple rows in one call.
 fn insert_many(table, cols, rows) do
-  Insert({ table_ = table, columns = cols, rows = rows, on_conflict = None, returning_ = Nil })
+  Insert({ table_: table, columns: cols, rows: rows, on_conflict: None, returning_: Nil })
 end
 
 -- ---- UPDATE builders ----
 
 --- Creates a new UPDATE query for the given table.
 fn update(table) do
-  Update({ table_ = table, sets = Nil, wheres = Nil, returning_ = Nil })
+  Update({ table_: table, sets: Nil, wheres: Nil, returning_: Nil })
 end
 
 --- Bridge a SELECT `Build.Query` into an `UPDATE ... WHERE ...` mutation.
@@ -97,8 +97,8 @@ fn update_all(q) do
   match q do
   Ast.Query(f) ->
     match f.from_ do
-    FromTable(t)     -> Update({ table_ = t, sets = Nil, wheres = f.wheres, returning_ = Nil })
-    FromSubquery(_,_) -> Update({ table_ = "/* unsupported: subquery FROM */", sets = Nil, wheres = f.wheres, returning_ = Nil })
+    FromTable(t)     -> Update({ table_: t, sets: Nil, wheres: f.wheres, returning_: Nil })
+    FromSubquery(_,_) -> Update({ table_: "/* unsupported: subquery FROM */", sets: Nil, wheres: f.wheres, returning_: Nil })
     end
   end
 end
@@ -106,28 +106,28 @@ end
 --- Appends a SET col = expr clause.
 fn set_(u, col, expr) do
   match u do
-  Update(f) -> Update({ f with sets = append_set(f.sets, (col, expr)) })
+  Update(f) -> Update({ f with sets: append_set(f.sets, (col, expr)) })
   end
 end
 
 --- Appends an AND WHERE predicate.
 fn update_where(u, expr) do
   match u do
-  Update(f) -> Update({ f with wheres = append_where(f.wheres, Where(expr)) })
+  Update(f) -> Update({ f with wheres: append_where(f.wheres, Where(expr)) })
   end
 end
 
 --- Sets RETURNING * on the UPDATE.
 fn update_returning_all(u) do
   match u do
-  Update(f) -> Update({ f with returning_ = [SelectAll] })
+  Update(f) -> Update({ f with returning_: [SelectAll] })
   end
 end
 
 --- Sets RETURNING with specific expressions.
 fn update_returning(u, exprs) do
   match u do
-  Update(f) -> Update({ f with returning_ = exprs })
+  Update(f) -> Update({ f with returning_: exprs })
   end
 end
 
@@ -152,10 +152,10 @@ end
 --- when you don't have a schema value in hand.
 fn soft_delete_for_table(table) do
   Update({
-    table_ = table,
-    sets   = [("deleted_at", Raw("NOW()"))],
-    wheres = Nil,
-    returning_ = Nil
+    table_: table,
+    sets: [("deleted_at", Raw("NOW()"))],
+    wheres: Nil,
+    returning_: Nil
   })
 end
 
@@ -169,11 +169,11 @@ end
 ---   - rows_affected == 0 -> StaleEntry (someone else bumped the row)
 fn locked_update(table, expected_version) do
   Update({
-    table_ = table,
-    sets   = [("lock_version",
+    table_: table,
+    sets: [("lock_version",
                Ast.Expr.Add(Ast.Expr.Col("lock_version"), Ast.Expr.Lit(Ast.SqlValue.PInt(1))))],
-    wheres = [Where(Ast.Expr.Eq(Ast.Expr.Col("lock_version"), Ast.Expr.Lit(Ast.SqlValue.PInt(expected_version))))],
-    returning_ = Nil
+    wheres: [Where(Ast.Expr.Eq(Ast.Expr.Col("lock_version"), Ast.Expr.Lit(Ast.SqlValue.PInt(expected_version))))],
+    returning_: Nil
   })
 end
 
@@ -191,7 +191,7 @@ end
 
 --- Creates a new DELETE query for the given table.
 fn delete_from(table) do
-  Delete.Delete({ table_ = table, wheres = Nil, returning_ = Nil })
+  Delete.Delete({ table_: table, wheres: Nil, returning_: Nil })
 end
 
 --- Bridge a SELECT `Build.Query` into a `DELETE ... WHERE ...` mutation.
@@ -206,8 +206,8 @@ fn delete_all(q) do
   match q do
   Ast.Query(f) ->
     match f.from_ do
-    FromTable(t)     -> Delete.Delete({ table_ = t, wheres = f.wheres, returning_ = Nil })
-    FromSubquery(_,_) -> Delete.Delete({ table_ = "/* unsupported: subquery FROM */", wheres = f.wheres, returning_ = Nil })
+    FromTable(t)     -> Delete.Delete({ table_: t, wheres: f.wheres, returning_: Nil })
+    FromSubquery(_,_) -> Delete.Delete({ table_: "/* unsupported: subquery FROM */", wheres: f.wheres, returning_: Nil })
     end
   end
 end
@@ -215,21 +215,21 @@ end
 --- Appends an AND WHERE predicate.
 fn delete_where(d, expr) do
   match d do
-  Delete.Delete(f) -> Delete.Delete({ f with wheres = append_where(f.wheres, Where(expr)) })
+  Delete.Delete(f) -> Delete.Delete({ f with wheres: append_where(f.wheres, Where(expr)) })
   end
 end
 
 --- Sets RETURNING * on the DELETE.
 fn delete_returning_all(d) do
   match d do
-  Delete.Delete(f) -> Delete.Delete({ f with returning_ = [SelectAll] })
+  Delete.Delete(f) -> Delete.Delete({ f with returning_: [SelectAll] })
   end
 end
 
 --- Sets RETURNING with specific expressions on the DELETE.
 fn delete_returning(d, exprs) do
   match d do
-  Delete.Delete(f) -> Delete.Delete({ f with returning_ = exprs })
+  Delete.Delete(f) -> Delete.Delete({ f with returning_: exprs })
   end
 end
 

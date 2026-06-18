@@ -26,8 +26,8 @@ type ConnConfig = {
 --- march> (default_config("alice", "mydb")).port
 --- 5432
 fn default_config(user, database) do
-  { host = "127.0.0.1", port = 5432, user = user,
-    database = database, password = None }
+  { host: "127.0.0.1", port: 5432, user: user,
+    database: database, password: None }
 end
 
 --- Creates a ConnConfig for localhost:5432 with a password.
@@ -35,8 +35,8 @@ end
 --- march> match (config_with_password("bob", "db", "s3cret")).password do | Some(pw) -> pw | None -> "" end
 --- "s3cret"
 fn config_with_password(user, database, password) do
-  { host = "127.0.0.1", port = 5432, user = user,
-    database = database, password = Some(password) }
+  { host: "127.0.0.1", port: 5432, user: user,
+    database: database, password: Some(password) }
 end
 
 --- Creates a fully specified ConnConfig.
@@ -47,8 +47,8 @@ end
 --- march> (full_config("db.example.com", 5433, "carol", "prod", None)).port
 --- 5433
 fn full_config(host, port, user, database, password) do
-  { host = host, port = port, user = user,
-    database = database, password = password }
+  { host: host, port: port, user: user,
+    database: database, password: password }
 end
 
 -- ---- Connection state ----
@@ -87,14 +87,14 @@ end
 -- ---- SCRAM-SHA-256 helpers ----
 
 pfn scram_client_first_bare(user, nonce) do
-  "n=" ++ user ++ ",r=" ++ nonce
+  "n=" ++ user ++ ",r:" ++ nonce
 end
 
 pfn scram_client_first_msg(user, nonce) do
   "n,," ++ scram_client_first_bare(user, nonce)
 end
 
--- Accumulate "k=v,k=v,..." pairs. Module-level (not nested in
+-- Accumulate "k=v,k:v,..." pairs. Module-level (not nested in
 -- scram_parse_server_first) so march's arity check records its 2-arg arity
 -- correctly — a nested recursive helper currently trips a false-positive
 -- "expects 1 argument" here.
@@ -112,7 +112,7 @@ fn scram_parse_fields(s, acc) do
 end
 
 pfn scram_parse_server_first(server_first) do
-  -- Parse "r=combined-nonce,s=base64-salt,i=iterations"
+  -- Parse "r=combined-nonce,s:base64-salt,i:iterations"
   scram_parse_fields(server_first, Nil)
 end
 
@@ -206,11 +206,11 @@ pfn authenticate_scram(fd, cfg, mechanisms) do
         else do
         let pw            = Option.unwrap_or(cfg.password, "")
         let channel_bind  = "biws"  -- base64("n,,")
-        let client_final_no_proof = "c=" ++ channel_bind ++ ",r=" ++ combined_nonce
+        let client_final_no_proof = "c=" ++ channel_bind ++ ",r:" ++ combined_nonce
         let (proof, expected_server_sig) =
           scram_compute_proof(pw, salt_b64, iterations, client_first_bare,
                               server_first, client_final_no_proof)
-        let client_final = client_final_no_proof ++ ",p=" ++ proof
+        let client_final = client_final_no_proof ++ ",p:" ++ proof
         match send_msg(fd, SASLResponse(Bytes.from_string(client_final))) do
         Err(e) -> Err("scram send response: " ++ e)
         Ok(_)  ->
@@ -283,7 +283,7 @@ pfn drain_startup(fd, params, pid, secret) do
   Ok(NoticeResponse(_)) ->
     drain_startup(fd, params, pid, secret)
   Ok(ReadyForQuery(_)) ->
-    Ok({ fd = fd, pid = pid, secret_key = secret, parameters = params })
+    Ok({ fd: fd, pid: pid, secret_key: secret, parameters: params })
   Ok(ErrorResponse(fields)) ->
     Err("startup error: " ++ fields.message)
   Ok(_) ->
@@ -389,7 +389,7 @@ pfn sq_recv(fd, columns, rows, tag) do
     NoticeResponse(_) ->
       sq_recv(fd, columns, rows, tag)
     ReadyForQuery(_) ->
-      Ok({ columns = columns, rows = List.reverse(rows), tag = tag })
+      Ok({ columns: columns, rows: List.reverse(rows), tag: tag })
     _ ->
       sq_recv(fd, columns, rows, tag)
     end
@@ -450,7 +450,7 @@ pfn ep_recv(fd, columns, rows, tag) do
     BindComplete ->
       ep_recv(fd, columns, rows, tag)
     ReadyForQuery(_) ->
-      Ok({ columns = columns, rows = List.reverse(rows), tag = tag })
+      Ok({ columns: columns, rows: List.reverse(rows), tag: tag })
     _ ->
       ep_recv(fd, columns, rows, tag)
     end

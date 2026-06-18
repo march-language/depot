@@ -9,7 +9,7 @@ import Pool
 -- ---- Local helpers ----
 
 fn make_conn_config(host, port, user, db) do
-  { host = host, port = port, user = user, database = db, password = None }
+  { host: host, port: port, user: user, database: db, password: None }
 end
 
 -- ---- Tests ----
@@ -28,11 +28,11 @@ end
 test "custom pool config" do
   let cc = make_conn_config("db.example.com", 5433, "bob", "prod")
   let cfg = {
-    min_size           = 2,
-    max_size           = 10,
-    idle_timeout_ms    = 60000,
-    connect_timeout_ms = 3000,
-    conn_config        = cc
+    min_size: 2,
+    max_size: 10,
+    idle_timeout_ms: 60000,
+    connect_timeout_ms: 3000,
+    conn_config: cc
   }
   assert cfg.min_size == 2
   assert cfg.max_size == 10
@@ -43,7 +43,7 @@ test "custom pool config" do
 end
 
 test "pool stats zero" do
-  let s = { idle_count = 0, active_count = 0, waiting_count = 0, total_size = 0 }
+  let s = { idle_count: 0, active_count: 0, waiting_count: 0, total_size: 0 }
   assert s.idle_count == 0
   assert s.active_count == 0
   assert s.waiting_count == 0
@@ -51,7 +51,7 @@ test "pool stats zero" do
 end
 
 test "pool stats fields" do
-  let s = { idle_count = 3, active_count = 2, waiting_count = 1, total_size = 5 }
+  let s = { idle_count: 3, active_count: 2, waiting_count: 1, total_size: 5 }
   assert s.idle_count == 3
   assert s.active_count == 2
   assert s.waiting_count == 1
@@ -65,8 +65,8 @@ end
 
 test "conn config with password" do
   let cc = {
-    host = "localhost", port = 5432, user = "u",
-    database = "d", password = Some("secret")
+    host: "localhost", port: 5432, user: "u",
+    database: "d", password: Some("secret")
   }
   match cc.password do
   Some(pw) -> assert pw == "secret"

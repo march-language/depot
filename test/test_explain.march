@@ -20,22 +20,22 @@ test "explain_sql with analyze_opts prepends EXPLAIN ANALYZE" do
 end
 
 test "explain_sql emits option list when buffers is on" do
-  let opts = { analyze = true, verbose = false, costs = true,
-               buffers = true, format_ = "text" }
+  let opts = { analyze: true, verbose: false, costs: true,
+               buffers: true, format_: "text" }
   let out = Depot.Explain.explain_sql("SELECT 1", opts)
   assert out == "EXPLAIN (BUFFERS, ANALYZE) SELECT 1"
 end
 
 test "explain_sql emits FORMAT when non-text format requested" do
-  let opts = { analyze = false, verbose = false, costs = true,
-               buffers = false, format_ = "json" }
+  let opts = { analyze: false, verbose: false, costs: true,
+               buffers: false, format_: "json" }
   let out = Depot.Explain.explain_sql("SELECT 1", opts)
   assert out == "EXPLAIN (FORMAT json) SELECT 1"
 end
 
 test "explain_sql emits COSTS OFF when costs disabled" do
-  let opts = { analyze = false, verbose = false, costs = false,
-               buffers = false, format_ = "text" }
+  let opts = { analyze: false, verbose: false, costs: false,
+               buffers: false, format_: "text" }
   let out = Depot.Explain.explain_sql("SELECT 1", opts)
   assert out == "EXPLAIN (COSTS OFF) SELECT 1"
 end

@@ -20,9 +20,9 @@ import Ast
 --- "users"
 fn from(table) do
   Query({
-    from_ = FromTable(table), selects = Nil, wheres = Nil,
-    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = NoDistinct
+    from_: FromTable(table), selects: Nil, wheres: Nil,
+    joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
+    limit_: None, offset_: None, distinct_: NoDistinct
   })
 end
 
@@ -47,7 +47,7 @@ fn with_deleted(q) do
   Query(f) -> match f.wheres do
     Cons(Where(e), rest) -> match e do
       Expr.IsNull(inner) -> match inner do
-        Expr.Col(name) -> if name == "deleted_at" then Query({ f with wheres = rest }) else q
+        Expr.Col(name) -> if name == "deleted_at" then Query({ f with wheres: rest }) else q
         _              -> q
       end
       _ -> q
@@ -63,9 +63,9 @@ end
 --- "sub"
 fn from_subquery(subq, alias_name) do
   Query({
-    from_ = FromSubquery(subq, alias_name), selects = Nil, wheres = Nil,
-    joins = Nil, orders = Nil, group_bys = Nil, havings = Nil,
-    limit_ = None, offset_ = None, distinct_ = NoDistinct
+    from_: FromSubquery(subq, alias_name), selects: Nil, wheres: Nil,
+    joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
+    limit_: None, offset_: None, distinct_: NoDistinct
   })
 end
 
@@ -77,7 +77,7 @@ fn select(q, exprs) do
   match q do
   Query(f) -> do
     let items = map_exprs_to_select(exprs)
-    Query({ f with selects = concat_selects(f.selects, items) })
+    Query({ f with selects: concat_selects(f.selects, items) })
   end
   end
 end
@@ -88,7 +88,7 @@ end
 --- "uid"
 fn select_as(q, expr, alias_name) do
   match q do
-  Query(f) -> Query({ f with selects = concat_selects(f.selects, [SelectAs(expr, alias_name)]) })
+  Query(f) -> Query({ f with selects: concat_selects(f.selects, [SelectAs(expr, alias_name)]) })
   end
 end
 
@@ -98,7 +98,7 @@ end
 --- true
 fn select_all(q) do
   match q do
-  Query(f) -> Query({ f with selects = [SelectAll] })
+  Query(f) -> Query({ f with selects: [SelectAll] })
   end
 end
 
@@ -108,7 +108,7 @@ end
 --- true
 fn where_(q, expr) do
   match q do
-  Query(f) -> Query({ f with wheres = concat_wheres(f.wheres, [Where(expr)]) })
+  Query(f) -> Query({ f with wheres: concat_wheres(f.wheres, [Where(expr)]) })
   end
 end
 
@@ -160,7 +160,7 @@ end
 --- true
 fn or_where(q, expr) do
   match q do
-  Query(f) -> Query({ f with wheres = concat_wheres(f.wheres, [OrWhere(expr)]) })
+  Query(f) -> Query({ f with wheres: concat_wheres(f.wheres, [OrWhere(expr)]) })
   end
 end
 
@@ -170,7 +170,7 @@ end
 --- "u"
 fn join(q, table, on_expr) do
   match q do
-  Query(f) -> Query({ f with joins = concat_joins(f.joins, [JoinClause(Inner, table, on_expr)]) })
+  Query(f) -> Query({ f with joins: concat_joins(f.joins, [JoinClause(Inner, table, on_expr)]) })
   end
 end
 
@@ -180,7 +180,7 @@ end
 --- true
 fn left_join(q, table, on_expr) do
   match q do
-  Query(f) -> Query({ f with joins = concat_joins(f.joins, [JoinClause(Left, table, on_expr)]) })
+  Query(f) -> Query({ f with joins: concat_joins(f.joins, [JoinClause(Left, table, on_expr)]) })
   end
 end
 
@@ -190,7 +190,7 @@ end
 --- true
 fn right_join(q, table, on_expr) do
   match q do
-  Query(f) -> Query({ f with joins = concat_joins(f.joins, [JoinClause(Right, table, on_expr)]) })
+  Query(f) -> Query({ f with joins: concat_joins(f.joins, [JoinClause(Right, table, on_expr)]) })
   end
 end
 
@@ -200,7 +200,7 @@ end
 --- true
 fn full_join(q, table, on_expr) do
   match q do
-  Query(f) -> Query({ f with joins = concat_joins(f.joins, [JoinClause(FullOuter, table, on_expr)]) })
+  Query(f) -> Query({ f with joins: concat_joins(f.joins, [JoinClause(FullOuter, table, on_expr)]) })
   end
 end
 
@@ -210,7 +210,7 @@ end
 --- "u"
 fn cross_join(q, table) do
   match q do
-  Query(f) -> Query({ f with joins = concat_joins(f.joins, [JoinClause(Cross, table, Lit(PBool(true)))]) })
+  Query(f) -> Query({ f with joins: concat_joins(f.joins, [JoinClause(Cross, table, Lit(PBool(true)))]) })
   end
 end
 
@@ -220,7 +220,7 @@ end
 --- true
 fn order_by(q, expr, dir) do
   match q do
-  Query(f) -> Query({ f with orders = concat_orders(f.orders, [OrderExpr(expr, dir)]) })
+  Query(f) -> Query({ f with orders: concat_orders(f.orders, [OrderExpr(expr, dir)]) })
   end
 end
 
@@ -242,7 +242,7 @@ fn order_desc(q, expr) do order_by(q, expr, Desc) end
 --- true
 fn group_by(q, exprs) do
   match q do
-  Query(f) -> Query({ f with group_bys = concat_exprs(f.group_bys, exprs) })
+  Query(f) -> Query({ f with group_bys: concat_exprs(f.group_bys, exprs) })
   end
 end
 
@@ -252,7 +252,7 @@ end
 --- true
 fn having(q, expr) do
   match q do
-  Query(f) -> Query({ f with havings = concat_wheres(f.havings, [Where(expr)]) })
+  Query(f) -> Query({ f with havings: concat_wheres(f.havings, [Where(expr)]) })
   end
 end
 
@@ -262,7 +262,7 @@ end
 --- 10
 fn limit(q, n) do
   match q do
-    Query(f) -> Query({ f with limit_ = Some(n) })
+    Query(f) -> Query({ f with limit_: Some(n) })
   end
 end
 
@@ -272,7 +272,7 @@ end
 --- 20
 fn offset(q, n) do
   match q do
-    Query(f) -> Query({ f with offset_ = Some(n) })
+    Query(f) -> Query({ f with offset_: Some(n) })
   end
 end
 
@@ -321,7 +321,7 @@ end
 --- Adds DISTINCT to the SELECT.
 fn distinct(q) do
   match q do
-    Query(f) -> Query({ f with distinct_ = Distinct })
+    Query(f) -> Query({ f with distinct_: Distinct })
   end
 end
 
@@ -330,7 +330,7 @@ end
 --- which one. See https://www.postgresql.org/docs/current/sql-select.html.
 fn distinct_on(q, exprs) do
   match q do
-    Query(f) -> Query({ f with distinct_ = DistinctOn(exprs) })
+    Query(f) -> Query({ f with distinct_: DistinctOn(exprs) })
   end
 end
 
@@ -347,10 +347,10 @@ fn as_count_query(q) do
     Query(f) ->
       Query({
         f with
-        selects = Cons(SelectAs(CountAll, "count"), Nil),
-        orders  = Nil,
-        limit_  = None,
-        offset_ = None
+        selects: Cons(SelectAs(CountAll, "count"), Nil),
+        orders: Nil,
+        limit_: None,
+        offset_: None
       })
   end
 end

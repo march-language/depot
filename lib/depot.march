@@ -27,7 +27,7 @@
 ---       fields = {
 ---         name  = "String",
 ---         email = "String",
----         age   = ("Int", { default = 0 })
+---         age   = ("Int", { default: 0 })
 ---       }
 ---     })
 ---   end

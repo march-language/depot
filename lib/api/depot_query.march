@@ -122,7 +122,7 @@ Set the select projection. Replaces any previous select.
 The projection receives a row (record) and returns a new value.
 
     q |> Depot.Query.select(fn row ->
-      { name = record_get(row, "name"), email = record_get(row, "email") }
+      { name: record_get(row, "name"), email: record_get(row, "email") }
     )
 """
 fn select(query, projection) do

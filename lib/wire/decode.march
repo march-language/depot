@@ -70,13 +70,13 @@ end
 fn parse_error_fields(b, pos) do
   fn go(i, severity, code, message, detail, hint, position) do
     if i >= Bytes.length(b) do
-      { severity = severity, code = code, message = message,
-        detail = detail, hint = hint, position = position }
+      { severity: severity, code: code, message: message,
+        detail: detail, hint: hint, position: position }
     else
       match Bytes.get(b, i) do
       0 ->
-        { severity = severity, code = code, message = message,
-          detail = detail, hint = hint, position = position }
+        { severity: severity, code: code, message: message,
+          detail: detail, hint: hint, position: position }
       field_type -> do
         let (value, next) = read_cstring(b, i + 1)
         match field_type do

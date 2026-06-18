@@ -41,10 +41,10 @@ end
 
 test "exec_update compiles UPDATE ... RETURNING *" do
   let u = Update({
-    table_     = "users",
-    sets       = [("name", Lit(PString("Bob")))],
-    wheres     = [Where(Eq(Col("id"), Lit(PInt(1))))],
-    returning_ = [SelectAll]
+    table_: "users",
+    sets: [("name", Lit(PString("Bob")))],
+    wheres: [Where(Eq(Col("id"), Lit(PInt(1))))],
+    returning_: [SelectAll]
   })
   let c = MutationCompile.compile_update(u)
   assert c.sql == "UPDATE \"users\" SET \"name\" = $1 WHERE \"id\" = $2 RETURNING *"
@@ -55,9 +55,9 @@ end
 
 test "exec_delete compiles DELETE ... RETURNING \"id\"" do
   let d = Delete({
-    table_     = "users",
-    wheres     = [Where(Eq(Col("id"), Lit(PInt(5))))],
-    returning_ = [SelectField(Col("id"))]
+    table_: "users",
+    wheres: [Where(Eq(Col("id"), Lit(PInt(5))))],
+    returning_: [SelectField(Col("id"))]
   })
   let c = MutationCompile.compile_delete(d)
   assert c.sql == "DELETE FROM \"users\" WHERE \"id\" = $1 RETURNING \"id\""

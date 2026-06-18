@@ -123,7 +123,7 @@ pfn parse_migration_file(path) do
     Some((ts_str, name)) ->
       match string_to_int(ts_str) do
       None          -> None
-      Some(version) -> Some({ version = version, name = name, path = path })
+      Some(version) -> Some({ version: version, name: name, path: path })
       end
     end
   end
@@ -499,8 +499,8 @@ fn gen_migration(name) do
     ++ "  -- TODO: write your migration here\n"
     ++ "  -- Example:\n"
     ++ "  --   Depot.Migration.create_table(\"table_name\", {\n"
-    ++ "  --     id = (\"UUID\", { primary_key = true }),\n"
-    ++ "  --     name = (\"String\", { null = false })\n"
+    ++ "  --     id = (\"UUID\", { primary_key: true }),\n"
+    ++ "  --     name = (\"String\", { null: false })\n"
     ++ "  --   })\n"
     ++ "  ()\n"
     ++ "end\n\n"

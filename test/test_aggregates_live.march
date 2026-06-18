@@ -22,7 +22,7 @@ pfn with_conn(body) do
     let _ = simple_query(conn, "DROP TABLE IF EXISTS agg_test")
     let _ = simple_query(conn,
       "CREATE TABLE agg_test (id INT PRIMARY KEY, grp TEXT NOT NULL, n INT NOT NULL)")
-    -- Three groups: a={1,2,3}, b={10,20}, c={100}.
+    -- Three groups: a={1,2,3}, b:{10,20}, c:{100}.
     let _ = simple_query(conn,
       "INSERT INTO agg_test VALUES "
       ++ "(1,'a',1),(2,'a',2),(3,'a',3),"

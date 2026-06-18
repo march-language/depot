@@ -147,7 +147,7 @@ end
 ---
 --- For a `has_many` declared as
 ---
----   has_many = { posts = ("posts", { foreign_key = "user_id" }) }
+---   has_many = { posts: ("posts", { foreign_key: "user_id" }) }
 ---
 --- `preload_assoc(pool, users_schema, users_result, "posts")` is equivalent to
 ---

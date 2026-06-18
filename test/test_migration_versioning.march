@@ -49,21 +49,21 @@ end
 -- Migrations for the happy-path test.  Each migration is a record
 -- { version, up, down } where up/down are plain SQL lists.
 fn m1() do
-  { version = 1000,
-    up      = Cons("CREATE TABLE mv_t1 (v INT)", Nil),
-    down    = Cons("DROP TABLE mv_t1", Nil) }
+  { version: 1000,
+    up: Cons("CREATE TABLE mv_t1 (v INT)", Nil),
+    down: Cons("DROP TABLE mv_t1", Nil) }
 end
 
 fn m2() do
-  { version = 2000,
-    up      = Cons("CREATE TABLE mv_t2 (v INT)", Nil),
-    down    = Cons("DROP TABLE mv_t2", Nil) }
+  { version: 2000,
+    up: Cons("CREATE TABLE mv_t2 (v INT)", Nil),
+    down: Cons("DROP TABLE mv_t2", Nil) }
 end
 
 fn m3() do
-  { version = 3000,
-    up      = Cons("CREATE TABLE mv_t3 (v INT)", Nil),
-    down    = Cons("DROP TABLE mv_t3", Nil) }
+  { version: 3000,
+    up: Cons("CREATE TABLE mv_t3 (v INT)", Nil),
+    down: Cons("DROP TABLE mv_t3", Nil) }
 end
 
 test "migrate applies every pending migration once" do

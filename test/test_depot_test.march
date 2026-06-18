@@ -4,9 +4,9 @@ mod TestDepotTest do
 
 fn user_schema() do
   Depot.Schema.define("depot_test_users", {
-    fields = {
-      name = "String",
-      email = "String"
+    fields: {
+      name: "String",
+      email: "String"
     }
   })
 end
@@ -14,7 +14,7 @@ end
 fn make_gate(name, email) do
   Depot.Gate.cast_record(
     Depot.Schema.blank(user_schema()),
-    { name = name, email = email },
+    { name: name, email: email },
     ["name", "email"]
   )
 end

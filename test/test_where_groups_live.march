@@ -85,8 +85,8 @@ end
 fn select_ids(q) do
   match q do
     Ast.Query(f) -> Ast.Query({ f with
-      selects = [SelectField(Expr.Col("id"))],
-      orders  = [OrderExpr(Expr.Col("id"), Asc)] })
+      selects: [SelectField(Expr.Col("id"))],
+      orders: [OrderExpr(Expr.Col("id"), Asc)] })
   end
 end
 

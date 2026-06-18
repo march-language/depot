@@ -39,14 +39,14 @@ type PlanNode = {
 
 --- Default options: plain `EXPLAIN`, text output, costs on.
 fn default_opts() do
-  { analyze = false, verbose = false, costs = true,
-    buffers = false, format_ = "text" }
+  { analyze: false, verbose: false, costs: true,
+    buffers: false, format_: "text" }
 end
 
 --- Shortcut: `EXPLAIN ANALYZE` with otherwise-default options.
 fn analyze_opts() do
-  { analyze = true, verbose = false, costs = true,
-    buffers = false, format_ = "text" }
+  { analyze: true, verbose: false, costs: true,
+    buffers: false, format_: "text" }
 end
 
 --- Build the SQL to send to the database. `sql` is the already-compiled
@@ -100,9 +100,9 @@ fn parse_plan_line(line) do
   let trimmed = String.trim(strip_arrow(line))
   match split_on_relation(trimmed) do
     Some((nt, rel)) ->
-      { node_type = nt, relation = rel, detail = trimmed }
+      { node_type: nt, relation: rel, detail: trimmed }
     None ->
-      { node_type = trimmed, relation = "", detail = trimmed }
+      { node_type: trimmed, relation: "", detail: trimmed }
   end
 end
 

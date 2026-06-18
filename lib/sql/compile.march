@@ -18,7 +18,7 @@ type CompiledQuery = {
 
 --- Compiles a Query to parameterized SQL with `$1`, `$2`, ... placeholders.
 ---
---- march> (compile(Query({ from_ = FromTable("users"), selects = Nil, wheres = Nil, joins = Nil, orders = Nil, group_bys = Nil, havings = Nil, limit_ = None, offset_ = None, distinct_ = NoDistinct }))).sql
+--- march> (compile(Query({ from_: FromTable("users"), selects: Nil, wheres: Nil, joins: Nil, orders: Nil, group_bys: Nil, havings: Nil, limit_: None, offset_: None, distinct_: NoDistinct }))).sql
 --- "SELECT * FROM \"users\""
 fn compile(q) do compile_parameterized(q) end
 
@@ -27,7 +27,7 @@ fn compile(q) do compile_parameterized(q) end
 --- Subqueries in FROM clauses are not yet supported in parameterized mode;
 --- use compile_inline for queries containing FROM subqueries.
 ---
---- march> (compile_parameterized(Query({ from_ = FromTable("t"), selects = Nil, wheres = Cons(Where(Eq(Col("id"), Lit(PInt(1)))), Nil), joins = Nil, orders = Nil, group_bys = Nil, havings = Nil, limit_ = None, offset_ = None, distinct_ = NoDistinct }))).sql
+--- march> (compile_parameterized(Query({ from_: FromTable("t"), selects: Nil, wheres: Cons(Where(Eq(Col("id"), Lit(PInt(1)))), Nil), joins: Nil, orders: Nil, group_bys: Nil, havings: Nil, limit_: None, offset_: None, distinct_: NoDistinct }))).sql
 --- "SELECT * FROM \"t\" WHERE \"id\" = $1"
 fn compile_parameterized(q) do
   match q do
@@ -47,9 +47,9 @@ fn compile_parameterized(q) do
     let orders_f   = f.orders
     let limit_f    = f.limit_
     let offset_f   = f.offset_
-    let st0 = { param_count = 0, params = Nil }
+    let st0 = { param_count: 0, params: Nil }
     let (sql, st) = cp2_sel(selects_f, distinct_f, from_f, joins_f, wheres_f, groups_f, havings_f, orders_f, limit_f, offset_f, st0, 64)
-    { sql = sql, params = rev_params(st.params) }
+    { sql: sql, params: rev_params(st.params) }
   end
   end
 end
@@ -131,7 +131,7 @@ end
 
 --- Compiles a Query to inline SQL with literal values (no placeholders).
 ---
---- march> (compile_inline(Query({ from_ = FromTable("t"), selects = Nil, wheres = Cons(Where(Eq(Col("id"), Lit(PInt(1)))), Nil), joins = Nil, orders = Nil, group_bys = Nil, havings = Nil, limit_ = None, offset_ = None, distinct_ = NoDistinct }))).sql
+--- march> (compile_inline(Query({ from_: FromTable("t"), selects: Nil, wheres: Cons(Where(Eq(Col("id"), Lit(PInt(1)))), Nil), joins: Nil, orders: Nil, group_bys: Nil, havings: Nil, limit_: None, offset_: None, distinct_: NoDistinct }))).sql
 --- "SELECT * FROM \"t\" WHERE \"id\" = 1"
 fn compile_inline(q) do
   match q do
@@ -164,7 +164,7 @@ fn compile_inline(q) do
     let sql = "SELECT " ++ dp ++ sel_sql ++ " FROM " ++ from_sql
               ++ joins_sql ++ where_sql ++ group_sql ++ having_sql
               ++ order_sql ++ limit_sql ++ offset_sql
-    { sql = sql, params = Nil }
+    { sql: sql, params: Nil }
   end
   end
 end
@@ -544,7 +544,7 @@ pfn compile_expr(e, st) do
       PBool(b)   -> ParamText(if b then "t" else "f")
       PNull      -> ParamNull
     end
-    ("$" ++ int_to_string(nc), { param_count = nc, params = Cons(param, st.params) })
+    ("$" ++ int_to_string(nc), { param_count: nc, params: Cons(param, st.params) })
   end
   Expr.Col(name)     -> (quote_ident(name), st)
   QCol(t, name) -> (quote_ident(t) ++ "." ++ quote_ident(name), st)
@@ -663,14 +663,14 @@ pfn compile_expr(e, st) do
   Like(inner, pat) -> do
     let (s, st2) = compile_expr(inner, st)
     (s ++ " LIKE $" ++ int_to_string(st2.param_count + 1),
-     { param_count = st2.param_count + 1,
-       params = Cons(ParamText(pat), st2.params) })
+     { param_count: st2.param_count + 1,
+       params: Cons(ParamText(pat), st2.params) })
   end
   ILike(inner, pat) -> do
     let (s, st2) = compile_expr(inner, st)
     (s ++ " ILIKE $" ++ int_to_string(st2.param_count + 1),
-     { param_count = st2.param_count + 1,
-       params = Cons(ParamText(pat), st2.params) })
+     { param_count: st2.param_count + 1,
+       params: Cons(ParamText(pat), st2.params) })
   end
   Expr.Count(inner) -> do
     let (s, st2) = compile_expr(inner, st)

@@ -121,10 +121,10 @@ test "UPDATE ... RETURNING * returns the post-update row" do
               Err(_) -> assert false
               Ok(id_n) -> do
                 let u = Update({
-                  table_     = "ret_test",
-                  sets       = [("name", Lit(PString("Carol-updated")))],
-                  wheres     = [Where(Expr.Eq(Expr.Col("id"), Lit(PInt(id_n))))],
-                  returning_ = [SelectAll]
+                  table_: "ret_test",
+                  sets: [("name", Lit(PString("Carol-updated")))],
+                  wheres: [Where(Expr.Eq(Expr.Col("id"), Lit(PInt(id_n))))],
+                  returning_: [SelectAll]
                 })
                 match MutationExec.exec_update(conn, u) do
                   Err(e) -> do
@@ -165,9 +165,9 @@ test "DELETE ... RETURNING \"id\" returns the id of the deleted row" do
               Err(_) -> assert false
               Ok(id_n) -> do
                 let d = Mutation.Delete({
-                  table_     = "ret_test",
-                  wheres     = [Where(Expr.Eq(Expr.Col("id"), Lit(PInt(id_n))))],
-                  returning_ = [SelectField(Expr.Col("id"))]
+                  table_: "ret_test",
+                  wheres: [Where(Expr.Eq(Expr.Col("id"), Lit(PInt(id_n))))],
+                  returning_: [SelectField(Expr.Col("id"))]
                 })
                 match MutationExec.exec_delete(conn, d) do
                   Err(e) -> do

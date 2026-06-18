@@ -20,14 +20,14 @@ type PoolConfig = {
 
 --- Returns a default PoolConfig with 5 min / 20 max connections.
 ---
---- march> (default_pool_config({ host="127.0.0.1", port=5432, user="u", database="d", password=None })).min_size
+--- march> (default_pool_config({ host:"127.0.0.1", port:5432, user:"u", database:"d", password:None })).min_size
 --- 5
 ---
---- march> (default_pool_config({ host="127.0.0.1", port=5432, user="u", database="d", password=None })).max_size
+--- march> (default_pool_config({ host:"127.0.0.1", port:5432, user:"u", database:"d", password:None })).max_size
 --- 20
 fn default_pool_config(conn_cfg) do
-  { min_size = 5, max_size = 20, idle_timeout_ms = 300000,
-    connect_timeout_ms = 5000, conn_config = conn_cfg }
+  { min_size: 5, max_size: 20, idle_timeout_ms: 300000,
+    connect_timeout_ms: 5000, conn_config: conn_cfg }
 end
 
 --- Statistics snapshot of a running pool.
@@ -124,10 +124,10 @@ actor Pool do
     idle_count  : Int
   }
   init {
-    checked_out = 0,
-    config      = None,
-    idle        = Nil,
-    idle_count  = 0
+    checked_out: 0,
+    config: None,
+    idle: Nil,
+    idle_count: 0
   }
 
   -- Initialises the pool with a config and pre-connects min_size connections.
@@ -146,9 +146,9 @@ actor Pool do
   -- Returns a connection to the idle pool.
   on Checkin(conn : ConnState) do
     { state with
-      idle        = Cons(conn, state.idle),
-      idle_count  = state.idle_count + 1,
-      checked_out = state.checked_out - 1 }
+      idle: Cons(conn, state.idle),
+      idle_count: state.idle_count + 1,
+      checked_out: state.checked_out - 1 }
   end
 
   -- Pings all idle connections and replenishes to min_size.
@@ -156,13 +156,13 @@ actor Pool do
     let healthy  = ping_conns(state.idle, Nil)
     let new_idle = replenish_idle(state.config, healthy)
     let new_n    = list_len(new_idle)
-    { state with idle = new_idle, idle_count = new_n }
+    { state with idle: new_idle, idle_count: new_n }
   end
 
   -- Closes all idle connections.
   on Shutdown() do
     let _ = close_all(state.idle)
-    { state with idle = Nil, idle_count = 0 }
+    { state with idle: Nil, idle_count: 0 }
   end
 end
 
@@ -172,32 +172,32 @@ fn handle_pool_init(state : PoolState, cfg : PoolConfig) do
   None -> do
     let conns = warm_up(cfg.conn_config, cfg.min_size, Nil, 0)
     let n = list_len(conns)
-    { state with config = Some(cfg), idle = conns, idle_count = n }
+    { state with config: Some(cfg), idle: conns, idle_count: n }
   end
   end
 end
 
--- Returns {conn = Option(ConnState), new_state = PoolState}.
+-- Returns {conn: Option(ConnState), new_state: PoolState}.
 fn handle_checkout(state : PoolState) do
   match state.config do
-  None -> { conn = None, new_state = state }
+  None -> { conn: None, new_state: state }
   Some(cfg) ->
     match state.idle do
     Cons(conn, rest) ->
-      { conn = Some(conn),
-        new_state = { state with idle = rest, idle_count = state.idle_count - 1,
-                                 checked_out = state.checked_out + 1 } }
+      { conn: Some(conn),
+        new_state: { state with idle: rest, idle_count: state.idle_count - 1,
+                                 checked_out: state.checked_out + 1 } }
     Nil ->
       if state.checked_out < cfg.max_size then
         match connect(cfg.conn_config) do
         Ok(new_conn) ->
-          { conn = Some(new_conn),
-            new_state = { state with checked_out = state.checked_out + 1 } }
+          { conn: Some(new_conn),
+            new_state: { state with checked_out: state.checked_out + 1 } }
         Err(_) ->
-          { conn = None, new_state = state }
+          { conn: None, new_state: state }
         end
       else
-        { conn = None, new_state = state }
+        { conn: None, new_state: state }
     end
   end
 end
@@ -278,10 +278,10 @@ end
 fn stats(pool) do
   let active = actor_get_int(pool, 0)
   let idle   = actor_get_int(pool, 3)
-  { idle_count    = idle,
-    active_count  = active,
-    waiting_count = 0,
-    total_size    = idle + active }
+  { idle_count: idle,
+    active_count: active,
+    waiting_count: 0,
+    total_size: idle + active }
 end
 
 --- Sends a ping to the pool to health-check and replenish idle connections.

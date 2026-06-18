@@ -17,7 +17,7 @@ type MutState = { param_count : Int, acc_params : List(Param) }
 
 --- Compiles an Insert ADT to parameterized SQL.
 ---
---- march> (compile_insert(Insert({ table_ = "t", columns = ["x"], rows = [[PInt(1)]], on_conflict = None, returning_ = Nil }))).sql
+--- march> (compile_insert(Insert({ table_: "t", columns: ["x"], rows: [[PInt(1)]], on_conflict: None, returning_: Nil }))).sql
 --- "INSERT INTO \"t\" (\"x\") VALUES ($1)"
 ---
 --- Callers must check for the zero-row case before compiling — Postgres
@@ -26,7 +26,7 @@ type MutState = { param_count : Int, acc_params : List(Param) }
 --- short-circuit in `MutationExec.exec_insert`.
 fn compile_insert(i) : Compile.CompiledQuery do
   match i do
-  Insert(f) -> ci_build(f, { param_count = 0, acc_params = Nil })
+  Insert(f) -> ci_build(f, { param_count: 0, acc_params: Nil })
   end
 end
 
@@ -37,7 +37,7 @@ fn ci_build(f, st) : Compile.CompiledQuery do
   let ret_sql = compile_returning(f.returning_)
   let sql = "INSERT INTO " ++ quote_ident(f.table_) ++ " " ++ col_sql
             ++ " VALUES " ++ rows_sql ++ conflict_sql ++ ret_sql
-  { sql = sql, params = rev_params(st2.acc_params) }
+  { sql: sql, params: rev_params(st2.acc_params) }
 end
 
 fn compile_rows(rows, st) do
@@ -67,7 +67,7 @@ fn compile_sql_values(vals, st, acc) do
   Cons(v, rest) -> do
     let nc = st.param_count + 1
     let param = sqlval_to_param(v)
-    compile_sql_values(rest, { param_count = nc, acc_params = Cons(param, st.acc_params) }, Cons("$" ++ int_to_string(nc), acc))
+    compile_sql_values(rest, { param_count: nc, acc_params: Cons(param, st.acc_params) }, Cons("$" ++ int_to_string(nc), acc))
   end
   end
 end
@@ -112,11 +112,11 @@ end
 
 --- Compiles an Update ADT to parameterized SQL.
 ---
---- march> (compile_update(Update({ table_ = "t", sets = [("x", Lit(PInt(1)))], wheres = Nil, returning_ = Nil }))).sql
+--- march> (compile_update(Update({ table_: "t", sets: [("x", Lit(PInt(1)))], wheres: Nil, returning_: Nil }))).sql
 --- "UPDATE \"t\" SET \"x\" = $1"
 fn compile_update(u) : Compile.CompiledQuery do
   match u do
-  Update(f) -> cu_build(f, { param_count = 0, acc_params = Nil })
+  Update(f) -> cu_build(f, { param_count: 0, acc_params: Nil })
   end
 end
 
@@ -126,7 +126,7 @@ fn cu_build(f, st) : Compile.CompiledQuery do
   let ret_sql = compile_returning(f.returning_)
   let sql = "UPDATE " ++ quote_ident(f.table_) ++ " SET " ++ sets_sql
             ++ where_sql ++ ret_sql
-  { sql = sql, params = rev_params(st3.acc_params) }
+  { sql: sql, params: rev_params(st3.acc_params) }
 end
 
 fn compile_sets(sets, st) do
@@ -149,11 +149,11 @@ end
 
 --- Compiles a Delete ADT to parameterized SQL.
 ---
---- march> (compile_delete(Delete({ table_ = "t", wheres = [Where(Eq(Col("id"), Lit(PInt(1))))], returning_ = Nil }))).sql
+--- march> (compile_delete(Delete({ table_: "t", wheres: [Where(Eq(Col("id"), Lit(PInt(1))))], returning_: Nil }))).sql
 --- "DELETE FROM \"t\" WHERE \"id\" = $1"
 fn compile_delete(d) : Compile.CompiledQuery do
   match d do
-  Delete.Delete(f) -> cd_build(f, { param_count = 0, acc_params = Nil })
+  Delete.Delete(f) -> cd_build(f, { param_count: 0, acc_params: Nil })
   end
 end
 
@@ -161,7 +161,7 @@ fn cd_build(f, st) : Compile.CompiledQuery do
   let (where_sql, st2) = compile_wheres_m(f.wheres, st)
   let ret_sql = compile_returning(f.returning_)
   let sql = "DELETE FROM " ++ quote_ident(f.table_) ++ where_sql ++ ret_sql
-  { sql = sql, params = rev_params(st2.acc_params) }
+  { sql: sql, params: rev_params(st2.acc_params) }
 end
 
 -- ---- Shared: WHERE, RETURNING, expr ----
@@ -240,7 +240,7 @@ fn compile_expr_m(e, st) do
   Lit(v) -> do
     let nc = st.param_count + 1
     let param = sqlval_to_param(v)
-    ("$" ++ int_to_string(nc), { param_count = nc, acc_params = Cons(param, st.acc_params) })
+    ("$" ++ int_to_string(nc), { param_count: nc, acc_params: Cons(param, st.acc_params) })
   end
   Expr.Col(name)     -> (quote_ident(name), st)
   QCol(t, name) -> (quote_ident(t) ++ "." ++ quote_ident(name), st)

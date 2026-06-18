@@ -82,7 +82,7 @@ pfn repeat_nil_acc(n, acc) do
 end
 
 fn fake_ok_result(row_count) do
-  Ok({ columns = Nil, rows = repeat_nil_acc(row_count, Nil), tag = "FAKE 1" })
+  Ok({ columns: Nil, rows: repeat_nil_acc(row_count, Nil), tag: "FAKE 1" })
 end
 
 -- ---- attach / emit --------------------------------------------------------
@@ -93,8 +93,8 @@ test "attach then emit delivers event to the handler" do
   Depot.Telemetry.attach("h1", fn ev -> check_basic(m, ev))
 
   Depot.Telemetry.emit(QueryEvent({
-    sql = "SELECT 1", params = Nil, duration_ms = 0,
-    row_count = 1, ok = true, error = None
+    sql: "SELECT 1", params: Nil, duration_ms: 0,
+    row_count: 1, ok: true, error: None
   }))
 
 
@@ -110,8 +110,8 @@ test "two handlers both fire on a single emit" do
   Depot.Telemetry.attach("b", fn ev -> note(m2, ev))
 
   Depot.Telemetry.emit(QueryEvent({
-    sql = "SELECT 2", params = Nil, duration_ms = 0,
-    row_count = 0, ok = true, error = None
+    sql: "SELECT 2", params: Nil, duration_ms: 0,
+    row_count: 0, ok: true, error: None
   }))
 
   assert hit_count(m1) == 1
@@ -126,8 +126,8 @@ test "detach removes a handler" do
   Depot.Telemetry.detach("goner")
 
   Depot.Telemetry.emit(QueryEvent({
-    sql = "SELECT 3", params = Nil, duration_ms = 0,
-    row_count = 0, ok = true, error = None
+    sql: "SELECT 3", params: Nil, duration_ms: 0,
+    row_count: 0, ok: true, error: None
   }))
 
   assert hit_count(m) == 0
@@ -141,8 +141,8 @@ test "panicking handler does not block sibling handlers" do
   Depot.Telemetry.attach("good", fn ev -> note(m, ev))
 
   Depot.Telemetry.emit(QueryEvent({
-    sql = "SELECT 4", params = Nil, duration_ms = 0,
-    row_count = 0, ok = true, error = None
+    sql: "SELECT 4", params: Nil, duration_ms: 0,
+    row_count: 0, ok: true, error: None
   }))
 
   assert hit_count(m) == 1

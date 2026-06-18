@@ -6,30 +6,30 @@ mod TestDepotSchema do
 
 fn simple_schema() do
   Depot.Schema.define("users", {
-    fields = {
-      name  = "String",
-      email = "String",
-      age   = ("Int", { default = 0 }),
-      role  = ("String", { default = "user" })
+    fields: {
+      name: "String",
+      email: "String",
+      age: ("Int", { default: 0 }),
+      role: ("String", { default: "user" })
     }
   })
 end
 
 fn full_schema() do
   Depot.Schema.define("users", {
-    fields = {
-      name         = "String",
-      email        = "String",
-      age          = ("Int", { default = 0 }),
-      role         = ("String", { default = "user" }),
-      confirmed_at = ("String", { nullable = true }),
-      password     = ("String", { virtual = true })
+    fields: {
+      name: "String",
+      email: "String",
+      age: ("Int", { default: 0 }),
+      role: ("String", { default: "user" }),
+      confirmed_at: ("String", { nullable: true }),
+      password: ("String", { virtual: true })
     },
-    belongs_to = {
-      org = "SomeModule"
+    belongs_to: {
+      org: "SomeModule"
     },
-    has_many = {
-      posts = "SomeModule"
+    has_many: {
+      posts: "SomeModule"
     }
   })
 end
@@ -53,7 +53,7 @@ end
 describe "Depot.Schema.table" do
   test "returns the table name" do
     let s = Depot.Schema.define("posts", {
-      fields = { title = "String", body = "String" }
+      fields: { title: "String", body: "String" }
     })
     assert Depot.Schema.table(s) == "posts"
   end
@@ -187,7 +187,7 @@ end
 
 describe "record introspection builtins" do
   test "record_keys returns field names" do
-    let r = { a = 1, b = 2, c = 3 }
+    let r = { a: 1, b: 2, c: 3 }
     let keys = record_keys(r)
     assert List.length(keys) == 3
     assert List.member(keys, "a")
@@ -196,14 +196,14 @@ describe "record introspection builtins" do
   end
 
   test "record_values returns field values" do
-    let r = { x = 10, y = 20 }
+    let r = { x: 10, y: 20 }
     let vals = record_values(r)
     assert List.member(vals, 10)
     assert List.member(vals, 20)
   end
 
   test "record_entries returns pairs" do
-    let r = { name = "Alice", age = 30 }
+    let r = { name: "Alice", age: 30 }
     let entries = record_entries(r)
     assert List.length(entries) == 2
     assert List.member(entries, ("name", "Alice"))
@@ -211,30 +211,30 @@ describe "record introspection builtins" do
   end
 
   test "record_get returns Some for existing key" do
-    let r = { foo = 42 }
+    let r = { foo: 42 }
     assert record_get(r, "foo") == Some(42)
   end
 
   test "record_get returns None for missing key" do
-    let r = { foo = 42 }
+    let r = { foo: 42 }
     assert record_get(r, "bar") == None
   end
 
   test "record_put adds a new field" do
-    let r = { a = 1 }
+    let r = { a: 1 }
     let r2 = record_put(r, "b", 2)
     assert record_get(r2, "b") == Some(2)
     assert record_get(r2, "a") == Some(1)
   end
 
   test "record_put overwrites existing field" do
-    let r = { a = 1 }
+    let r = { a: 1 }
     let r2 = record_put(r, "a", 99)
     assert record_get(r2, "a") == Some(99)
   end
 
   test "record_has_key returns true/false" do
-    let r = { x = 1 }
+    let r = { x: 1 }
     assert record_has_key(r, "x") == true
     assert record_has_key(r, "y") == false
   end
@@ -253,10 +253,10 @@ end
 
 test "bare string field spec (no opts tuple)" do
   let s = Depot.Schema.define("articles", {
-    fields = {
-      title   = "String",
-      content = "String",
-      views   = "Int"
+    fields: {
+      title: "String",
+      content: "String",
+      views: "Int"
     }
   })
   -- march orders record fields alphabetically, so field_names reflects that.
@@ -268,9 +268,9 @@ end
 
 test "Float type default in blank" do
   let s = Depot.Schema.define("metrics", {
-    fields = {
-      score = ("Float", { default = 0.0 }),
-      ratio = "Float"
+    fields: {
+      score: ("Float", { default: 0.0 }),
+      ratio: "Float"
     }
   })
   let b = Depot.Schema.blank(s)
@@ -279,7 +279,7 @@ end
 
 test "Bool type default in blank" do
   let s = Depot.Schema.define("flags", {
-    fields = { enabled = "Bool" }
+    fields: { enabled: "Bool" }
   })
   let b = Depot.Schema.blank(s)
   assert record_get(b, "enabled") == Some(false)
@@ -287,9 +287,9 @@ end
 
 test "nullable field defaults to None" do
   let s = Depot.Schema.define("profiles", {
-    fields = {
-      bio  = ("String", { nullable = true }),
-      name = "String"
+    fields: {
+      bio: ("String", { nullable: true }),
+      name: "String"
     }
   })
   let b = Depot.Schema.blank(s)
@@ -299,9 +299,9 @@ end
 
 test "field with explicit custom default overrides type default" do
   let s = Depot.Schema.define("settings", {
-    fields = {
-      theme = ("String", { default = "dark" }),
-      level = ("Int", { default = 5 })
+    fields: {
+      theme: ("String", { default: "dark" }),
+      level: ("Int", { default: 5 })
     }
   })
   let b = Depot.Schema.blank(s)
@@ -311,10 +311,10 @@ end
 
 test "virtual fields excluded from db_fields" do
   let s = Depot.Schema.define("users", {
-    fields = {
-      name          = "String",
-      password      = ("String", { virtual = true }),
-      password_hash = "String"
+    fields: {
+      name: "String",
+      password: ("String", { virtual: true }),
+      password_hash: "String"
     }
   })
   let db = Depot.Schema.db_fields(s)
@@ -325,9 +325,9 @@ end
 
 test "all-virtual schema yields empty db_fields" do
   let s = Depot.Schema.define("temp", {
-    fields = {
-      a = ("String", { virtual = true }),
-      b = ("Int", { virtual = true })
+    fields: {
+      a: ("String", { virtual: true }),
+      b: ("Int", { virtual: true })
     }
   })
   assert Depot.Schema.db_fields(s) == Nil
@@ -335,16 +335,16 @@ end
 
 test "custom primary_key" do
   let s = Depot.Schema.define("products", {
-    primary_key = "sku",
-    fields = { sku = "String", name = "String" }
+    primary_key: "sku",
+    fields: { sku: "String", name: "String" }
   })
   assert Depot.Schema.primary_key(s) == "sku"
 end
 
 test "has_one association" do
   let s = Depot.Schema.define("users", {
-    fields  = { name = "String" },
-    has_one = { profile = "Profile" }
+    fields: { name: "String" },
+    has_one: { profile: "Profile" }
   })
   let assoc = Depot.Schema.association(s, "profile")
   match assoc do
@@ -354,8 +354,8 @@ end
 
 test "many_to_many association" do
   let s = Depot.Schema.define("posts", {
-    fields        = { title = "String" },
-    many_to_many  = { tags = ("Tag", { join_through = "posts_tags" }) }
+    fields: { title: "String" },
+    many_to_many: { tags: ("Tag", { join_through: "posts_tags" }) }
   })
   let assoc = Depot.Schema.association(s, "tags")
   match assoc do
@@ -365,11 +365,11 @@ end
 
 test "associations returns all kinds" do
   let s = Depot.Schema.define("posts", {
-    fields        = { title = "String" },
-    belongs_to    = { user = "User" },
-    has_many      = { comments = "Comment" },
-    has_one       = { featured_image = "Image" },
-    many_to_many  = { tags = "Tag" }
+    fields: { title: "String" },
+    belongs_to: { user: "User" },
+    has_many: { comments: "Comment" },
+    has_one: { featured_image: "Image" },
+    many_to_many: { tags: "Tag" }
   })
   let assocs = Depot.Schema.associations(s)
   assert List.length(assocs) == 4
@@ -377,7 +377,7 @@ end
 
 test "field_type returns Some for known field and None for unknown" do
   let s = Depot.Schema.define("t", {
-    fields = { name = "String", age = "Int" }
+    fields: { name: "String", age: "Int" }
   })
   assert Depot.Schema.field_type(s, "name") == Some("String")
   assert Depot.Schema.field_type(s, "age") == Some("Int")
@@ -386,7 +386,7 @@ end
 
 test "field_opts returns Some for field with opts and None for unknown" do
   let s = Depot.Schema.define("t", {
-    fields = { bio = ("String", { nullable = true }) }
+    fields: { bio: ("String", { nullable: true }) }
   })
   match Depot.Schema.field_opts(s, "bio") do
   Some(_) -> ()
@@ -397,9 +397,9 @@ end
 
 test "is_virtual returns correct values" do
   let s = Depot.Schema.define("t", {
-    fields = {
-      pw      = ("String", { virtual = true }),
-      pw_hash = "String"
+    fields: {
+      pw: ("String", { virtual: true }),
+      pw_hash: "String"
     }
   })
   assert Depot.Schema.is_virtual(s, "pw") == true
