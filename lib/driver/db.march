@@ -1,0 +1,58 @@
+-- lib/driver/driver.march
+-- Abstract database connection — driver seam between the wire layer
+-- and all higher-level depot modules.
+--
+-- Adding a new backend (SQLite, etc.) means:
+--   1. Add a constructor to DbConn.
+--   2. Add arms to each match in this module.
+--   3. Nothing else changes.
+
+mod Db do
+
+import Connection
+import Message
+
+--- The abstract database connection. All higher-level modules take DbConn,
+--- never the concrete ConnState.
+type DbConn = PostgresConn(ConnState)
+
+--- Wrap a raw PostgreSQL ConnState in a DbConn.
+fn from_postgres(c) do
+  PostgresConn(c)
+end
+
+--- A stable string key that uniquely identifies this connection.
+--- Used by Depot.Transaction to track savepoint nesting depth.
+fn conn_key(conn) do
+  match conn do
+  PostgresConn(c) -> int_to_string(c.fd)
+  end
+end
+
+--- Execute a parameterized SQL query (`$1`, `$2`, ... placeholders).
+fn exec(conn, sql, params) do
+  match conn do
+  PostgresConn(c) -> Connection.exec_prepared(c, sql, params)
+  end
+end
+
+--- Execute a simple (non-parameterized) SQL statement.
+fn query(conn, sql) do
+  match conn do
+  PostgresConn(c) -> Connection.simple_query(c, sql)
+  end
+end
+
+--- Close the connection.
+fn close(conn) do
+  match conn do
+  PostgresConn(c) -> Connection.close(c)
+  end
+end
+
+--- Health-check ping (SELECT 1).
+fn ping(conn) do
+  query(conn, "SELECT 1")
+end
+
+end -- mod Db

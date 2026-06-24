@@ -1,0 +1,26 @@
+-- test/test_driver.march
+-- Unit tests for the Db driver abstraction.
+
+mod TestDriver do
+
+import Connection
+import Db
+
+-- Construct a fake ConnState record to exercise the wrapper without a live DB.
+fn fake_conn() do
+  { fd: 42, pid: 1, secret_key: 0, parameters: Map.empty() }
+end
+
+test "from_postgres wraps a ConnState in PostgresConn" do
+  let conn = Db.from_postgres(fake_conn())
+  match conn do
+  PostgresConn(c) -> assert c.fd == 42
+  end
+end
+
+test "conn_key returns the fd as a string" do
+  let conn = Db.from_postgres(fake_conn())
+  assert Db.conn_key(conn) == "42"
+end
+
+end -- mod TestDriver
