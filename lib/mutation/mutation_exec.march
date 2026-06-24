@@ -17,7 +17,7 @@ mod MutationExec do
 
 import Mutation
 import MutationCompile
-import Connection
+import Db
 
 --- Execute an `Insert` ADT against a live connection.
 ---
@@ -45,7 +45,7 @@ fn exec_insert(conn, i) do
   else
     let compiled = compile_insert(i)
     Depot.Telemetry.instrument(compiled.sql, compiled.params, fn () ->
-      exec_prepared(conn, compiled.sql, compiled.params)
+      Db.exec(conn, compiled.sql, compiled.params)
     )
   end
 end
@@ -54,7 +54,7 @@ end
 fn exec_update(conn, u) do
   let compiled = compile_update(u)
   Depot.Telemetry.instrument(compiled.sql, compiled.params, fn () ->
-    exec_prepared(conn, compiled.sql, compiled.params)
+    Db.exec(conn, compiled.sql, compiled.params)
   )
 end
 
@@ -62,7 +62,7 @@ end
 fn exec_delete(conn, d) do
   let compiled = compile_delete(d)
   Depot.Telemetry.instrument(compiled.sql, compiled.params, fn () ->
-    exec_prepared(conn, compiled.sql, compiled.params)
+    Db.exec(conn, compiled.sql, compiled.params)
   )
 end
 

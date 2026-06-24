@@ -21,7 +21,7 @@ mod Preload do
 import Ast
 import Build
 import Compile
-import Connection
+import Db
 import Depot.Query
 import Pool
 
@@ -92,7 +92,7 @@ fn preload(pool, parent_result, parent_fk_col, child_table, child_fk_col) do
   -- Qualified (Pool.with_conn) so march's arity check resolves the 2-arg
   -- Pool helper rather than colliding with the 1-arg with_conn test helpers
   -- when lib + tests compile as one unit (forge test).
-  Pool.with_conn(pool, fn (conn) -> exec_prepared(conn, compiled.sql, compiled.params))
+  Pool.with_conn(pool, fn (conn) -> Db.exec(conn, compiled.sql, compiled.params))
   |> flatten_result()
 end
 
@@ -103,7 +103,7 @@ fn preload_conn(conn, parent_result, parent_fk_col, child_table, child_fk_col) d
   let fk_vals = extract_col_values(parent_result, parent_fk_col)
   let q = build_preload_query(child_table, child_fk_col, fk_vals)
   let compiled = compile(q)
-  exec_prepared(conn, compiled.sql, compiled.params)
+  Db.exec(conn, compiled.sql, compiled.params)
 end
 
 --- Removes duplicate strings from a list (preserves first occurrence order).

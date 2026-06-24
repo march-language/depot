@@ -11,6 +11,7 @@
 mod TestReturningLive do
 
 import Connection
+import Db
 import Ast
 import Mutation
 import MutationBuild
@@ -26,15 +27,16 @@ pfn with_conn(body) do
     let _ = println("connect: " ++ e)
     assert false
   end
-  Ok(conn) -> do
-    let _ = simple_query(conn, "DROP TABLE IF EXISTS ret_test")
-    let _ = simple_query(conn,
+  Ok(raw_conn) -> do
+    let conn = Db.from_postgres(raw_conn)
+    let _ = Db.query(conn, "DROP TABLE IF EXISTS ret_test")
+    let _ = Db.query(conn,
       "CREATE TABLE ret_test (id SERIAL PRIMARY KEY, "
       ++ "name TEXT NOT NULL, "
       ++ "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
     let result = body(conn)
-    let _ = simple_query(conn, "DROP TABLE IF EXISTS ret_test")
-    let _ = close(conn)
+    let _ = Db.query(conn, "DROP TABLE IF EXISTS ret_test")
+    let _ = Db.close(conn)
     result
   end
   end

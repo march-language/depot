@@ -14,6 +14,7 @@
 mod TestPreloadAssocLive do
 
 import Connection
+import Db
 import Ast
 import Build
 import Compile
@@ -44,21 +45,22 @@ pfn with_conn(body) do
     let _ = println("connect: " ++ e)
     assert false
   end
-  Ok(conn) -> do
-    let _ = simple_query(conn, "DROP TABLE IF EXISTS pa_posts")
-    let _ = simple_query(conn, "DROP TABLE IF EXISTS pa_users")
-    let _ = simple_query(conn,
+  Ok(raw_conn) -> do
+    let conn = Db.from_postgres(raw_conn)
+    let _ = Db.query(conn, "DROP TABLE IF EXISTS pa_posts")
+    let _ = Db.query(conn, "DROP TABLE IF EXISTS pa_users")
+    let _ = Db.query(conn,
       "CREATE TABLE pa_users (id INT PRIMARY KEY, name TEXT NOT NULL)")
-    let _ = simple_query(conn,
+    let _ = Db.query(conn,
       "CREATE TABLE pa_posts (id INT PRIMARY KEY, user_id INT, title TEXT NOT NULL)")
-    let _ = simple_query(conn,
+    let _ = Db.query(conn,
       "INSERT INTO pa_users VALUES (1,'Alice'),(2,'Bob'),(3,'Carol')")
-    let _ = simple_query(conn,
+    let _ = Db.query(conn,
       "INSERT INTO pa_posts VALUES (10,1,'hello'),(11,2,'world'),(12,1,'again')")
     let result = body(conn)
-    let _ = simple_query(conn, "DROP TABLE IF EXISTS pa_posts")
-    let _ = simple_query(conn, "DROP TABLE IF EXISTS pa_users")
-    let _ = close(conn)
+    let _ = Db.query(conn, "DROP TABLE IF EXISTS pa_posts")
+    let _ = Db.query(conn, "DROP TABLE IF EXISTS pa_users")
+    let _ = Db.close(conn)
     result
   end
   end
@@ -67,7 +69,7 @@ end
 pfn load_users(conn) do
   let q = from("pa_users") |> select([Expr.Col("id"), Expr.Col("name")])
   let c = Compile.compile_parameterized(q)
-  exec_prepared(conn, c.sql, c.params)
+  Db.exec(conn, c.sql, c.params)
 end
 
 pfn row_count(rows, acc) do

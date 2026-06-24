@@ -41,6 +41,7 @@ mod Depot.Query do
 
 import Ast
 import Build
+import Db
 
 -- ---------------------------------------------------------------------------
 -- Types
@@ -456,11 +457,11 @@ SQL conditions added via `where_eq` / `where_gt` etc. become the WHERE clause.
 ORDER BY clauses added via `order_asc` / `order_desc` are appended last.
 
 The `$N` placeholders match the list returned by `to_params/1` — pass both
-to `Connection.exec_prepared/3`:
+to `Db.exec/3`:
 
     let sql    = Depot.Query.to_sql(q)
     let params = Depot.Query.to_params(q)
-    Connection.exec_prepared(db_conn, sql, params)
+    Db.exec(db_conn, sql, params)
 
 Or use `exec_sql/2` which does this in one step.
 """
@@ -494,7 +495,7 @@ fn exec_sql(query, conn) do
       let compiled = Compile.compile_parameterized(ast_q)
       let sql = append_order_sql(compiled.sql, order_parts)
       let params = compiled.params
-      match Connection.exec_prepared(conn, sql, params) do
+      match Db.exec(conn, sql, params) do
       Err(e)     -> Err(e)
       Ok(result) ->
         let rows = List.map(result.rows, fn row ->
@@ -521,7 +522,7 @@ fn count_sql(query, conn) do
     DQuery(_, _, _, _, _, ast_q, _, _) ->
       let count_q = Build.as_count_query(ast_q)
       let compiled = Compile.compile_parameterized(count_q)
-      match Connection.exec_prepared(conn, compiled.sql, compiled.params) do
+      match Db.exec(conn, compiled.sql, compiled.params) do
       Err(e) -> Err(e)
       Ok(result) ->
         match result.rows do

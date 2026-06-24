@@ -140,7 +140,7 @@ builds a `QueryEvent` from the result shape, emits it, and returns the
 original result unchanged.
 
     Depot.Telemetry.instrument(sql, params, fn _ ->
-      Connection.exec_prepared(conn, sql, params)
+      Db.exec(conn, sql, params)
     )
 """
 fn instrument(sql, params, thunk) do
