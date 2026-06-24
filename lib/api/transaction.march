@@ -1,26 +1,26 @@
 -- depot/lib/transaction.march
--- Depot.Transaction: PostgreSQL-backed transactions for `Depot.Repo`.
+-- Depot.Transaction: transactions for `Depot.Repo`.
 --
 -- Phase 1.1 of the ROADMAP. The contract is deliberately narrow:
 --
 --   * Top-level `run(conn, fn c -> ...)` issues `BEGIN`, runs the callback,
 --     then `COMMIT` on `Ok(_)` or `ROLLBACK` on `Err(_)`.
---   * Nested `run` calls (same fd) degrade to `SAVEPOINT sp_<depth>` /
+--   * Nested `run` calls (same connection) degrade to `SAVEPOINT sp_<depth>` /
 --     `RELEASE SAVEPOINT` / `ROLLBACK TO SAVEPOINT`, so inner failures can
 --     be caught without tanking the outer transaction.
 --   * `run_pool(pool, ...)` checks out a connection, pins it for the whole
 --     transaction (`Pool.with_conn_pinned`), then delegates to `run`.
 --
--- Depth tracking uses a single Vault table keyed by file descriptor.  The
--- pool hands out one ConnState per checkout, so the fd uniquely identifies
--- the transaction context for the duration of the callback.
+-- Depth tracking uses a single Vault table keyed by the connection's
+-- stable string key (Db.conn_key). The pool hands out one DbConn per
+-- checkout, so the key uniquely identifies the transaction context.
 
 mod Depot.Transaction do
 
-import Connection
+import Db
 import Pool
 
--- ---- Depth tracking (keyed by fd) ----
+-- ---- Depth tracking (keyed by conn_key) ----
 
 pfn depth_table() do
   match Vault.whereis("depot.transaction.depth") do
@@ -29,17 +29,17 @@ pfn depth_table() do
   end
 end
 
-pfn current_depth(fd) do
-  match Vault.get(depth_table(), to_string(fd)) do
+pfn current_depth(conn) do
+  match Vault.get(depth_table(), Db.conn_key(conn)) do
     Some(n) -> n
     None    -> 0
   end
 end
 
-pfn set_depth(fd, n) do
+pfn set_depth(conn, n) do
   let t = depth_table()
-  if n <= 0 do Vault.drop(t, to_string(fd))
-  else Vault.set(t, to_string(fd), n)
+  if n <= 0 do Vault.drop(t, Db.conn_key(conn))
+  else Vault.set(t, Db.conn_key(conn), n)
   end
 end
 
@@ -53,40 +53,40 @@ end
 
 pfn tx_begin(conn, depth) do
   match depth do
-    0 -> simple_query(conn, "BEGIN")
-    _ -> simple_query(conn, "SAVEPOINT " ++ savepoint_name(depth))
+    0 -> Db.query(conn, "BEGIN")
+    _ -> Db.query(conn, "SAVEPOINT " ++ savepoint_name(depth))
   end
 end
 
 pfn tx_commit(conn, depth) do
   match depth do
-    0 -> simple_query(conn, "COMMIT")
-    _ -> simple_query(conn, "RELEASE SAVEPOINT " ++ savepoint_name(depth))
+    0 -> Db.query(conn, "COMMIT")
+    _ -> Db.query(conn, "RELEASE SAVEPOINT " ++ savepoint_name(depth))
   end
 end
 
 pfn tx_rollback(conn, depth) do
   match depth do
-    0 -> simple_query(conn, "ROLLBACK")
-    _ -> simple_query(conn, "ROLLBACK TO SAVEPOINT " ++ savepoint_name(depth))
+    0 -> Db.query(conn, "ROLLBACK")
+    _ -> Db.query(conn, "ROLLBACK TO SAVEPOINT " ++ savepoint_name(depth))
   end
 end
 
 -- ---- Public API ----
 
 doc """
-Run `callback` inside a PostgreSQL transaction on `conn`.
+Run `callback` inside a transaction on `conn`.
 
 Returns `Ok(v)` after `COMMIT` when the callback returns `Ok(v)`.
 Returns `Err(reason)` after `ROLLBACK` when the callback returns `Err(reason)`.
 Wire-level errors from BEGIN / COMMIT / ROLLBACK themselves are surfaced
 verbatim — the caller sees exactly one `Err(String)`.
 
-Nested calls (same fd) use `SAVEPOINT sp_<depth>` / `RELEASE SAVEPOINT` /
+Nested calls (same connection) use `SAVEPOINT sp_<depth>` / `RELEASE SAVEPOINT` /
 `ROLLBACK TO SAVEPOINT` so an inner `Err` only rolls back its own work.
 
     match Depot.Transaction.run(conn, fn c ->
-      match Connection.simple_query(c, "INSERT INTO users ...") do
+      match Db.query(c, "INSERT INTO users ...") do
         Ok(_)  -> Ok(())
         Err(e) -> Err(e)
       end
@@ -96,11 +96,11 @@ Nested calls (same fd) use `SAVEPOINT sp_<depth>` / `RELEASE SAVEPOINT` /
     end
 """
 fn run(conn, callback) do
-  let depth = current_depth(conn.fd)
+  let depth = current_depth(conn)
   match tx_begin(conn, depth) do
     Err(e) -> Err("transaction begin: " ++ e)
     Ok(_)  -> do
-      let _ = set_depth(conn.fd, depth + 1)
+      let _ = set_depth(conn, depth + 1)
       -- Run the user callback inside __try_call so a panic / assert /
       -- match-failure inside their code is turned into Err(msg) and
       -- triggers ROLLBACK rather than leaving the connection stranded
@@ -111,7 +111,7 @@ fn run(conn, callback) do
       -- a heap value, which the value-carrying variant preserves in its Ok
       -- payload.  Bare __try_call only carries an immediate Bool.
       let guarded = __try_call_val(fn _ -> callback(conn))
-      let _ = set_depth(conn.fd, depth)
+      let _ = set_depth(conn, depth)
       let outcome = match guarded do
         Ok(inner)  -> inner
         Err(panic) -> Err("transaction callback panicked: " ++ panic)

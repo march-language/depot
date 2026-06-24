@@ -17,7 +17,7 @@
 
 mod Depot.Migration do
 
-import Connection
+import Db
 import Depot.Transaction
 
 -- ---------------------------------------------------------------------------
@@ -458,7 +458,7 @@ pfn exec_statements(conn, stmts) do
   match stmts do
     Nil -> Ok(())
     Cons(sql, rest) ->
-      match Connection.simple_query(conn, sql) do
+      match Db.query(conn, sql) do
         Err(e) -> Err("migration statement `" ++ sql ++ "`: " ++ e)
         Ok(_)  -> exec_statements(conn, rest)
       end
@@ -536,7 +536,7 @@ pfn ensure_migrations_table(conn) do
          ++ "(\"version\" BIGINT NOT NULL, "
          ++ "\"inserted_at\" TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
          ++ "PRIMARY KEY (\"version\"))"
-  match Connection.simple_query(conn, sql) do
+  match Db.query(conn, sql) do
     Err(e) -> Err("schema_migrations bootstrap: " ++ e)
     Ok(_)  -> Ok(())
   end
@@ -572,7 +572,7 @@ fn applied_versions(conn) do
   match ensure_migrations_table(conn) do
     Err(e) -> Err(e)
     Ok(_) ->
-      match Connection.simple_query(conn,
+      match Db.query(conn,
           "SELECT version::text FROM schema_migrations ORDER BY version ASC") do
         Err(e) -> Err("schema_migrations read: " ++ e)
         Ok(r)  -> do
@@ -651,7 +651,7 @@ pfn run_pending_acc(conn, pending, acc) do
         Ok(_) ->
           let insert_sql = "INSERT INTO schema_migrations (version) VALUES ("
                         ++ int_to_string(m.version) ++ ")"
-          match Connection.simple_query(conn, insert_sql) do
+          match Db.query(conn, insert_sql) do
             Err(e) -> Err("record migration " ++ int_to_string(m.version) ++ ": " ++ e)
             Ok(_) -> run_pending_acc(conn, rest, acc + 1)
           end
@@ -727,7 +727,7 @@ pfn run_downs_acc(conn, migrations, versions, acc) do
             Ok(_) ->
               let delete_sql = "DELETE FROM schema_migrations WHERE version = "
                             ++ int_to_string(v)
-              match Connection.simple_query(conn, delete_sql) do
+              match Db.query(conn, delete_sql) do
                 Err(e) -> Err("rollback record " ++ int_to_string(v) ++ ": " ++ e)
                 Ok(_) -> run_downs_acc(conn, migrations, rest, acc + 1)
               end

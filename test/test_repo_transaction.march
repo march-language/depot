@@ -9,6 +9,7 @@
 mod TestRepoTransaction do
 
 import Connection
+import Db
 import Depot.Transaction
 
 fn test_config() do
@@ -21,19 +22,20 @@ pfn with_conn(body) do
     let _ = println("connect: " ++ e)
     assert false
   end
-  Ok(conn) -> do
-    let _ = simple_query(conn, "DROP TABLE IF EXISTS tx_test")
-    let _ = simple_query(conn, "CREATE TABLE tx_test (v INT)")
+  Ok(raw_conn) -> do
+    let conn = Db.from_postgres(raw_conn)
+    let _ = Db.query(conn, "DROP TABLE IF EXISTS tx_test")
+    let _ = Db.query(conn, "CREATE TABLE tx_test (v INT)")
     let result = body(conn)
-    let _ = simple_query(conn, "DROP TABLE tx_test")
-    let _ = close(conn)
+    let _ = Db.query(conn, "DROP TABLE tx_test")
+    let _ = Db.close(conn)
     result
   end
   end
 end
 
 pfn row_count(conn) do
-  match simple_query(conn, "SELECT COUNT(*)::text FROM tx_test") do
+  match Db.query(conn, "SELECT COUNT(*)::text FROM tx_test") do
     Ok(r) ->
       match r.rows do
         Cons(Cons(Some(s), Nil), Nil) -> s
@@ -46,7 +48,7 @@ end
 test "run commits on Ok" do
   with_conn(fn conn ->
     let tx = run(conn, fn c ->
-      let _ = simple_query(c, "INSERT INTO tx_test VALUES (1), (2)")
+      let _ = Db.query(c, "INSERT INTO tx_test VALUES (1), (2)")
       Ok(42)
     )
     match tx do
@@ -65,7 +67,7 @@ end
 test "run rolls back on Err and leaves table untouched" do
   with_conn(fn conn ->
     let tx = run(conn, fn c ->
-      let _ = simple_query(c, "INSERT INTO tx_test VALUES (99)")
+      let _ = Db.query(c, "INSERT INTO tx_test VALUES (99)")
       Err("intentional")
     )
     match tx do
@@ -81,9 +83,9 @@ end
 test "nested run uses savepoints — inner Err does not kill outer" do
   with_conn(fn conn ->
     let outer = run(conn, fn c ->
-      let _ = simple_query(c, "INSERT INTO tx_test VALUES (1)")
+      let _ = Db.query(c, "INSERT INTO tx_test VALUES (1)")
       let inner = run(c, fn c2 ->
-        let _ = simple_query(c2, "INSERT INTO tx_test VALUES (2)")
+        let _ = Db.query(c2, "INSERT INTO tx_test VALUES (2)")
         Err("inner fail")
       )
       match inner do
@@ -109,7 +111,7 @@ end
 test "run rolls back when callback panics" do
   with_conn(fn conn ->
     let tx = run(conn, fn c ->
-      let _ = simple_query(c, "INSERT INTO tx_test VALUES (7)")
+      let _ = Db.query(c, "INSERT INTO tx_test VALUES (7)")
       -- Panic via division by zero — __try_call inside run must catch
       -- this and surface it as Err, triggering ROLLBACK.
       let _ = 1 / 0
@@ -123,6 +125,15 @@ test "run rolls back when callback panics" do
       end
     end
   )
+end
+
+test "Transaction.run accepts DbConn (structural)" do
+  let raw = { fd: 99, pid: 0, secret_key: 0, parameters: Map.empty() }
+  let conn = Db.from_postgres(raw)
+  -- Partial application confirms the type signature at compile time.
+  -- (Don't actually call it — there's no live DB in this test.)
+  let _bound = fn cb -> Depot.Transaction.run(conn, cb)
+  assert true
 end
 
 end -- mod TestRepoTransaction

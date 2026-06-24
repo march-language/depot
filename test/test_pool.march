@@ -4,6 +4,7 @@
 mod TestPool do
 
 import Connection
+import Db
 import Pool
 
 -- ---- Local helpers ----
@@ -81,6 +82,16 @@ test "pool config nested conn fields" do
   assert cfg.conn_config.port == 5432
   assert cfg.conn_config.database == "testdb"
   match cfg.conn_config.password do | None -> () | Some(_) -> assert false end
+end
+
+test "DbConn is the checkout type (structural)" do
+  -- Pool now vends DbConn. Verify from_postgres produces a value that
+  -- roundtrips through the DbConn tag — no live connection needed.
+  let raw = { fd: 7, pid: 0, secret_key: 0, parameters: Map.empty() }
+  let conn = Db.from_postgres(raw)
+  match conn do
+  PostgresConn(c) -> assert c.fd == 7
+  end
 end
 
 end -- mod TestPool

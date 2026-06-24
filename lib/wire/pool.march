@@ -3,8 +3,8 @@
 
 mod Pool do
 
-import Message
 import Connection
+import Db
 import Depot.Query
 
 -- ---- Pool types ----
@@ -60,8 +60,8 @@ end
 fn warm_up(conn_cfg, target, acc, count) do
   if count >= target then acc
   else
-    match connect(conn_cfg) do
-    Ok(conn) -> warm_up(conn_cfg, target, Cons(conn, acc), count + 1)
+    match Connection.connect(conn_cfg) do
+    Ok(conn) -> warm_up(conn_cfg, target, Cons(Db.from_postgres(conn), acc), count + 1)
     Err(_)   -> warm_up(conn_cfg, target, acc, count + 1)
     end
 end
@@ -70,10 +70,10 @@ fn ping_conns(conns, acc) do
   match conns do
   Nil -> rev_conns_acc(acc, Nil)
   Cons(conn, rest) ->
-    match simple_query(conn, "SELECT 1") do
+    match Db.ping(conn) do
     Ok(_)  -> ping_conns(rest, Cons(conn, acc))
     Err(_) -> do
-      let _ = close(conn)
+      let _ = Db.close(conn)
       ping_conns(rest, acc)
     end
     end
@@ -84,7 +84,7 @@ fn close_all(conns) do
   match conns do
   Nil -> ()
   Cons(conn, rest) -> do
-    let _ = close(conn)
+    let _ = Db.close(conn)
     close_all(rest)
   end
   end
@@ -106,13 +106,13 @@ end
 -- State fields (alphabetical order for actor_get_int indexing):
 --   0: checked_out : Int
 --   1: config      : Option(PoolConfig)
---   2: idle        : List(ConnState)
+--   2: idle        : List(DbConn)
 --   3: idle_count  : Int
 
 type PoolState = {
   checked_out : Int,
   config      : Option(PoolConfig),
-  idle        : List(ConnState),
+  idle        : List(DbConn),
   idle_count  : Int
 }
 
@@ -120,7 +120,7 @@ actor Pool do
   state {
     checked_out : Int,
     config      : Option(PoolConfig),
-    idle        : List(ConnState),
+    idle        : List(DbConn),
     idle_count  : Int
   }
   init {
@@ -144,7 +144,7 @@ actor Pool do
   end
 
   -- Returns a connection to the idle pool.
-  on Checkin(conn : ConnState) do
+  on Checkin(conn : DbConn) do
     { state with
       idle: Cons(conn, state.idle),
       idle_count: state.idle_count + 1,
@@ -177,7 +177,7 @@ fn handle_pool_init(state : PoolState, cfg : PoolConfig) do
   end
 end
 
--- Returns {conn: Option(ConnState), new_state: PoolState}.
+-- Returns {conn: Option(DbConn), new_state: PoolState}.
 fn handle_checkout(state : PoolState) do
   match state.config do
   None -> { conn: None, new_state: state }
@@ -189,9 +189,9 @@ fn handle_checkout(state : PoolState) do
                                  checked_out: state.checked_out + 1 } }
     Nil ->
       if state.checked_out < cfg.max_size then
-        match connect(cfg.conn_config) do
+        match Connection.connect(cfg.conn_config) do
         Ok(new_conn) ->
-          { conn: Some(new_conn),
+          { conn: Some(Db.from_postgres(new_conn)),
             new_state: { state with checked_out: state.checked_out + 1 } }
         Err(_) ->
           { conn: None, new_state: state }
@@ -217,7 +217,7 @@ end
 --- Checks out a connection from the pool.
 ---
 --- Connects a new connection if the idle list is empty and the pool has capacity.
---- Returns `Ok(ConnState)` or `Err(String)` if no connection is available.
+--- Returns `Ok(DbConn)` or `Err(String)` if no connection is available.
 ---
 --- Uses actor_call (synchronous) via task_spawn so the caller blocks until
 --- the pool actor processes the request.  `Checkout(0)` passes typechecking

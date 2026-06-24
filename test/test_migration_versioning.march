@@ -4,6 +4,7 @@
 mod TestMigrationVersioning do
 
 import Connection
+import Db
 import Depot.Migration
 
 fn test_config() do
@@ -11,10 +12,10 @@ fn test_config() do
 end
 
 pfn reset_fixture(conn) do
-  let _ = simple_query(conn, "DROP TABLE IF EXISTS schema_migrations")
-  let _ = simple_query(conn, "DROP TABLE IF EXISTS mv_t1")
-  let _ = simple_query(conn, "DROP TABLE IF EXISTS mv_t2")
-  let _ = simple_query(conn, "DROP TABLE IF EXISTS mv_t3")
+  let _ = Db.query(conn, "DROP TABLE IF EXISTS schema_migrations")
+  let _ = Db.query(conn, "DROP TABLE IF EXISTS mv_t1")
+  let _ = Db.query(conn, "DROP TABLE IF EXISTS mv_t2")
+  let _ = Db.query(conn, "DROP TABLE IF EXISTS mv_t3")
   ()
 end
 
@@ -24,18 +25,19 @@ pfn with_conn(body) do
     let _ = println("connect: " ++ e)
     assert false
   end
-  Ok(conn) -> do
+  Ok(raw_conn) -> do
+    let conn = Db.from_postgres(raw_conn)
     let _ = reset_fixture(conn)
     let result = body(conn)
     let _ = reset_fixture(conn)
-    let _ = close(conn)
+    let _ = Db.close(conn)
     result
   end
   end
 end
 
 pfn table_exists(conn, table) do
-  match simple_query(conn,
+  match Db.query(conn,
       "SELECT to_regclass('public." ++ table ++ "')::text") do
     Ok(r) ->
       match r.rows do
