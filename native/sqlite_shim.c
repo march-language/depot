@@ -3,6 +3,11 @@
  * Wraps libsqlite3 for use from March via the C FFI ABI defined in
  * march_ffi.h. Compiled automatically by forge when [ffi] is configured.
  *
+ * ABI conventions (from march_ffi.h and test/native/ffi_shim.c):
+ *   - Int parameters arrive as raw int64_t, NOT as tagged march_value.
+ *   - Int return values must be returned as raw int64_t, not march_make_int().
+ *   - String / resource / Option / Result use march_value throughout.
+ *
  * Resource lifetime: sqlite3* and sqlite3_stmt* are registered with
  * march_resource_type so Perceus RC fires sqlite3_close / sqlite3_finalize
  * automatically when the last March reference drops — no explicit cleanup
@@ -13,8 +18,6 @@
 #include <sqlite3.h>
 #include <string.h>
 #include <stdlib.h>
-
-int32_t march_ffi_abi_version(void) { return MARCH_FFI_ABI_VERSION; }
 
 /* ---- Resource type IDs (initialised once on first open) ---- */
 
@@ -79,55 +82,52 @@ march_value depot_sqlite_prepare(march_value db_val, march_value sql_str) {
     return march_ok(march_resource_new(stmt_type_id, stmt));
 }
 
-/* depot_sqlite_bind_text(stmt: Stmt, idx: Int, val: String): Int */
-march_value depot_sqlite_bind_text(march_value stmt_val, march_value idx_val,
-                                   march_value text_val) {
+/* depot_sqlite_bind_text(stmt: Stmt, idx: Int, val: String): Int
+ * idx is 1-based. Returns SQLITE_OK (0) on success. */
+int64_t depot_sqlite_bind_text(march_value stmt_val, int64_t idx,
+                               march_value text_val) {
     sqlite3_stmt *stmt = march_resource_get(stmt_val, stmt_type_id);
-    int col = (int)march_get_int(idx_val);
     march_slice s = march_str_borrow(text_val);
-    int rc = sqlite3_bind_text(stmt, col, (const char *)s.ptr, (int)s.len,
-                               SQLITE_TRANSIENT);
-    return march_make_int(rc);
+    return (int64_t)sqlite3_bind_text(stmt, (int)idx, (const char *)s.ptr,
+                                      (int)s.len, SQLITE_TRANSIENT);
 }
 
-/* depot_sqlite_bind_null(stmt: Stmt, idx: Int): Int */
-march_value depot_sqlite_bind_null(march_value stmt_val, march_value idx_val) {
+/* depot_sqlite_bind_null(stmt: Stmt, idx: Int): Int
+ * idx is 1-based. Returns SQLITE_OK (0) on success. */
+int64_t depot_sqlite_bind_null(march_value stmt_val, int64_t idx) {
     sqlite3_stmt *stmt = march_resource_get(stmt_val, stmt_type_id);
-    int col = (int)march_get_int(idx_val);
-    return march_make_int(sqlite3_bind_null(stmt, col));
+    return (int64_t)sqlite3_bind_null(stmt, (int)idx);
 }
 
 /* depot_sqlite_step(stmt: Stmt): Int
  * Returns 100 (SQLITE_ROW), 101 (SQLITE_DONE), or an error code. */
-march_value depot_sqlite_step(march_value stmt_val) {
+int64_t depot_sqlite_step(march_value stmt_val) {
     sqlite3_stmt *stmt = march_resource_get(stmt_val, stmt_type_id);
-    return march_make_int(sqlite3_step(stmt));
+    return (int64_t)sqlite3_step(stmt);
 }
 
 /* depot_sqlite_column_count(stmt: Stmt): Int */
-march_value depot_sqlite_column_count(march_value stmt_val) {
+int64_t depot_sqlite_column_count(march_value stmt_val) {
     sqlite3_stmt *stmt = march_resource_get(stmt_val, stmt_type_id);
-    return march_make_int(sqlite3_column_count(stmt));
+    return (int64_t)sqlite3_column_count(stmt);
 }
 
 /* depot_sqlite_column_name(stmt: Stmt, idx: Int): String
  * idx is zero-based. */
-march_value depot_sqlite_column_name(march_value stmt_val, march_value idx_val) {
+march_value depot_sqlite_column_name(march_value stmt_val, int64_t idx) {
     sqlite3_stmt *stmt = march_resource_get(stmt_val, stmt_type_id);
-    int col = (int)march_get_int(idx_val);
-    return cstr_to_str(sqlite3_column_name(stmt, col));
+    return cstr_to_str(sqlite3_column_name(stmt, (int)idx));
 }
 
 /* depot_sqlite_column_text(stmt: Stmt, idx: Int): Option(String)
  * Returns None for NULL columns, Some(text) otherwise.
  * Uses niche encoding: Some(heap_ptr) == heap_ptr, None == 0. */
-march_value depot_sqlite_column_text(march_value stmt_val, march_value idx_val) {
+march_value depot_sqlite_column_text(march_value stmt_val, int64_t idx) {
     sqlite3_stmt *stmt = march_resource_get(stmt_val, stmt_type_id);
-    int col = (int)march_get_int(idx_val);
-    if (sqlite3_column_type(stmt, col) == SQLITE_NULL) {
+    if (sqlite3_column_type(stmt, (int)idx) == SQLITE_NULL) {
         return march_none();
     }
-    const unsigned char *text = sqlite3_column_text(stmt, col);
-    int len = sqlite3_column_bytes(stmt, col);
+    const unsigned char *text = sqlite3_column_text(stmt, (int)idx);
+    int len = sqlite3_column_bytes(stmt, (int)idx);
     return march_some(march_str_new(text, (size_t)len));
 }

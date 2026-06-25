@@ -1,0 +1,149 @@
+-- test/test_sqlite_live.march
+-- Live SQLite integration tests against an in-memory database.
+--
+-- No external process required: every test opens ":memory:", runs its
+-- statements, and lets the connection drop when the test function returns.
+-- The sqlite3* destructor registered via march_resource_type fires
+-- automatically (Perceus RC), so there is no explicit cleanup.
+
+mod TestSqliteLive do
+
+needs Ffi
+needs IO.Foreign
+
+import Db
+import Message
+import Ast
+import MutationBuild
+import MutationExec
+
+-- Open an in-memory SQLite connection or crash with a clear message.
+pfn open_mem() do
+  match Db.from_sqlite(":memory:") do
+    Ok(conn) -> conn
+    Err(e)   -> panic("from_sqlite(:memory:) failed: " ++ e)
+  end
+end
+
+-- ---- Tests ----
+
+test "open: from_sqlite(:memory:) returns Ok" do
+  match Db.from_sqlite(":memory:") do
+    Ok(_)  -> assert true
+    Err(e) -> do
+      let _ = println("open failed: " ++ e)
+      assert false
+    end
+  end
+end
+
+test "dialect: sqlite conn returns sqlite" do
+  let conn = open_mem()
+  assert Db.dialect(conn) == "sqlite"
+end
+
+test "query: SELECT 1 returns one row with value 1" do
+  let conn = open_mem()
+  match Db.query(conn, "SELECT 1") do
+    Err(e) -> do
+      let _ = println("SELECT 1 failed: " ++ e)
+      assert false
+    end
+    Ok(r) ->
+      match r.rows do
+        Cons(Cons(Some(v), Nil), Nil) -> assert v == "1"
+        _                             -> do
+          let _ = println("unexpected rows shape")
+          assert false
+        end
+      end
+  end
+end
+
+test "exec: CREATE TABLE + INSERT ($1) + SELECT round-trip" do
+  let conn = open_mem()
+  match Db.query(conn, "CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT NOT NULL)") do
+    Err(e) -> do let _ = println("CREATE failed: " ++ e) assert false end
+    Ok(_)  ->
+      match Db.exec(conn, "INSERT INTO items (name) VALUES ($1)", [ParamText("hello")]) do
+        Err(e) -> do let _ = println("INSERT failed: " ++ e) assert false end
+        Ok(_)  ->
+          match Db.query(conn, "SELECT name FROM items") do
+            Err(e) -> do let _ = println("SELECT failed: " ++ e) assert false end
+            Ok(r)  ->
+              match r.rows do
+                Cons(Cons(Some(name), Nil), Nil) -> assert name == "hello"
+                _ -> do let _ = println("unexpected SELECT rows") assert false end
+              end
+          end
+      end
+  end
+end
+
+test "exec: multi-param $1 $2 bind" do
+  let conn = open_mem()
+  match Db.query(conn, "CREATE TABLE kv (k TEXT, v TEXT)") do
+    Err(_) -> assert false
+    Ok(_)  ->
+      match Db.exec(conn, "INSERT INTO kv (k, v) VALUES ($1, $2)",
+                    [ParamText("key1"), ParamText("val1")]) do
+        Err(e) -> do let _ = println("INSERT failed: " ++ e) assert false end
+        Ok(_)  ->
+          match Db.query(conn, "SELECT k, v FROM kv") do
+            Err(e) -> do let _ = println("SELECT failed: " ++ e) assert false end
+            Ok(r)  ->
+              match r.rows do
+                Cons(Cons(Some(k), Cons(Some(v), Nil)), Nil) ->
+                  assert k == "key1" && v == "val1"
+                _ -> assert false
+              end
+          end
+      end
+  end
+end
+
+test "exec: NULL column yields None" do
+  let conn = open_mem()
+  match Db.query(conn, "CREATE TABLE nullable (x TEXT)") do
+    Err(_) -> assert false
+    Ok(_)  ->
+      match Db.exec(conn, "INSERT INTO nullable (x) VALUES ($1)", [ParamNull]) do
+        Err(e) -> do let _ = println("INSERT NULL failed: " ++ e) assert false end
+        Ok(_)  ->
+          match Db.query(conn, "SELECT x FROM nullable") do
+            Err(_) -> assert false
+            Ok(r)  ->
+              match r.rows do
+                Cons(Cons(None, Nil), Nil) -> assert true
+                _                          -> assert false
+              end
+          end
+      end
+  end
+end
+
+test "MutationExec.exec_insert via SQLite" do
+  let conn = open_mem()
+  match Db.query(conn, "CREATE TABLE users (name TEXT NOT NULL, email TEXT NOT NULL)") do
+    Err(e) -> do let _ = println("CREATE failed: " ++ e) assert false end
+    Ok(_)  ->
+      let i = insert_into("users")
+             |> insert_cols(["name", "email"])
+             |> insert_row([PString("alice"), PString("a@example.com")])
+      match MutationExec.exec_insert(conn, i) do
+        Err(e) -> do let _ = println("exec_insert failed: " ++ e) assert false end
+        Ok(_)  ->
+          match Db.query(conn, "SELECT name, email FROM users") do
+            Err(e) -> do let _ = println("SELECT failed: " ++ e) assert false end
+            Ok(r)  ->
+              match r.rows do
+                Cons(Cons(Some(name), Cons(Some(email), Nil)), Nil) ->
+                  assert name == "alice" && email == "a@example.com"
+                _ -> assert false
+              end
+          end
+      end
+  end
+end
+
+end -- mod TestSqliteLive
