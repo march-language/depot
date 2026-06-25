@@ -535,10 +535,18 @@ end
 
 -- Ensure the schema_migrations table exists on `conn`.
 pfn ensure_migrations_table(conn) do
-  let sql = "CREATE TABLE IF NOT EXISTS \"schema_migrations\" "
-         ++ "(\"version\" BIGINT NOT NULL, "
-         ++ "\"inserted_at\" TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
-         ++ "PRIMARY KEY (\"version\"))"
+  let sql = match Db.dialect(conn) do
+    "sqlite" ->
+      "CREATE TABLE IF NOT EXISTS \"schema_migrations\" "
+      ++ "(\"version\" INTEGER NOT NULL, "
+      ++ "\"inserted_at\" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, "
+      ++ "PRIMARY KEY (\"version\"))"
+    _ ->
+      "CREATE TABLE IF NOT EXISTS \"schema_migrations\" "
+      ++ "(\"version\" BIGINT NOT NULL, "
+      ++ "\"inserted_at\" TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+      ++ "PRIMARY KEY (\"version\"))"
+  end
   match Db.query(conn, sql) do
     Err(e) -> Err("schema_migrations bootstrap: " ++ e)
     Ok(_)  -> Ok(())
@@ -575,8 +583,11 @@ fn applied_versions(conn) do
   match ensure_migrations_table(conn) do
     Err(e) -> Err(e)
     Ok(_) ->
-      match Db.query(conn,
-          "SELECT version::text FROM schema_migrations ORDER BY version ASC") do
+      let version_sql = match Db.dialect(conn) do
+        "sqlite" -> "SELECT CAST(version AS TEXT) FROM schema_migrations ORDER BY version ASC"
+        _        -> "SELECT version::text FROM schema_migrations ORDER BY version ASC"
+      end
+      match Db.query(conn, version_sql) do
         Err(e) -> Err("schema_migrations read: " ++ e)
         Ok(r)  -> do
           let rs = r.rows
