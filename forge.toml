@@ -6,3 +6,7 @@ description = "Depot database library for March"
 author = ""
 
 [deps]
+
+[ffi]
+sources = ["native/sqlite_shim.c"]
+link    = ["-lsqlite3"]
