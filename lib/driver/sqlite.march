@@ -54,6 +54,10 @@ extern "sqlite" : Cap(Ffi) do
 
   -- Value of column at zero-based index `idx` in the current row. None for NULL.
   fn sqlite_column_text(stmt: Stmt, idx: Int): Option(String) = "depot_sqlite_column_text"
+
+  -- Unique integer ID for this db connection (the sqlite3* pointer value).
+  -- Used by conn_key so two ":memory:" connections get distinct keys.
+  fn sqlite_db_id(db: Db): Int = "depot_sqlite_db_id"
 end
 
 -- ---- Public types ----
@@ -72,8 +76,8 @@ fn open(path) do sqlite_open(path) end
 doc "Wrap a Db resource and path into a SqliteConnState."
 fn wrap(db, path) do { db: db, path: path } end
 
-doc "A stable string key for the connection (the file path or \":memory:\")."
-fn conn_key(s) do s.path end
+doc "A stable string key for the connection (the sqlite3* pointer, unique per open call)."
+fn conn_key(s) do int_to_string(sqlite_db_id(s.db)) end
 
 doc """
 Execute a parameterized SQL statement against `db`.

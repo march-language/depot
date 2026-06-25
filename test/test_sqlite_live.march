@@ -122,6 +122,22 @@ test "exec: NULL column yields None" do
   end
 end
 
+test "query: result.columns reflects SELECT list" do
+  let conn = open_mem()
+  match Db.query(conn, "SELECT 42 AS answer, 'hi' AS greeting") do
+    Err(e) -> do let _ = println("SELECT failed: " ++ e) assert false end
+    Ok(r)  -> assert r.columns == ["answer", "greeting"]
+  end
+end
+
+test "exec: prepare error propagates as Err" do
+  let conn = open_mem()
+  match Db.query(conn, "NOT VALID SQL AT ALL") do
+    Err(_) -> assert true
+    Ok(_)  -> assert false
+  end
+end
+
 test "MutationExec.exec_insert via SQLite" do
   let conn = open_mem()
   match Db.query(conn, "CREATE TABLE users (name TEXT NOT NULL, email TEXT NOT NULL)") do
