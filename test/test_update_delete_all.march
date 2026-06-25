@@ -18,6 +18,9 @@
 
 mod TestUpdateDeleteAll do
 
+needs Ffi
+needs IO.Foreign
+
 import Ast
 import Build
 import Message

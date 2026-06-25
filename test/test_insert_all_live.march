@@ -12,6 +12,9 @@
 
 mod TestInsertAllLive do
 
+needs Ffi
+needs IO.Foreign
+
 import Connection
 import Db
 import Ast

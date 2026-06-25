@@ -3,6 +3,9 @@
 
 mod TestDriver do
 
+needs Ffi
+needs IO.Foreign
+
 import Connection
 import Db
 

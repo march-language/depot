@@ -3,6 +3,9 @@
 
 mod TestPool do
 
+needs Ffi
+needs IO.Foreign
+
 import Connection
 import Db
 import Pool

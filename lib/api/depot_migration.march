@@ -17,6 +17,9 @@
 
 mod Depot.Migration do
 
+needs Ffi
+needs IO.Foreign
+
 import Db
 import Depot.Transaction
 

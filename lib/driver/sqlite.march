@@ -1,0 +1,188 @@
+-- lib/driver/sqlite.march
+-- SQLite backend driver for Depot.
+--
+-- Wraps libsqlite3 via March's C FFI. Resource destructors registered at
+-- first open() call handle sqlite3_close / sqlite3_finalize automatically
+-- via Perceus RC — no explicit cleanup needed in March code.
+--
+-- Public API surface used by lib/driver/db.march:
+--   open(path)              : Result(Db, String)
+--   wrap(db, path)          : SqliteConnState
+--   conn_key(s)             : String
+--   exec(db, sql, params)   : Result(QueryResult, String)
+--   query(db, sql)          : Result(QueryResult, String)
+--   replace_placeholders(s) : String
+
+mod Sqlite do
+
+import Message
+import List
+import String
+import Bytes
+
+needs Ffi
+needs IO.Foreign
+
+-- Opaque handle to a sqlite3* connection.
+resource Db
+
+-- Opaque handle to a sqlite3_stmt* prepared statement.
+resource Stmt
+
+extern "sqlite" : Cap(Ffi) do
+  -- Open (or create) a database at `path`. Use ":memory:" for in-memory.
+  -- Returns Ok(Db) on success, Err(message) on failure.
+  fn sqlite_open(path: String): Result(Db, String) = "depot_sqlite_open"
+
+  -- Prepare a SQL statement. Returns Ok(Stmt) or Err(message).
+  fn sqlite_prepare(db: Db, sql: String): Result(Stmt, String) = "depot_sqlite_prepare"
+
+  -- Bind a text value to parameter `idx` (1-based). Returns SQLite rc (0 = ok).
+  fn sqlite_bind_text(stmt: Stmt, idx: Int, val: String): Int = "depot_sqlite_bind_text"
+
+  -- Bind NULL to parameter `idx` (1-based). Returns SQLite rc (0 = ok).
+  fn sqlite_bind_null(stmt: Stmt, idx: Int): Int = "depot_sqlite_bind_null"
+
+  -- Advance the statement. Returns 100 (SQLITE_ROW), 101 (SQLITE_DONE), or error code.
+  fn sqlite_step(stmt: Stmt): Int = "depot_sqlite_step"
+
+  -- Number of columns in the result set.
+  fn sqlite_column_count(stmt: Stmt): Int = "depot_sqlite_column_count"
+
+  -- Name of column at zero-based index `idx`.
+  fn sqlite_column_name(stmt: Stmt, idx: Int): String = "depot_sqlite_column_name"
+
+  -- Value of column at zero-based index `idx` in the current row. None for NULL.
+  fn sqlite_column_text(stmt: Stmt, idx: Int): Option(String) = "depot_sqlite_column_text"
+end
+
+-- ---- Public types ----
+
+--- State for an open SQLite connection.
+type SqliteConnState = {
+  db   : Db,
+  path : String
+}
+
+-- ---- Public API ----
+
+doc "Open a SQLite database at `path`. Use \":memory:\" for in-memory."
+fn open(path) do sqlite_open(path) end
+
+doc "Wrap a Db resource and path into a SqliteConnState."
+fn wrap(db, path) do { db: db, path: path } end
+
+doc "A stable string key for the connection (the file path or \":memory:\")."
+fn conn_key(s) do s.path end
+
+doc """
+Execute a parameterized SQL statement against `db`.
+
+`sql` must already use `?` placeholders (not `$N`); call `replace_placeholders`
+first if the SQL came from the Depot query compiler.
+
+Returns `Ok({ columns, rows, tag })` matching the shape of
+`Connection.exec_prepared` so higher-level modules are backend-agnostic.
+"""
+fn exec(db, sql, params) do
+  match sqlite_prepare(db, sql) do
+    Err(e) -> Err(e)
+    Ok(stmt) ->
+      let col_count = sqlite_column_count(stmt)
+      match bind_all(stmt, params, 1) do
+        Err(e) -> Err(e)
+        Ok(_) ->
+          let columns = collect_col_names(stmt, col_count, 0, Nil)
+          collect_rows(stmt, columns, Nil)
+      end
+  end
+end
+
+doc "Execute a simple (no-parameter) SQL statement against `db`."
+fn query(db, sql) do exec(db, sql, Nil) end
+
+doc """
+Replace Postgres-style `$N` parameter placeholders with SQLite `?` placeholders.
+
+The params list stays in order — SQLite `?` is positional, just like Postgres `$N`.
+"""
+fn replace_placeholders(sql) do
+  scan(sql, 0, String.byte_size(sql), "")
+end
+
+-- ---- Private helpers ----
+
+-- Bind each param in order starting at 1-based index `idx`.
+pfn bind_all(stmt, params, idx) do
+  match params do
+    Nil -> Ok(())
+    Cons(p, rest) ->
+      let rc = match p do
+        ParamNull      -> sqlite_bind_null(stmt, idx)
+        ParamText(s)   -> sqlite_bind_text(stmt, idx, s)
+        ParamBinary(b) -> sqlite_bind_text(stmt, idx, Bytes.to_string(b))
+      end
+      match rc do
+        0 -> bind_all(stmt, rest, idx + 1)
+        _ -> Err("sqlite bind param " ++ int_to_string(idx)
+                 ++ " failed (rc=" ++ int_to_string(rc) ++ ")")
+      end
+  end
+end
+
+-- Collect `count` column names into a list (0-based indexing into sqlite_column_name).
+pfn collect_col_names(stmt, count, i, acc) do
+  if i >= count do List.reverse(acc)
+  else collect_col_names(stmt, count, i + 1,
+         Cons(sqlite_column_name(stmt, i), acc))
+  end
+end
+
+-- Collect `count` cell values for the current row.
+pfn collect_row_cells(stmt, count, i, acc) do
+  if i >= count do List.reverse(acc)
+  else collect_row_cells(stmt, count, i + 1,
+         Cons(sqlite_column_text(stmt, i), acc))
+  end
+end
+
+-- Step through all rows, collecting each into `acc`.
+pfn collect_rows(stmt, columns, acc) do
+  let rc = sqlite_step(stmt)
+  match rc do
+    100 -> -- SQLITE_ROW: collect this row and continue
+      let col_count = List.length(columns)
+      let row = collect_row_cells(stmt, col_count, 0, Nil)
+      collect_rows(stmt, columns, Cons(row, acc))
+    101 -> -- SQLITE_DONE: all rows collected
+      Ok({ columns: columns, rows: List.reverse(acc), tag: "" })
+    _ ->
+      Err("sqlite_step error (rc=" ++ int_to_string(rc) ++ ")")
+  end
+end
+
+-- Scan `sql` byte-by-byte, replacing `$<digits>` sequences with `?`.
+pfn scan(sql, i, len, acc) do
+  if i >= len do acc
+  else
+    let ch = String.slice_bytes(sql, i, 1)
+    match ch do
+      "$" -> scan_digits(sql, i + 1, len, acc ++ "?")
+      _   -> scan(sql, i + 1, len, acc ++ ch)
+    end
+  end
+end
+
+-- Skip any digit characters following a `$` (they were replaced by `?`).
+pfn scan_digits(sql, i, len, acc) do
+  if i >= len do acc
+  else
+    let ch = String.slice_bytes(sql, i, 1)
+    match String.to_int(ch) do
+      Ok(_)  -> scan_digits(sql, i + 1, len, acc)
+      Err(_) -> scan(sql, i, len, acc)
+    end
+  end
+end
+
+end -- mod Sqlite

@@ -1,24 +1,37 @@
--- lib/driver/driver.march
+-- lib/driver/db.march
 -- Abstract database connection — driver seam between the wire layer
 -- and all higher-level depot modules.
 --
--- Adding a new backend (SQLite, etc.) means:
+-- Adding a new backend means:
 --   1. Add a constructor to DbConn.
 --   2. Add arms to each match in this module.
---   3. Nothing else changes.
+--   3. Nothing else changes in higher-level modules.
 
 mod Db do
 
 import Connection
 import Message
+import Sqlite
+
+needs Ffi
+needs IO.Foreign
 
 --- The abstract database connection. All higher-level modules take DbConn,
---- never the concrete ConnState.
-type DbConn = PostgresConn(ConnState)
+--- never the concrete ConnState or SqliteConnState.
+type DbConn = PostgresConn(ConnState) | SqliteConn(SqliteConnState)
 
 --- Wrap a raw PostgreSQL ConnState in a DbConn.
 fn from_postgres(c) do
   PostgresConn(c)
+end
+
+--- Open a SQLite database at `path` and return a DbConn, or Err(message).
+--- Use ":memory:" for an in-memory database.
+fn from_sqlite(path) do
+  match Sqlite.open(path) do
+    Err(e) -> Err(e)
+    Ok(db)  -> Ok(SqliteConn(Sqlite.wrap(db, path)))
+  end
 end
 
 --- A stable string key that uniquely identifies this connection.
@@ -26,6 +39,7 @@ end
 fn conn_key(conn) do
   match conn do
   PostgresConn(c) -> int_to_string(c.fd)
+  SqliteConn(s)   -> Sqlite.conn_key(s)
   end
 end
 
@@ -33,6 +47,7 @@ end
 fn exec(conn, sql, params) do
   match conn do
   PostgresConn(c) -> Connection.exec_prepared(c, sql, params)
+  SqliteConn(s)   -> Sqlite.exec(s.db, Sqlite.replace_placeholders(sql), params)
   end
 end
 
@@ -40,6 +55,7 @@ end
 fn query(conn, sql) do
   match conn do
   PostgresConn(c) -> Connection.simple_query(c, sql)
+  SqliteConn(s)   -> Sqlite.query(s.db, sql)
   end
 end
 
@@ -47,12 +63,22 @@ end
 fn close(conn) do
   match conn do
   PostgresConn(c) -> Connection.close(c)
+  SqliteConn(_)   -> ()
   end
 end
 
---- Health-check ping (SELECT 1).
+--- Health-check ping.
 fn ping(conn) do
   query(conn, "SELECT 1")
+end
+
+--- Return a string identifying the SQL dialect in use: "postgres" or "sqlite".
+--- Used by migrations and other places that need to emit backend-specific SQL.
+fn dialect(conn) do
+  match conn do
+  PostgresConn(_) -> "postgres"
+  SqliteConn(_)   -> "sqlite"
+  end
 end
 
 end -- mod Db

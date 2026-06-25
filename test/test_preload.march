@@ -3,6 +3,9 @@
 
 mod TestPreload do
 
+needs Ffi
+needs IO.Foreign
+
 import Ast
 import Build
 import Compile

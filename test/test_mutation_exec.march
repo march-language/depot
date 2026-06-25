@@ -10,6 +10,9 @@
 
 mod TestMutationExec do
 
+needs Ffi
+needs IO.Foreign
+
 import Ast
 import Mutation
 import MutationBuild

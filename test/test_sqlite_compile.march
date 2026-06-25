@@ -1,0 +1,35 @@
+-- test/test_sqlite_compile.march
+-- Unit tests for SQLite dialect utilities (no live database required).
+
+mod TestSqliteCompile do
+
+needs Ffi
+needs IO.Foreign
+
+import Sqlite
+import Db
+import Map
+
+test "replace_placeholders: no params returns sql unchanged" do
+  assert Sqlite.replace_placeholders("SELECT * FROM users") == "SELECT * FROM users"
+end
+
+test "replace_placeholders: single $1 becomes ?" do
+  assert Sqlite.replace_placeholders("SELECT * FROM users WHERE id = $1") == "SELECT * FROM users WHERE id = ?"
+end
+
+test "replace_placeholders: $1 $2 $3 all become ?" do
+  assert Sqlite.replace_placeholders("INSERT INTO t (a,b,c) VALUES ($1,$2,$3)") == "INSERT INTO t (a,b,c) VALUES (?,?,?)"
+end
+
+test "replace_placeholders: multi-digit $10 becomes ?" do
+  assert Sqlite.replace_placeholders("WHERE x = $10") == "WHERE x = ?"
+end
+
+test "Db.dialect: postgres conn returns postgres" do
+  let raw = { fd: 7, pid: 1, secret_key: 0, parameters: Map.empty() }
+  let conn = Db.from_postgres(raw)
+  assert Db.dialect(conn) == "postgres"
+end
+
+end -- mod TestSqliteCompile

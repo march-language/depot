@@ -8,6 +8,9 @@
 
 mod TestRepoTransaction do
 
+needs Ffi
+needs IO.Foreign
+
 import Connection
 import Db
 import Depot.Transaction
