@@ -14,22 +14,23 @@ needs IO.Foreign
 import Db
 import Depot.Transaction
 import Message
+import Sqlite
 import Ast
 import MutationBuild
 import MutationExec
 
 -- Open an in-memory SQLite connection or crash with a clear message.
 pfn open_mem() do
-  match Db.from_sqlite(":memory:") do
+  match Sqlite.open_conn(":memory:") do
     Ok(conn) -> conn
-    Err(e)   -> panic("from_sqlite(:memory:) failed: " ++ e)
+    Err(e)   -> panic("open_conn(:memory:) failed: " ++ e)
   end
 end
 
 -- ---- Tests ----
 
-test "open: from_sqlite(:memory:) returns Ok" do
-  match Db.from_sqlite(":memory:") do
+test "open: Sqlite.open_conn(:memory:) returns Ok" do
+  match Sqlite.open_conn(":memory:") do
     Ok(_)  -> assert true
     Err(e) -> do
       let _ = println("open failed: " ++ e)

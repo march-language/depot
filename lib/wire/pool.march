@@ -3,9 +3,6 @@
 
 mod Pool do
 
-needs Ffi
-needs IO.Foreign
-
 import Connection
 import Db
 import Depot.Query

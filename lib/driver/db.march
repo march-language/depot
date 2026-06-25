@@ -2,36 +2,50 @@
 -- Abstract database connection — driver seam between the wire layer
 -- and all higher-level depot modules.
 --
--- Adding a new backend means:
+-- This module does NOT import Sqlite. SQLite dispatch is provided as a
+-- concrete SqliteOps record in SqliteConn, so the Ffi capability stays
+-- contained in lib/driver/sqlite.march. Callers that only import Db
+-- do not inherit Ffi requirements.
+--
+-- Adding a new backend:
 --   1. Add a constructor to DbConn.
---   2. Add arms to each match in this module.
---   3. Nothing else changes in higher-level modules.
+--   2. Provide an open_* function in the backend module (see Sqlite.open_conn).
+--   3. Add dispatch arms to exec/query/dialect/close/conn_key below.
 
 mod Db do
 
 import Connection
 import Message
-import Sqlite
 
-needs Ffi
-needs IO.Foreign
+--- Result type shared by all connection dispatch functions.
+--- Matches the anonymous record returned by Connection.simple_query /
+--- Connection.exec_prepared so higher-level code is backend-agnostic.
+type ConnResult = {
+  columns: List(String),
+  rows:    List(List(Option(String))),
+  tag:     String
+}
 
---- The abstract database connection. All higher-level modules take DbConn,
---- never the concrete ConnState or SqliteConnState.
-type DbConn = PostgresConn(ConnState) | SqliteConn(SqliteConnState)
+--- Concrete dispatch record for SQLite connections.
+--- Using a concrete (non-parametric) type lets Perceus RC correctly dup
+--- the inner ops record when the outer DbConn is shared, avoiding a
+--- use-after-free bug where the ops block is freed prematurely.
+type SqliteOps = {
+  key:     String,
+  exec:    String -> List(Param) -> Result(ConnResult, String),
+  query:   String -> Result(ConnResult, String),
+  dialect: String
+}
+
+--- The abstract database connection. All higher-level modules take DbConn.
+--- PostgresConn wraps a raw ConnState; SqliteConn wraps a SqliteOps dispatch
+--- record of closures that capture the sqlite3* resource — callers never see
+--- Sqlite-specific types and therefore do not need `needs Ffi`.
+type DbConn = PostgresConn(ConnState) | SqliteConn(SqliteOps)
 
 --- Wrap a raw PostgreSQL ConnState in a DbConn.
 fn from_postgres(c) do
   PostgresConn(c)
-end
-
---- Open a SQLite database at `path` and return a DbConn, or Err(message).
---- Use ":memory:" for an in-memory database.
-fn from_sqlite(path) do
-  match Sqlite.open(path) do
-    Err(e) -> Err(e)
-    Ok(db)  -> Ok(SqliteConn(Sqlite.wrap(db, path)))
-  end
 end
 
 --- A stable string key that uniquely identifies this connection.
@@ -39,7 +53,7 @@ end
 fn conn_key(conn) do
   match conn do
   PostgresConn(c) -> int_to_string(c.fd)
-  SqliteConn(s)   -> Sqlite.conn_key(s)
+  SqliteConn(s)   -> s.key
   end
 end
 
@@ -47,9 +61,7 @@ end
 fn exec(conn, sql, params) do
   match conn do
   PostgresConn(c) -> Connection.exec_prepared(c, sql, params)
-  SqliteConn(s)   ->
-    let sqlite_sql = sql |> Sqlite.replace_placeholders() |> Sqlite.replace_ilike()
-    Sqlite.exec(s.db, sqlite_sql, params)
+  SqliteConn(s)   -> s.exec(sql, params)
   end
 end
 
@@ -57,11 +69,12 @@ end
 fn query(conn, sql) do
   match conn do
   PostgresConn(c) -> Connection.simple_query(c, sql)
-  SqliteConn(s)   -> Sqlite.query(s.db, Sqlite.replace_ilike(sql))
+  SqliteConn(s)   -> s.query(sql)
   end
 end
 
---- Close the connection.
+--- Close the connection. SQLite connections are closed automatically
+--- via Perceus RC when the DbConn value is dropped.
 fn close(conn) do
   match conn do
   PostgresConn(c) -> Connection.close(c)
@@ -79,7 +92,7 @@ end
 fn dialect(conn) do
   match conn do
   PostgresConn(_) -> "postgres"
-  SqliteConn(_)   -> "sqlite"
+  SqliteConn(s)   -> s.dialect
   end
 end
 

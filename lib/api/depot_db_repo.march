@@ -1,19 +1,19 @@
 -- lib/api/depot_db_repo.march
 -- Depot.DbRepo: named, configured database repo registry.
 --
--- An app registers a repo by name (an atom), then uses that name
+-- An app registers a repo by name (a String), then uses that name
 -- everywhere instead of managing pool pids or sqlite conns directly.
 --
 -- ## Quick start (in your app's init or main function):
 --
---   Depot.DbRepo.start_from_env(:my_repo, "DATABASE_URL",
+--   Depot.DbRepo.start_from_env("my_repo", "DATABASE_URL",
 --                                "postgres://localhost/myapp_dev")
---   Depot.DbRepo.migrate(:my_repo, MyApp.Migrations.all())
+--   Depot.DbRepo.migrate("my_repo", MyApp.Migrations.all())
 --
 -- ## Defining a thin App.Repo wrapper (Ecto-style):
 --
 --   mod MyApp.Repo do
---     pfn name() do :my_repo end
+--     pfn name() do "my_repo" end
 --     fn start()         do Depot.DbRepo.start_from_env(name(), "DATABASE_URL",
 --                                                       "sqlite::memory:") end
 --     fn migrate(ms)     do Depot.DbRepo.migrate(name(), ms) end
@@ -23,16 +23,16 @@
 --
 -- ## Test setup (SQLite in-memory, no server required):
 --
---   let _ = Depot.DbRepo.start(:test_repo, "sqlite::memory:")
---   let _ = Depot.DbRepo.migrate(:test_repo, MyApp.Migrations.all())
+--   let _ = Depot.DbRepo.start("test_repo", "sqlite::memory:")
+--   let _ = Depot.DbRepo.migrate("test_repo", MyApp.Migrations.all())
 --
 -- ## Internal storage design
 --
--- `handle_table()` maps name -> RepoHandle (pool Pid or a SqliteTag sentinel).
--- `sqlite_conn_vault()` maps name -> DbConn for SQLite repos.
--- Keeping the DbConn in a separate Vault table avoids a March typechecker
--- limitation where cross-module qualified names (Db.DbConn) do not unify with
--- locally-imported names (DbConn) inside parametric ADT constructors.
+-- Two Vault tables serve as discriminated repo registries:
+--   "depot.dbrepo.sqlite" maps name -> DbConn  (SQLite repos only)
+--   "depot.dbrepo.pool"   maps name -> Pid     (Pool repos only)
+-- Presence in a table determines repo kind — no ADT constructors in Vault,
+-- which avoids March's dynamic-dispatch issues with sum-type values.
 
 mod Depot.DbRepo do
 
@@ -47,27 +47,19 @@ import Depot.Transaction
 import Depot.Query
 import Env
 
--- ── Repo kind tag ────────────────────────────────────────────────────────────
-
--- Only the repo KIND is stored in handle_table. SQLite connections are stored
--- in a separate vault (sqlite_conn_vault) so the DbConn type doesn't appear
--- inside an ADT constructor, avoiding cross-module name-qualification issues.
-
-type RepoKind = PoolKind(Pid) | SqliteKind
-
 -- ── Vault tables ─────────────────────────────────────────────────────────────
 
-pfn handle_table() do
-  match Vault.whereis("depot.dbrepo.kind") do
+pfn sqlite_table() do
+  match Vault.whereis("depot.dbrepo.sqlite") do
   Some(t) -> t
-  None    -> Vault.new("depot.dbrepo.kind")
+  None    -> Vault.new("depot.dbrepo.sqlite")
   end
 end
 
-pfn sqlite_conn_vault() do
-  match Vault.whereis("depot.dbrepo.conn") do
+pfn pool_table() do
+  match Vault.whereis("depot.dbrepo.pool") do
   Some(t) -> t
-  None    -> Vault.new("depot.dbrepo.conn")
+  None    -> Vault.new("depot.dbrepo.pool")
   end
 end
 
@@ -76,7 +68,7 @@ end
 pfn start_pg(name, cfg) do
   let pool_cfg = Pool.default_pool_config(cfg)
   let pid = Pool.start(pool_cfg)
-  Vault.set(handle_table(), name, PoolKind(pid))
+  Vault.set(pool_table(), name, pid)
   Ok(())
 end
 
@@ -84,8 +76,7 @@ pfn start_sqlite(name, path) do
   match Sqlite.open_conn(path) do
   Err(e)   -> Err("Depot.DbRepo.start sqlite: " ++ e)
   Ok(conn) ->
-    Vault.set(sqlite_conn_vault(), name, conn)
-    Vault.set(handle_table(), name, SqliteKind)
+    Vault.set(sqlite_table(), name, conn)
     Ok(())
   end
 end
@@ -121,27 +112,25 @@ end
 ---
 --- Returns Ok(callback_result) on success, Err(reason) if the repo is not
 --- started or the pool has no available connections.
-fn with_conn(name, callback) do
-  match Vault.get(handle_table(), name) do
+fn with_conn(name, wcb) do
+  match Vault.get(sqlite_table(), name) do
+  Some(sqlite_conn) ->
+    Ok(wcb(sqlite_conn))
   None ->
-    Err("Depot.DbRepo.with_conn: repo not started: " ++ to_string(name))
-  Some(PoolKind(pid)) ->
     -- Use checkout/checkin directly rather than Pool.with_conn to avoid
     -- monomorphization: preload.march calls Pool.with_conn with a ConnResult
     -- callback and March's typechecker would constrain all Pool.with_conn calls.
-    match Pool.checkout(pid) do
-    Err(e) -> Err(e)
-    Ok(conn) ->
-      let result = callback(conn)
-      let _ = Pool.checkin(pid, conn)
-      Ok(result)
-    end
-  Some(SqliteKind) ->
-    match Vault.get(sqlite_conn_vault(), name) do
+    match Vault.get(pool_table(), name) do
+    Some(pool_pid) ->
+      match Pool.checkout(pool_pid) do
+      Err(e) -> Err(e)
+      Ok(pool_conn) ->
+        let wc_result = wcb(pool_conn)
+        let _ = Pool.checkin(pool_pid, pool_conn)
+        Ok(wc_result)
+      end
     None ->
-      Err("Depot.DbRepo.with_conn: sqlite conn missing for: " ++ to_string(name))
-    Some(conn) ->
-      Ok(callback(conn))
+      Err("Depot.DbRepo.with_conn: repo not started: " ++ name)
     end
   end
 end
@@ -150,8 +139,8 @@ end
 
 --- Run schema migrations on the named repo.
 --- Returns Ok(n) where n = migrations applied, Err(msg) on failure.
-fn migrate(name, migrations) do
-  match with_conn(name, fn conn -> Depot.Migration.migrate(conn, migrations)) do
+fn migrate(name, migration_list) do
+  match with_conn(name, fn conn -> Depot.Migration.migrate(conn, migration_list)) do
   Err(e)    -> Err(e)
   Ok(inner) -> inner
   end
@@ -159,8 +148,8 @@ end
 
 --- Execute a Depot.Query against the named repo.
 --- Returns Ok(rows) on success, Err(msg) on failure.
-fn query(name, q) do
-  match with_conn(name, fn conn -> Depot.Query.exec_sql(q, conn)) do
+fn query(name, depot_query) do
+  match with_conn(name, fn qconn -> Depot.Query.exec_sql(depot_query, qconn)) do
   Err(e)    -> Err(e)
   Ok(inner) -> inner
   end
@@ -170,8 +159,8 @@ end
 ---
 --- The callback receives a DbConn. Returning Ok(_) commits; Err(_) rolls back.
 --- Nested calls on the same conn use SAVEPOINTs automatically.
-fn transaction(name, callback) do
-  match with_conn(name, fn conn -> Depot.Transaction.run(conn, callback)) do
+fn transaction(name, txcb) do
+  match with_conn(name, fn txconn -> Depot.Transaction.run(txconn, txcb)) do
   Err(e)    -> Err(e)
   Ok(inner) -> inner
   end
@@ -180,14 +169,12 @@ end
 --- Shut down the named repo and release its resources.
 --- After stop, with_conn returns Err until start is called again.
 fn stop(name) do
-  match Vault.get(handle_table(), name) do
-  None -> ()
-  Some(PoolKind(pid)) ->
+  match Vault.get(pool_table(), name) do
+  Some(pid) ->
     let _ = Pool.shutdown(pid)
-    Vault.drop(handle_table(), name)
-  Some(SqliteKind) ->
-    Vault.drop(sqlite_conn_vault(), name)
-    Vault.drop(handle_table(), name)
+    Vault.drop(pool_table(), name)
+  None ->
+    Vault.drop(sqlite_table(), name)
   end
 end
 

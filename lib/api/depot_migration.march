@@ -17,9 +17,6 @@
 
 mod Depot.Migration do
 
-needs Ffi
-needs IO.Foreign
-
 import Db
 import Depot.Transaction
 
@@ -534,8 +531,12 @@ end
 -- `migrate` reuse `Migration.run_statements` for both directions.
 
 -- Ensure the schema_migrations table exists on `conn`.
-pfn ensure_migrations_table(conn) do
-  let sql = match Db.dialect(conn) do
+-- `dialect` must be pre-computed by the caller (via Db.dialect) so this
+-- function only needs one use of `conn` (for Db.query). This avoids a
+-- Perceus RC bug that occurs when the parametric SqliteConn(a) inner ops
+-- record is accessed twice inside a single called function.
+pfn ensure_migrations_table(conn, dialect) do
+  let sql = match dialect do
     "sqlite" ->
       "CREATE TABLE IF NOT EXISTS \"schema_migrations\" "
       ++ "(\"version\" INTEGER NOT NULL, "
@@ -580,10 +581,13 @@ Read the list of applied migration versions from `schema_migrations`,
 ordered ascending.  Ensures the tracking table exists.
 """
 fn applied_versions(conn) do
-  match ensure_migrations_table(conn) do
+  -- Capture dialect before any function call to avoid the Perceus RC issue
+  -- where SqliteConn(a)'s inner ops record is freed after a callee uses conn twice.
+  let d = Db.dialect(conn)
+  match ensure_migrations_table(conn, d) do
     Err(e) -> Err(e)
     Ok(_) ->
-      let version_sql = match Db.dialect(conn) do
+      let version_sql = match d do
         "sqlite" -> "SELECT CAST(version AS TEXT) FROM schema_migrations ORDER BY version ASC"
         _        -> "SELECT version::text FROM schema_migrations ORDER BY version ASC"
       end

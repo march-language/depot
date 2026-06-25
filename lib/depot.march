@@ -17,6 +17,8 @@
 --- | Depot.Type          | Custom type adapters (Email, Enum) for field coercion        |
 --- | Depot.Embed         | Embedded schemas — nested assoc-list records inside a row   |
 --- | Depot.Explain       | EXPLAIN / EXPLAIN ANALYZE query-plan inspection              |
+--- | Depot.Url           | Parse database URLs (postgres://, sqlite:) into targets      |
+--- | Depot.DbRepo        | Named repo registry — start, migrate, query, transaction     |
 ---
 --- ## Quick start
 ---
@@ -57,6 +59,33 @@
 ---     |> Depot.Query.order_asc("name")
 ---     |> Depot.Query.limit(20)
 ---     |> Depot.Query.exec_sql(db_conn)
+---
+--- ### 5. Named repos with Depot.DbRepo (Ecto-style)
+---
+--- Start a repo from a URL (or an environment variable) once at app init,
+--- then use it by name everywhere — no connection handle to thread around.
+---
+---   -- In your app's init or main:
+---   let _ = Depot.DbRepo.start_from_env("MyApp.Repo", "DATABASE_URL",
+---                                        "sqlite::memory:")
+---   let _ = Depot.DbRepo.migrate("MyApp.Repo", MyApp.Migrations.all())
+---
+---   -- Anywhere in your app:
+---   match Depot.DbRepo.query("MyApp.Repo", my_query) do
+---     Ok(rows) -> rows
+---     Err(e)   -> ...
+---   end
+---
+---   match Depot.DbRepo.transaction("MyApp.Repo", fn conn ->
+---     Db.query(conn, "INSERT INTO ...")
+---   ) do
+---     Ok(_)  -> ...
+---     Err(e) -> ...
+---   end
+---
+---   -- In tests (SQLite in-memory, no server required):
+---   let _ = Depot.DbRepo.start("test_repo", "sqlite::memory:")
+---   let _ = Depot.DbRepo.migrate("test_repo", MyApp.Migrations.all())
 ---
 --- ## Design principles
 ---

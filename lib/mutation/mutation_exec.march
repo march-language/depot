@@ -15,9 +15,6 @@
 
 mod MutationExec do
 
-needs Ffi
-needs IO.Foreign
-
 import Mutation
 import MutationCompile
 import Db

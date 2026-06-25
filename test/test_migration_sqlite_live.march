@@ -13,11 +13,12 @@ needs IO.Foreign
 
 import Db
 import Depot.Migration
+import Sqlite
 
 pfn open_mem() do
-  match Db.from_sqlite(":memory:") do
+  match Sqlite.open_conn(":memory:") do
     Ok(conn) -> conn
-    Err(e)   -> panic("from_sqlite(:memory:) failed: " ++ e)
+    Err(e)   -> panic("open_conn(:memory:) failed: " ++ e)
   end
 end
 

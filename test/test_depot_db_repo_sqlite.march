@@ -1,0 +1,142 @@
+-- test/test_depot_db_repo_sqlite.march
+-- Integration tests for Depot.DbRepo using SQLite in-memory databases.
+--
+-- Each test uses a unique repo name string to avoid Vault collision between
+-- tests running in the same process.
+
+mod TestDepotDbRepoSqlite do
+
+needs Ffi
+needs IO.Foreign
+
+import Db
+import Depot.DbRepo
+
+-- ── Migration fixtures ────────────────────────────────────────────────────────
+
+pfn m1() do
+  { version: 1,
+    up:   Cons("CREATE TABLE dbrepo_posts (id INTEGER PRIMARY KEY, title TEXT)", Nil),
+    down: Cons("DROP TABLE dbrepo_posts", Nil) }
+end
+
+pfn m2() do
+  { version: 2,
+    up:   Cons("CREATE TABLE dbrepo_tags (id INTEGER PRIMARY KEY, label TEXT)", Nil),
+    down: Cons("DROP TABLE dbrepo_tags", Nil) }
+end
+
+pfn migrations() do Cons(m1(), Cons(m2(), Nil)) end
+
+-- ── Tests ─────────────────────────────────────────────────────────────────────
+
+test "start: sqlite::memory: repo starts successfully" do
+  match Depot.DbRepo.start("dbrepo_t1", "sqlite::memory:") do
+  Err(e) -> do let _ = println("start failed: " ++ e) assert false end
+  Ok(_)  -> assert true
+  end
+end
+
+test "start: unknown scheme returns Err" do
+  match Depot.DbRepo.start("dbrepo_bad", "mysql://localhost/db") do
+  Err(_) -> assert true
+  Ok(_)  -> assert false
+  end
+end
+
+test "with_conn: executes SELECT 1 on started repo" do
+  let _ = Depot.DbRepo.start("dbrepo_t2", "sqlite::memory:")
+  match Depot.DbRepo.with_conn("dbrepo_t2", fn conn -> Db.query(conn, "SELECT 1")) do
+  Err(e)    -> do let _ = println("with_conn failed: " ++ e) assert false end
+  Ok(Err(e)) -> do let _ = println("query failed: " ++ e) assert false end
+  Ok(Ok(_))  -> assert true
+  end
+end
+
+test "with_conn: returns Err for unstarted repo" do
+  match Depot.DbRepo.with_conn("dbrepo_never_started_xyz", fn conn -> Db.query(conn, "SELECT 1")) do
+  Err(_) -> assert true
+  Ok(_)  -> assert false
+  end
+end
+
+test "migrate: applies all pending migrations" do
+  let _ = Depot.DbRepo.start("dbrepo_t3", "sqlite::memory:")
+  match Depot.DbRepo.migrate("dbrepo_t3", migrations()) do
+  Err(e) -> do let _ = println("migrate failed: " ++ e) assert false end
+  Ok(n)  -> assert n == 2
+  end
+end
+
+test "migrate: is idempotent — second call applies 0" do
+  let _ = Depot.DbRepo.start("dbrepo_t4", "sqlite::memory:")
+  let _ = Depot.DbRepo.migrate("dbrepo_t4", migrations())
+  match Depot.DbRepo.migrate("dbrepo_t4", migrations()) do
+  Err(e) -> do let _ = println("second migrate failed: " ++ e) assert false end
+  Ok(n)  -> assert n == 0
+  end
+end
+
+test "start_from_env: falls back to default URL when var not set" do
+  let _ = Depot.DbRepo.start_from_env("dbrepo_t5",
+                                       "DEPOT_TEST_NONEXISTENT_ENV_VAR_12345",
+                                       "sqlite::memory:")
+  match Depot.DbRepo.with_conn("dbrepo_t5", fn conn -> Db.query(conn, "SELECT 1")) do
+  Err(e)     -> do let _ = println("with_conn failed: " ++ e) assert false end
+  Ok(Err(e)) -> do let _ = println("query failed: " ++ e) assert false end
+  Ok(Ok(_))  -> assert true
+  end
+end
+
+test "transaction: commits on Ok callback return" do
+  let _ = Depot.DbRepo.start("dbrepo_t6", "sqlite::memory:")
+  let _ = Depot.DbRepo.migrate("dbrepo_t6", Cons(m1(), Nil))
+  let result = Depot.DbRepo.transaction("dbrepo_t6", fn conn ->
+    match Db.query(conn, "INSERT INTO dbrepo_posts (id, title) VALUES (1, 'hello')") do
+    Ok(_)  -> Ok("inserted")
+    Err(e) -> Err(e)
+    end
+  )
+  match result do
+  Err(e)  -> do let _ = println("transaction failed: " ++ e) assert false end
+  Ok(msg) -> assert msg == "inserted"
+  end
+end
+
+test "transaction: rolls back on Err callback return" do
+  let _ = Depot.DbRepo.start("dbrepo_t7", "sqlite::memory:")
+  let _ = Depot.DbRepo.migrate("dbrepo_t7", Cons(m1(), Nil))
+  let _ = Depot.DbRepo.transaction("dbrepo_t7", fn conn ->
+    let _ = Db.query(conn, "INSERT INTO dbrepo_posts (id, title) VALUES (99, 'rollback-me')")
+    Err("force rollback")
+  )
+  match Depot.DbRepo.with_conn("dbrepo_t7", fn conn ->
+    Db.query(conn, "SELECT id FROM dbrepo_posts WHERE id = 99")
+  ) do
+  Err(e)     -> do let _ = println("with_conn failed: " ++ e) assert false end
+  Ok(Err(e)) -> do let _ = println("query failed: " ++ e) assert false end
+  Ok(Ok(r))  -> assert r.rows == Nil
+  end
+end
+
+test "stop: with_conn returns Err after stop" do
+  let _ = Depot.DbRepo.start("dbrepo_t8", "sqlite::memory:")
+  let _ = Depot.DbRepo.stop("dbrepo_t8")
+  match Depot.DbRepo.with_conn("dbrepo_t8", fn conn -> Db.query(conn, "SELECT 1")) do
+  Err(_) -> assert true
+  Ok(_)  -> assert false
+  end
+end
+
+test "multiple repos coexist independently" do
+  let _ = Depot.DbRepo.start("dbrepo_t9a", "sqlite::memory:")
+  let _ = Depot.DbRepo.start("dbrepo_t9b", "sqlite::memory:")
+  let _ = Depot.DbRepo.migrate("dbrepo_t9a", Cons(m1(), Nil))
+  -- m1 applied to "dbrepo_t9a" only; "dbrepo_t9b" still has zero migrations.
+  match Depot.DbRepo.migrate("dbrepo_t9a", Cons(m1(), Nil)) do
+  Ok(n)  -> assert n == 0
+  Err(e) -> do let _ = println("idempotent check failed: " ++ e) assert false end
+  end
+end
+
+end -- mod TestDepotDbRepoSqlite

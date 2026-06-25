@@ -39,9 +39,6 @@
 
 mod Depot.Query do
 
-needs Ffi
-needs IO.Foreign
-
 import Ast
 import Build
 import Db

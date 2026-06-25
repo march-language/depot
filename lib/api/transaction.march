@@ -17,9 +17,6 @@
 
 mod Depot.Transaction do
 
-needs Ffi
-needs IO.Foreign
-
 import Db
 import Pool
 
@@ -98,12 +95,12 @@ Nested calls (same connection) use `SAVEPOINT sp_<depth>` / `RELEASE SAVEPOINT` 
       Err(e) -> ...
     end
 """
-fn run(conn, callback) do
-  let depth = current_depth(conn)
-  match tx_begin(conn, depth) do
+fn run(tx_conn, tx_cb) do
+  let depth = current_depth(tx_conn)
+  match tx_begin(tx_conn, depth) do
     Err(e) -> Err("transaction begin: " ++ e)
     Ok(_)  -> do
-      let _ = set_depth(conn, depth + 1)
+      let _ = set_depth(tx_conn, depth + 1)
       -- Run the user callback inside __try_call so a panic / assert /
       -- match-failure inside their code is turned into Err(msg) and
       -- triggers ROLLBACK rather than leaving the connection stranded
@@ -113,20 +110,20 @@ fn run(conn, callback) do
       -- __try_call_val (not __try_call): the callback returns Result(a, String),
       -- a heap value, which the value-carrying variant preserves in its Ok
       -- payload.  Bare __try_call only carries an immediate Bool.
-      let guarded = __try_call_val(fn _ -> callback(conn))
-      let _ = set_depth(conn, depth)
+      let guarded = __try_call_val(fn _ -> tx_cb(tx_conn))
+      let _ = set_depth(tx_conn, depth)
       let outcome = match guarded do
         Ok(inner)  -> inner
         Err(panic) -> Err("transaction callback panicked: " ++ panic)
       end
       match outcome do
         Ok(v) ->
-          match tx_commit(conn, depth) do
+          match tx_commit(tx_conn, depth) do
             Err(e) -> Err("transaction commit: " ++ e)
             Ok(_)  -> Ok(v)
           end
         Err(reason) ->
-          match tx_rollback(conn, depth) do
+          match tx_rollback(tx_conn, depth) do
             Err(e) -> Err("transaction rollback (orig: " ++ reason ++ "): " ++ e)
             Ok(_)  -> Err(reason)
           end
@@ -142,8 +139,8 @@ and run `callback` inside a `BEGIN` / `COMMIT` block.
 Returns the callback's `Result` directly (unwrapped from the pool layer
 so success and failure paths collapse to a single `Result`).
 """
-fn run_pool(pool, callback) do
-  match with_conn_pinned(pool, fn conn -> run(conn, callback)) do
+fn run_pool(rp_pool, rp_cb) do
+  match with_conn_pinned(rp_pool, fn rp_conn -> run(rp_conn, rp_cb)) do
     Ok(inner) -> inner
     Err(e)    -> Err("transaction checkout: " ++ e)
   end
