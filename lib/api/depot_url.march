@@ -1,0 +1,124 @@
+-- lib/api/depot_url.march
+-- Pure URL parser for Depot database URLs.
+--
+-- Supported schemes:
+--   postgres://[user[:pass]@][host][:port]/database
+--   postgresql://[user[:pass]@][host][:port]/database
+--   sqlite:<path>  (e.g. sqlite::memory: or sqlite:/abs/path or sqlite:./rel)
+
+mod Depot.Url do
+
+import Connection
+
+--- A parsed database URL target.
+--- PgTarget holds a ConnConfig ready for Connection.connect or Pool.start.
+--- SqliteTarget holds the path string for Sqlite.open_conn.
+type UrlTarget = PgTarget(ConnConfig) | SqliteTarget(String)
+
+-- ── SQLite ────────────────────────────────────────────────────────────────────
+
+pfn parse_sqlite(url) do
+  -- Split on first ":" to strip "sqlite"; everything after is the path.
+  -- "sqlite::memory:" -> ":memory:"   "sqlite:/abs/path" -> "/abs/path"
+  match String.split_first(url, ":") do
+  None            -> Err("invalid sqlite URL: " ++ url)
+  Some((_, path)) -> Ok(SqliteTarget(path))
+  end
+end
+
+-- ── Postgres helpers ──────────────────────────────────────────────────────────
+
+pfn parse_userinfo(userinfo) do
+  match String.split_first(userinfo, ":") do
+  None             -> Ok((userinfo, None))
+  Some((user, pw)) -> Ok((user, Some(pw)))
+  end
+end
+
+pfn strip_query(s) do
+  match String.split_first(s, "?") do
+  None         -> s
+  Some((h, _)) -> h
+  end
+end
+
+pfn parse_hostport(hostport) do
+  match String.split_first(hostport, ":") do
+  None ->
+    Ok((hostport, 5432))
+  Some((host, port_str)) ->
+    match string_to_int(port_str) do
+    None    -> Err("invalid port number: " ++ port_str)
+    Some(p) -> Ok((host, p))
+    end
+  end
+end
+
+pfn default_host(host) do
+  if host == "" do "127.0.0.1"
+  else host
+  end
+end
+
+-- hostpart = "host[:port]/database[?query]"
+pfn parse_pg_hostpart(hostpart, user, password) do
+  let without_query = strip_query(hostpart)
+  match String.split_first(without_query, "/") do
+  None ->
+    Err("missing database name in URL (expected host/database)")
+  Some((hostport, database)) ->
+    match parse_hostport(hostport) do
+    Err(e) -> Err(e)
+    Ok((host, port)) ->
+      Ok(PgTarget({
+        host:     default_host(host),
+        port:     port,
+        user:     user,
+        database: database,
+        password: password
+      }))
+    end
+  end
+end
+
+-- rest = "[user[:pass]@]host[:port]/database[?query]"
+pfn parse_pg_authority(rest) do
+  match String.split_first(rest, "@") do
+  None ->
+    parse_pg_hostpart(rest, "postgres", None)
+  Some((userinfo, hostpart)) ->
+    match parse_userinfo(userinfo) do
+    Err(e)               -> Err(e)
+    Ok((user, password)) -> parse_pg_hostpart(hostpart, user, password)
+    end
+  end
+end
+
+pfn parse_pg(url) do
+  match String.split_first(url, "://") do
+  None            -> Err("malformed URL: " ++ url)
+  Some((_, rest)) -> parse_pg_authority(rest)
+  end
+end
+
+-- ── Public API ────────────────────────────────────────────────────────────────
+
+--- Parse a database URL string.
+---
+--- Returns Ok(PgTarget(cfg)) for postgres:// / postgresql:// URLs,
+--- Ok(SqliteTarget(path)) for sqlite: URLs, or Err(msg) on any parse failure.
+fn parse(url) do
+  match String.split_first(url, ":") do
+  None ->
+    Err("invalid URL: no scheme separator found")
+  Some((scheme, _)) ->
+    match scheme do
+    "sqlite"     -> parse_sqlite(url)
+    "postgres"   -> parse_pg(url)
+    "postgresql" -> parse_pg(url)
+    _            -> Err("unrecognized URL scheme: " ++ scheme ++ " (expected postgres, postgresql, or sqlite)")
+    end
+  end
+end
+
+end -- mod Depot.Url

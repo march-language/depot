@@ -1,0 +1,102 @@
+mod TestDepotUrl do
+
+import Depot.Url
+
+test "parse postgres URL — user, password, custom host and port" do
+  match Depot.Url.parse("postgres://alice:secret@db.example.com:5433/mydb") do
+  Err(e)              -> do let _ = println("unexpected Err: " ++ e) assert false end
+  Ok(SqliteTarget(_)) -> do let _ = println("wrong target") assert false end
+  Ok(PgTarget(cfg))   -> do
+    assert cfg.host     == "db.example.com"
+    assert cfg.port     == 5433
+    assert cfg.user     == "alice"
+    assert cfg.database == "mydb"
+    assert cfg.password == Some("secret")
+  end
+  end
+end
+
+test "parse postgres URL — localhost, no password, default port" do
+  match Depot.Url.parse("postgres://localhost/mydb") do
+  Err(e)              -> do let _ = println("unexpected Err: " ++ e) assert false end
+  Ok(SqliteTarget(_)) -> do let _ = println("wrong target") assert false end
+  Ok(PgTarget(cfg))   -> do
+    assert cfg.host     == "localhost"
+    assert cfg.port     == 5432
+    assert cfg.database == "mydb"
+    assert cfg.password == None
+  end
+  end
+end
+
+test "parse postgres URL — no userinfo, defaults to port 5432 and user postgres" do
+  match Depot.Url.parse("postgres://127.0.0.1/testdb") do
+  Err(e)              -> do let _ = println("unexpected Err: " ++ e) assert false end
+  Ok(SqliteTarget(_)) -> do let _ = println("wrong target") assert false end
+  Ok(PgTarget(cfg))   -> do
+    assert cfg.host     == "127.0.0.1"
+    assert cfg.port     == 5432
+    assert cfg.database == "testdb"
+    assert cfg.user     == "postgres"
+  end
+  end
+end
+
+test "parse postgresql:// scheme (alias for postgres://)" do
+  match Depot.Url.parse("postgresql://bob@pg.local/bobdb") do
+  Err(e)              -> do let _ = println("unexpected Err: " ++ e) assert false end
+  Ok(SqliteTarget(_)) -> do let _ = println("wrong target") assert false end
+  Ok(PgTarget(cfg))   -> do
+    assert cfg.host     == "pg.local"
+    assert cfg.user     == "bob"
+    assert cfg.database == "bobdb"
+  end
+  end
+end
+
+test "parse sqlite in-memory URL" do
+  match Depot.Url.parse("sqlite::memory:") do
+  Err(e)                  -> do let _ = println("unexpected Err: " ++ e) assert false end
+  Ok(PgTarget(_))         -> do let _ = println("wrong target") assert false end
+  Ok(SqliteTarget(path))  -> assert path == ":memory:"
+  end
+end
+
+test "parse sqlite absolute file path" do
+  match Depot.Url.parse("sqlite:/tmp/myapp.sqlite") do
+  Err(e)                  -> do let _ = println("unexpected Err: " ++ e) assert false end
+  Ok(PgTarget(_))         -> do let _ = println("wrong target") assert false end
+  Ok(SqliteTarget(path))  -> assert path == "/tmp/myapp.sqlite"
+  end
+end
+
+test "parse sqlite relative file path" do
+  match Depot.Url.parse("sqlite:./data/dev.sqlite") do
+  Err(e)                  -> do let _ = println("unexpected Err: " ++ e) assert false end
+  Ok(PgTarget(_))         -> do let _ = println("wrong target") assert false end
+  Ok(SqliteTarget(path))  -> assert path == "./data/dev.sqlite"
+  end
+end
+
+test "unknown scheme returns Err" do
+  match Depot.Url.parse("mysql://localhost/mydb") do
+  Err(_) -> assert true
+  Ok(_)  -> assert false
+  end
+end
+
+test "missing database name returns Err" do
+  match Depot.Url.parse("postgres://localhost") do
+  Err(_) -> assert true
+  Ok(_)  -> assert false
+  end
+end
+
+test "invalid port returns Err" do
+  match Depot.Url.parse("postgres://localhost:notaport/mydb") do
+  Err(_) -> assert true
+  Ok(_)  -> assert false
+  end
+end
+
+end -- mod TestDepotUrl
