@@ -1,0 +1,130 @@
+-- test/test_migration_sqlite_live.march
+-- Live migration tests against an in-memory SQLite database.
+--
+-- Exercises the SQLite-specific branches added to Depot.Migration:
+--   - ensure_migrations_table uses INTEGER + CURRENT_TIMESTAMP (not BIGINT/NOW())
+--   - applied_versions uses CAST(version AS TEXT) (not ::text cast)
+--   - migrate/rollback round-trip on SQLite
+
+mod TestMigrationSqliteLive do
+
+needs Ffi
+needs IO.Foreign
+
+import Db
+import Depot.Migration
+
+pfn open_mem() do
+  match Db.from_sqlite(":memory:") do
+    Ok(conn) -> conn
+    Err(e)   -> panic("from_sqlite(:memory:) failed: " ++ e)
+  end
+end
+
+-- Three simple migrations: each creates / drops a table.
+pfn m1() do
+  { version: 1,
+    up:   Cons("CREATE TABLE mig1 (id INTEGER PRIMARY KEY)", Nil),
+    down: Cons("DROP TABLE mig1", Nil) }
+end
+
+pfn m2() do
+  { version: 2,
+    up:   Cons("CREATE TABLE mig2 (id INTEGER PRIMARY KEY)", Nil),
+    down: Cons("DROP TABLE mig2", Nil) }
+end
+
+pfn m3() do
+  { version: 3,
+    up:   Cons("CREATE TABLE mig3 (id INTEGER PRIMARY KEY)", Nil),
+    down: Cons("DROP TABLE mig3", Nil) }
+end
+
+pfn all_migs() do Cons(m1(), Cons(m2(), Cons(m3(), Nil))) end
+
+pfn table_exists(conn, name) do
+  let sql = "SELECT name FROM sqlite_master WHERE type='table' AND name='" ++ name ++ "'"
+  match Db.query(conn, sql) do
+    Ok(r) ->
+      match r.rows do
+        Cons(_, _) -> true
+        Nil        -> false
+      end
+    Err(_) -> false
+  end
+end
+
+test "migrate: schema_migrations table created with SQLite schema" do
+  let conn = open_mem()
+  match Depot.Migration.migrate(conn, Nil) do
+    Err(e) -> do let _ = println("migrate: " ++ e) assert false end
+    Ok(_)  -> assert table_exists(conn, "schema_migrations")
+  end
+end
+
+test "migrate: applies all pending migrations" do
+  let conn = open_mem()
+  match Depot.Migration.migrate(conn, all_migs()) do
+    Err(e) -> do let _ = println("migrate: " ++ e) assert false end
+    Ok(n)  -> do
+      assert n == 3
+      assert table_exists(conn, "mig1")
+      assert table_exists(conn, "mig2")
+      assert table_exists(conn, "mig3")
+    end
+  end
+end
+
+test "migrate: is idempotent (second call applies 0 migrations)" do
+  let conn = open_mem()
+  let _ = Depot.Migration.migrate(conn, all_migs())
+  match Depot.Migration.migrate(conn, all_migs()) do
+    Err(e) -> do let _ = println("second migrate: " ++ e) assert false end
+    Ok(n)  -> assert n == 0
+  end
+end
+
+test "rollback: reverses the most recent migration" do
+  let conn = open_mem()
+  let _ = Depot.Migration.migrate(conn, all_migs())
+  match Depot.Migration.rollback(conn, all_migs(), 1) do
+    Err(e) -> do let _ = println("rollback: " ++ e) assert false end
+    Ok(n)  -> do
+      assert n == 1
+      assert table_exists(conn, "mig1")
+      assert table_exists(conn, "mig2")
+      assert table_exists(conn, "mig3") == false
+    end
+  end
+end
+
+test "rollback: reverses all migrations when n >= count" do
+  let conn = open_mem()
+  let _ = Depot.Migration.migrate(conn, all_migs())
+  match Depot.Migration.rollback(conn, all_migs(), 10) do
+    Err(e) -> do let _ = println("rollback all: " ++ e) assert false end
+    Ok(n)  -> do
+      assert n == 3
+      assert table_exists(conn, "mig1") == false
+      assert table_exists(conn, "mig2") == false
+      assert table_exists(conn, "mig3") == false
+    end
+  end
+end
+
+test "migrate after rollback: re-applies missing migrations" do
+  let conn = open_mem()
+  let _ = Depot.Migration.migrate(conn, all_migs())
+  let _ = Depot.Migration.rollback(conn, all_migs(), 2)
+  match Depot.Migration.migrate(conn, all_migs()) do
+    Err(e) -> do let _ = println("re-migrate: " ++ e) assert false end
+    Ok(n)  -> do
+      assert n == 2
+      assert table_exists(conn, "mig1")
+      assert table_exists(conn, "mig2")
+      assert table_exists(conn, "mig3")
+    end
+  end
+end
+
+end -- mod TestMigrationSqliteLive

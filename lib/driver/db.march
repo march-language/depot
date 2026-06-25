@@ -47,7 +47,9 @@ end
 fn exec(conn, sql, params) do
   match conn do
   PostgresConn(c) -> Connection.exec_prepared(c, sql, params)
-  SqliteConn(s)   -> Sqlite.exec(s.db, Sqlite.replace_placeholders(sql), params)
+  SqliteConn(s)   ->
+    let sqlite_sql = sql |> Sqlite.replace_placeholders() |> Sqlite.replace_ilike()
+    Sqlite.exec(s.db, sqlite_sql, params)
   end
 end
 
@@ -55,7 +57,7 @@ end
 fn query(conn, sql) do
   match conn do
   PostgresConn(c) -> Connection.simple_query(c, sql)
-  SqliteConn(s)   -> Sqlite.query(s.db, sql)
+  SqliteConn(s)   -> Sqlite.query(s.db, Sqlite.replace_ilike(sql))
   end
 end
 

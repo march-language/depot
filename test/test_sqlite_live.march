@@ -12,6 +12,7 @@ needs Ffi
 needs IO.Foreign
 
 import Db
+import Depot.Transaction
 import Message
 import Ast
 import MutationBuild
@@ -158,6 +159,72 @@ test "MutationExec.exec_insert via SQLite" do
                 _ -> assert false
               end
           end
+      end
+  end
+end
+
+-- ---- Transaction tests ----
+
+test "Transaction.run: commit path persists data" do
+  let conn = open_mem()
+  match Db.query(conn, "CREATE TABLE tx_t (v TEXT)") do
+    Err(e) -> do let _ = println("CREATE: " ++ e) assert false end
+    Ok(_) ->
+      match Depot.Transaction.run(conn, fn c ->
+        Db.exec(c, "INSERT INTO tx_t VALUES ($1)", [ParamText("committed")])
+      ) do
+        Err(e) -> do let _ = println("tx: " ++ e) assert false end
+        Ok(_) ->
+          match Db.query(conn, "SELECT v FROM tx_t") do
+            Err(e) -> do let _ = println("SELECT: " ++ e) assert false end
+            Ok(r) ->
+              match r.rows do
+                Cons(Cons(Some(v), Nil), Nil) -> assert v == "committed"
+                _ -> assert false
+              end
+          end
+      end
+  end
+end
+
+test "Transaction.run: Err return rolls back" do
+  let conn = open_mem()
+  match Db.query(conn, "CREATE TABLE tx_rb (v TEXT)") do
+    Err(e) -> do let _ = println("CREATE: " ++ e) assert false end
+    Ok(_) ->
+      let _ = Depot.Transaction.run(conn, fn c ->
+        let _ = Db.exec(c, "INSERT INTO tx_rb VALUES ($1)", [ParamText("rollme")])
+        Err("deliberate rollback")
+      )
+      match Db.query(conn, "SELECT v FROM tx_rb") do
+        Err(e) -> do let _ = println("SELECT: " ++ e) assert false end
+        Ok(r) ->
+          match r.rows do
+            Nil -> assert true
+            _   -> assert false
+          end
+      end
+  end
+end
+
+-- Raw savepoint test: verifies SQLite SAVEPOINT semantics without nesting
+-- Depot.Transaction.run (which would nest __try_call_val — march#8 in native mode).
+test "SQLite SAVEPOINT: release commits inner work into outer transaction" do
+  let conn = open_mem()
+  let _ = Db.query(conn, "CREATE TABLE tx_nest (v TEXT)")
+  let _ = Db.query(conn, "BEGIN")
+  let _ = Db.exec(conn, "INSERT INTO tx_nest VALUES ($1)", [ParamText("outer")])
+  let _ = Db.query(conn, "SAVEPOINT sp_1")
+  let _ = Db.exec(conn, "INSERT INTO tx_nest VALUES ($1)", [ParamText("inner")])
+  let _ = Db.query(conn, "RELEASE SAVEPOINT sp_1")
+  let _ = Db.query(conn, "COMMIT")
+  match Db.query(conn, "SELECT v FROM tx_nest ORDER BY v") do
+    Err(e) -> do let _ = println("SELECT: " ++ e) assert false end
+    Ok(r) ->
+      match r.rows do
+        Cons(Cons(Some(a), Nil), Cons(Cons(Some(b), Nil), Nil)) ->
+          assert a == "inner" && b == "outer"
+        _ -> assert false
       end
   end
 end

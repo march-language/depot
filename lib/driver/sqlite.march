@@ -114,6 +114,16 @@ fn replace_placeholders(sql) do
   scan(sql, 0, String.byte_size(sql), "")
 end
 
+doc """
+Replace `ILIKE` with `LIKE` for SQLite compatibility.
+
+SQLite does not support `ILIKE`. Its `LIKE` operator is case-insensitive for
+ASCII by default, which is equivalent for the typical use case.
+"""
+fn replace_ilike(sql) do
+  String.replace_all(sql, " ILIKE ", " LIKE ")
+end
+
 -- ---- Private helpers ----
 
 -- Bind each param in order starting at 1-based index `idx`.
