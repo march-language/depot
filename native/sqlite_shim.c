@@ -1,7 +1,14 @@
 /* native/sqlite_shim.c — Depot SQLite FFI shim.
- * Wraps libsqlite3 for use from March via the C FFI ABI.
- * Build: compiled automatically by forge when [ffi] is configured.
+ *
+ * Wraps libsqlite3 for use from March via the C FFI ABI defined in
+ * march_ffi.h. Compiled automatically by forge when [ffi] is configured.
+ *
+ * Resource lifetime: sqlite3* and sqlite3_stmt* are registered with
+ * march_resource_type so Perceus RC fires sqlite3_close / sqlite3_finalize
+ * automatically when the last March reference drops — no explicit cleanup
+ * needed in March code.
  */
+
 #include "march_ffi.h"
 #include <sqlite3.h>
 #include <string.h>
@@ -9,12 +16,118 @@
 
 int32_t march_ffi_abi_version(void) { return MARCH_FFI_ABI_VERSION; }
 
-/* Stub — filled in Task 4. */
-march_value depot_sqlite_open(march_value path_str)         { return march_err(march_str_new((const uint8_t*)"not implemented", 15)); }
-march_value depot_sqlite_prepare(march_value db_val, march_value sql_str) { return march_err(march_str_new((const uint8_t*)"not implemented", 15)); }
-march_value depot_sqlite_bind_text(march_value stmt_val, march_value idx_val, march_value text_val) { return march_make_int(0); }
-march_value depot_sqlite_bind_null(march_value stmt_val, march_value idx_val) { return march_make_int(0); }
-march_value depot_sqlite_step(march_value stmt_val)         { return march_make_int(21); } /* SQLITE_MISUSE */
-march_value depot_sqlite_column_count(march_value stmt_val) { return march_make_int(0); }
-march_value depot_sqlite_column_name(march_value stmt_val, march_value idx_val) { return march_str_new((const uint8_t*)"", 0); }
-march_value depot_sqlite_column_text(march_value stmt_val, march_value idx_val) { return march_none(); }
+/* ---- Resource type IDs (initialised once on first open) ---- */
+
+static int32_t db_type_id   = -1;
+static int32_t stmt_type_id = -1;
+
+static void db_destructor(void *ptr)   { sqlite3_close((sqlite3 *)ptr); }
+static void stmt_destructor(void *ptr) { sqlite3_finalize((sqlite3_stmt *)ptr); }
+
+static void ensure_types(void) {
+    if (db_type_id < 0) {
+        db_type_id   = march_resource_type("depot_sqlite3",      db_destructor);
+        stmt_type_id = march_resource_type("depot_sqlite3_stmt", stmt_destructor);
+    }
+}
+
+/* ---- String helpers ---- */
+
+/* Borrow a March string into a NUL-terminated C string (caller must free). */
+static char *str_to_cstr(march_value s) {
+    march_slice sl = march_str_borrow(s);
+    char *buf = malloc(sl.len + 1);
+    if (!buf) return NULL;
+    memcpy(buf, sl.ptr, sl.len);
+    buf[sl.len] = '\0';
+    return buf;
+}
+
+/* Wrap a NUL-terminated C string into a March string. NULL -> empty string. */
+static march_value cstr_to_str(const char *s) {
+    if (!s) return march_str_new((const uint8_t *)"", 0);
+    return march_str_new((const uint8_t *)s, strlen(s));
+}
+
+/* ---- Exported functions ---- */
+
+/* depot_sqlite_open(path: String): Result(Db, String) */
+march_value depot_sqlite_open(march_value path_str) {
+    ensure_types();
+    char *path = str_to_cstr(path_str);
+    sqlite3 *db = NULL;
+    int rc = sqlite3_open(path, &db);
+    free(path);
+    if (rc != SQLITE_OK) {
+        march_value err = cstr_to_str(db ? sqlite3_errmsg(db) : "sqlite3_open failed");
+        if (db) sqlite3_close(db);
+        return march_err(err);
+    }
+    return march_ok(march_resource_new(db_type_id, db));
+}
+
+/* depot_sqlite_prepare(db: Db, sql: String): Result(Stmt, String) */
+march_value depot_sqlite_prepare(march_value db_val, march_value sql_str) {
+    sqlite3 *db = march_resource_get(db_val, db_type_id);
+    char *sql = str_to_cstr(sql_str);
+    sqlite3_stmt *stmt = NULL;
+    int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    free(sql);
+    if (rc != SQLITE_OK) {
+        return march_err(cstr_to_str(sqlite3_errmsg(db)));
+    }
+    return march_ok(march_resource_new(stmt_type_id, stmt));
+}
+
+/* depot_sqlite_bind_text(stmt: Stmt, idx: Int, val: String): Int */
+march_value depot_sqlite_bind_text(march_value stmt_val, march_value idx_val,
+                                   march_value text_val) {
+    sqlite3_stmt *stmt = march_resource_get(stmt_val, stmt_type_id);
+    int col = (int)march_get_int(idx_val);
+    march_slice s = march_str_borrow(text_val);
+    int rc = sqlite3_bind_text(stmt, col, (const char *)s.ptr, (int)s.len,
+                               SQLITE_TRANSIENT);
+    return march_make_int(rc);
+}
+
+/* depot_sqlite_bind_null(stmt: Stmt, idx: Int): Int */
+march_value depot_sqlite_bind_null(march_value stmt_val, march_value idx_val) {
+    sqlite3_stmt *stmt = march_resource_get(stmt_val, stmt_type_id);
+    int col = (int)march_get_int(idx_val);
+    return march_make_int(sqlite3_bind_null(stmt, col));
+}
+
+/* depot_sqlite_step(stmt: Stmt): Int
+ * Returns 100 (SQLITE_ROW), 101 (SQLITE_DONE), or an error code. */
+march_value depot_sqlite_step(march_value stmt_val) {
+    sqlite3_stmt *stmt = march_resource_get(stmt_val, stmt_type_id);
+    return march_make_int(sqlite3_step(stmt));
+}
+
+/* depot_sqlite_column_count(stmt: Stmt): Int */
+march_value depot_sqlite_column_count(march_value stmt_val) {
+    sqlite3_stmt *stmt = march_resource_get(stmt_val, stmt_type_id);
+    return march_make_int(sqlite3_column_count(stmt));
+}
+
+/* depot_sqlite_column_name(stmt: Stmt, idx: Int): String
+ * idx is zero-based. */
+march_value depot_sqlite_column_name(march_value stmt_val, march_value idx_val) {
+    sqlite3_stmt *stmt = march_resource_get(stmt_val, stmt_type_id);
+    int col = (int)march_get_int(idx_val);
+    return cstr_to_str(sqlite3_column_name(stmt, col));
+}
+
+/* depot_sqlite_column_text(stmt: Stmt, idx: Int): Option(String)
+ * Returns None for NULL columns, Some(text) otherwise.
+ * Uses niche encoding: Some(heap_ptr) == heap_ptr, None == 0. */
+march_value depot_sqlite_column_text(march_value stmt_val, march_value idx_val) {
+    sqlite3_stmt *stmt = march_resource_get(stmt_val, stmt_type_id);
+    int col = (int)march_get_int(idx_val);
+    if (sqlite3_column_type(stmt, col) == SQLITE_NULL) {
+        return march_none();
+    }
+    const unsigned char *text = sqlite3_column_text(stmt, col);
+    int len = sqlite3_column_bytes(stmt, col);
+    return march_some(march_str_new(text, (size_t)len));
+}
