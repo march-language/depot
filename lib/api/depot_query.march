@@ -43,6 +43,9 @@ import Ast
 import Build
 import Db
 
+needs IO.NetConnect
+needs IO.Random
+
 -- ---------------------------------------------------------------------------
 -- Types
 -- ---------------------------------------------------------------------------
@@ -254,7 +257,7 @@ pfn filter_by_pred(rows, pred, acc) do
   match rows do
   Nil -> List.reverse(acc)
   Cons(h, t) ->
-    if pred(h) == true do
+    if pred(h) do
       filter_by_pred(t, pred, Cons(h, acc))
     else
       filter_by_pred(t, pred, acc)
@@ -538,36 +541,19 @@ fn count_sql(query, conn) do
 end
 
 
--- Convert a List(Param) to List(String) for the public to_params API.
-pfn params_to_strings(params) do
-  params_to_strings_acc(params, Nil)
-end
-
-pfn params_to_strings_acc(params, acc) do
-  match params do
-  Nil -> List.reverse(acc)
-  Cons(p, rest) ->
-    match p do
-    ParamText(s)   -> params_to_strings_acc(rest, Cons(s, acc))
-    ParamNull      -> params_to_strings_acc(rest, Cons("", acc))
-    ParamBinary(_) -> params_to_strings_acc(rest, Cons("", acc))
-    end
-  end
-end
-
 -- Zip column names with row values into an assoc list (tail-recursive).
 pfn zip_cols(cols, vals) do
   zip_cols_acc(cols, vals, Nil)
 end
 
 pfn zip_cols_acc(cols, vals, acc) do
-  match (cols, vals) do
-  (Nil, _) -> List.reverse(acc)
-  (_, Nil) -> List.reverse(acc)
-  (Cons(c, cr), Cons(v, vr)) -> zip_cols_acc(cr, vr, Cons((c, v), acc))
-  -- Logically unreachable; satisfies the exhaustiveness checker, which doesn't
-  -- prove tuple-of-lists matches exhaustive from the three arms above.
-  _ -> List.reverse(acc)
+  match cols do
+  Nil -> List.reverse(acc)
+  Cons(c, cr) ->
+    match vals do
+    Nil -> List.reverse(acc)
+    Cons(v, vr) -> zip_cols_acc(cr, vr, Cons((c, v), acc))
+    end
   end
 end
 

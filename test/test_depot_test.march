@@ -19,15 +19,8 @@ fn make_gate(name, email) do
   )
 end
 
-fn unwrap_ok(result) do
-  match result do
-    Ok(v) -> v
-    Err(_) -> panic("expected Ok, got Err")
-  end
-end
-
 fn insert_user(name, email) do
-  unwrap_ok(Depot.Repo.insert(user_schema(), make_gate(name, email)))
+  Depot.Repo.insert(user_schema(), make_gate(name, email))
 end
 
 fn clear_users() do

@@ -8,6 +8,8 @@
 
 mod CmdDepot do
 
+needs IO.Console
+
 -- ---- Constants ----
 
 pfn migration_dir() do Path.join(Path.join("priv", "depot"), "migrations") end

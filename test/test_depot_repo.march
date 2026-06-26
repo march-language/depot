@@ -14,35 +14,11 @@ fn user_schema() do
   })
 end
 
--- Helper: unwrap Ok or panic.
-fn unwrap_ok(result) do
-  match result do
-    Ok(v) -> v
-    Err(_) -> panic("expected Ok, got Err")
-  end
-end
-
 -- Helper: check if result is Err.
 fn is_err(result) do
   match result do
     Ok(_) -> false
     Err(_) -> true
-  end
-end
-
--- Helper: unwrap Err gate.
-fn unwrap_err(result) do
-  match result do
-    Ok(_) -> panic("expected Err, got Ok")
-    Err(g) -> g
-  end
-end
-
--- Helper: unwrap Some or panic.
-fn unwrap_some(opt) do
-  match opt do
-    Some(v) -> v
-    None -> panic("expected Some, got None")
   end
 end
 
@@ -54,13 +30,13 @@ fn is_none(opt) do
   end
 end
 
--- Helper: insert a user and return the record.
+-- Helper: insert a user and return Result(record, gate).
 fn insert_user(name, email, age, role) do
   let schema = user_schema()
   let blank = Depot.Schema.blank(schema)
   let params = { name: name, email: email, age: age, role: role }
   let gate = Depot.Gate.cast_record(blank, params, ["name", "email", "age", "role"])
-  unwrap_ok(Depot.Repo.insert(schema, gate))
+  Depot.Repo.insert(schema, gate)
 end
 
 -- Helper: clear all test data before each test group.
@@ -78,11 +54,15 @@ test "insert returns Ok with a record" do
   let blank = Depot.Schema.blank(schema)
   let params = { name: "Alice", email: "alice@test.com", age: 30, role: "admin" }
   let gate = Depot.Gate.cast_record(blank, params, ["name", "email", "age", "role"])
-  let record = unwrap_ok(Depot.Repo.insert(schema, gate))
-  assert record.name == "Alice"
-  assert record.email == "alice@test.com"
-  assert to_string(record.age) == "30"
-  assert record.role == "admin"
+  match Depot.Repo.insert(schema, gate) do
+    Err(_) -> assert false
+    Ok(record) -> do
+      assert record.name == "Alice"
+      assert record.email == "alice@test.com"
+      assert to_string(record.age) == "30"
+      assert record.role == "admin"
+    end
+  end
 end
 
 test "insert auto-generates a primary key (id)" do
@@ -91,8 +71,10 @@ test "insert auto-generates a primary key (id)" do
   let blank = Depot.Schema.blank(schema)
   let params = { name: "Bob", email: "bob@test.com", age: 25, role: "user" }
   let gate = Depot.Gate.cast_record(blank, params, ["name", "email", "age", "role"])
-  let record = unwrap_ok(Depot.Repo.insert(schema, gate))
-  assert String.byte_size(record.id) > 0
+  match Depot.Repo.insert(schema, gate) do
+    Err(_) -> assert false
+    Ok(record) -> assert String.byte_size(record.id) > 0
+  end
 end
 
 test "insert returns Err when gate is invalid" do
@@ -104,23 +86,29 @@ test "insert returns Err when gate is invalid" do
     |> Depot.Gate.validate_required(["name", "email"])
   let result = Depot.Repo.insert(schema, gate)
   assert is_err(result) == true
-  let g = unwrap_err(result)
-  assert Depot.Gate.is_valid(g) == false
+  match result do
+    Err(g) -> assert Depot.Gate.is_valid(g) == false
+    Ok(_)  -> assert false
+  end
 end
 
 test "insert stores the record in Vault" do
   clear_users()
-  let record = insert_user("Charlie", "charlie@test.com", 35, "user")
-  let schema = user_schema()
-  let fetched = unwrap_some(Depot.Repo.get(schema, record.id))
-  assert fetched.name == "Charlie"
+  match insert_user("Charlie", "charlie@test.com", 35, "user") do
+    Err(_) -> assert false
+    Ok(record) ->
+      match Depot.Repo.get(user_schema(), record.id) do
+        None    -> assert false
+        Some(fetched) -> assert fetched.name == "Charlie"
+      end
+  end
 end
 
 test "insert multiple records" do
   clear_users()
-  insert_user("Alice", "alice@test.com", 30, "admin")
-  insert_user("Bob", "bob@test.com", 25, "user")
-  insert_user("Charlie", "charlie@test.com", 35, "user")
+  let _ = insert_user("Alice", "alice@test.com", 30, "admin")
+  let _ = insert_user("Bob", "bob@test.com", 25, "user")
+  let _ = insert_user("Charlie", "charlie@test.com", 35, "user")
   assert Depot.Repo.count(user_schema()) == 3
 end
 
@@ -136,8 +124,8 @@ end
 
 test "all returns all inserted records" do
   clear_users()
-  insert_user("Alice", "alice@test.com", 30, "admin")
-  insert_user("Bob", "bob@test.com", 25, "user")
+  let _ = insert_user("Alice", "alice@test.com", 30, "admin")
+  let _ = insert_user("Bob", "bob@test.com", 25, "user")
   let rows = Depot.Repo.all(user_schema())
   assert List.length(rows) == 2
 end
@@ -148,9 +136,14 @@ end
 
 test "get returns Some for existing record" do
   clear_users()
-  let record = insert_user("Alice", "alice@test.com", 30, "admin")
-  let fetched = unwrap_some(Depot.Repo.get(user_schema(), record.id))
-  assert fetched.email == "alice@test.com"
+  match insert_user("Alice", "alice@test.com", 30, "admin") do
+    Err(_) -> assert false
+    Ok(record) ->
+      match Depot.Repo.get(user_schema(), record.id) do
+        None    -> assert false
+        Some(fetched) -> assert fetched.email == "alice@test.com"
+      end
+  end
 end
 
 test "get returns None for missing id" do
@@ -164,9 +157,14 @@ end
 
 test "get_bang returns record for existing id" do
   clear_users()
-  let record = insert_user("Alice", "alice@test.com", 30, "admin")
-  let fetched = unwrap_ok(Depot.Repo.get_bang(user_schema(), record.id))
-  assert fetched.name == "Alice"
+  match insert_user("Alice", "alice@test.com", 30, "admin") do
+    Err(_) -> assert false
+    Ok(record) ->
+      match Depot.Repo.get_bang(user_schema(), record.id) do
+        Err(_)       -> assert false
+        Ok(fetched)  -> assert fetched.name == "Alice"
+      end
+  end
 end
 
 -- =========================================================================
@@ -175,24 +173,28 @@ end
 
 test "get_by finds record matching single field" do
   clear_users()
-  insert_user("Alice", "alice@test.com", 30, "admin")
-  insert_user("Bob", "bob@test.com", 25, "user")
-  let found = unwrap_some(Depot.Repo.get_by(user_schema(), { email: "bob@test.com" }))
-  assert found.name == "Bob"
+  let _ = insert_user("Alice", "alice@test.com", 30, "admin")
+  let _ = insert_user("Bob", "bob@test.com", 25, "user")
+  match Depot.Repo.get_by(user_schema(), { email: "bob@test.com" }) do
+    None    -> assert false
+    Some(found) -> assert found.name == "Bob"
+  end
 end
 
 test "get_by finds record matching multiple fields" do
   clear_users()
-  insert_user("Alice", "alice@test.com", 30, "admin")
-  insert_user("Bob", "bob@test.com", 25, "user")
-  insert_user("Charlie", "charlie@test.com", 35, "user")
-  let found = unwrap_some(Depot.Repo.get_by(user_schema(), { role: "user", name: "Charlie" }))
-  assert found.email == "charlie@test.com"
+  let _ = insert_user("Alice", "alice@test.com", 30, "admin")
+  let _ = insert_user("Bob", "bob@test.com", 25, "user")
+  let _ = insert_user("Charlie", "charlie@test.com", 35, "user")
+  match Depot.Repo.get_by(user_schema(), { role: "user", name: "Charlie" }) do
+    None    -> assert false
+    Some(found) -> assert found.email == "charlie@test.com"
+  end
 end
 
 test "get_by returns None when no match" do
   clear_users()
-  insert_user("Alice", "alice@test.com", 30, "admin")
+  let _ = insert_user("Alice", "alice@test.com", 30, "admin")
   assert is_none(Depot.Repo.get_by(user_schema(), { email: "nobody@test.com" })) == true
 end
 
@@ -202,9 +204,11 @@ end
 
 test "one returns Some when exactly one record" do
   clear_users()
-  insert_user("Alice", "alice@test.com", 30, "admin")
-  let found = unwrap_some(Depot.Repo.one(user_schema()))
-  assert found.name == "Alice"
+  let _ = insert_user("Alice", "alice@test.com", 30, "admin")
+  match Depot.Repo.one(user_schema()) do
+    None    -> assert false
+    Some(found) -> assert found.name == "Alice"
+  end
 end
 
 test "one returns None when zero records" do
@@ -214,8 +218,8 @@ end
 
 test "one returns None when multiple records" do
   clear_users()
-  insert_user("Alice", "alice@test.com", 30, "admin")
-  insert_user("Bob", "bob@test.com", 25, "user")
+  let _ = insert_user("Alice", "alice@test.com", 30, "admin")
+  let _ = insert_user("Bob", "bob@test.com", 25, "user")
   assert is_none(Depot.Repo.one(user_schema())) == true
 end
 
@@ -230,9 +234,9 @@ end
 
 test "count returns correct number" do
   clear_users()
-  insert_user("A", "a@test.com", 1, "user")
-  insert_user("B", "b@test.com", 2, "user")
-  insert_user("C", "c@test.com", 3, "admin")
+  let _ = insert_user("A", "a@test.com", 1, "user")
+  let _ = insert_user("B", "b@test.com", 2, "user")
+  let _ = insert_user("C", "c@test.com", 3, "admin")
   assert Depot.Repo.count(user_schema()) == 3
 end
 
@@ -247,7 +251,7 @@ end
 
 test "exists returns true when records present" do
   clear_users()
-  insert_user("Alice", "alice@test.com", 30, "admin")
+  let _ = insert_user("Alice", "alice@test.com", 30, "admin")
   assert Depot.Repo.exists(user_schema()) == true
 end
 
@@ -257,18 +261,22 @@ end
 
 test "delete removes a record by id and returns Ok" do
   clear_users()
-  let record = insert_user("Alice", "alice@test.com", 30, "admin")
-  assert Depot.Repo.count(user_schema()) == 1
-  match Depot.Repo.delete(user_schema(), record.id) do
-    Ok(id) -> assert id == record.id
+  match insert_user("Alice", "alice@test.com", 30, "admin") do
     Err(_) -> assert false
+    Ok(record) -> do
+      assert Depot.Repo.count(user_schema()) == 1
+      match Depot.Repo.delete(user_schema(), record.id) do
+        Ok(id) -> assert id == record.id
+        Err(_) -> assert false
+      end
+      assert Depot.Repo.count(user_schema()) == 0
+    end
   end
-  assert Depot.Repo.count(user_schema()) == 0
 end
 
 test "delete returns Err for missing id" do
   clear_users()
-  insert_user("Alice", "alice@test.com", 30, "admin")
+  let _ = insert_user("Alice", "alice@test.com", 30, "admin")
   match Depot.Repo.delete(user_schema(), "nonexistent") do
     Err(msg) -> assert msg == "not found"
     Ok(_)    -> assert false
@@ -282,9 +290,9 @@ end
 
 test "delete_all removes all records" do
   clear_users()
-  insert_user("A", "a@test.com", 1, "user")
-  insert_user("B", "b@test.com", 2, "user")
-  insert_user("C", "c@test.com", 3, "admin")
+  let _ = insert_user("A", "a@test.com", 1, "user")
+  let _ = insert_user("B", "b@test.com", 2, "user")
+  let _ = insert_user("C", "c@test.com", 3, "admin")
   let n = Depot.Repo.delete_all(user_schema())
   assert n == 3
   assert Depot.Repo.count(user_schema()) == 0
@@ -302,39 +310,61 @@ end
 
 test "update changes fields on existing record" do
   clear_users()
-  let record = insert_user("Alice", "alice@test.com", 30, "user")
-  let schema = user_schema()
-  let params = { name: "Alicia", email: "alice@test.com", age: 30, role: "admin" }
-  let gate = Depot.Gate.cast_record(record, params, ["name", "role"])
-  let updated = unwrap_ok(Depot.Repo.update(schema, gate))
-  assert updated.name == "Alicia"
-  assert updated.role == "admin"
-  assert updated.id == record.id
+  match insert_user("Alice", "alice@test.com", 30, "user") do
+    Err(_) -> assert false
+    Ok(record) -> do
+      let schema = user_schema()
+      let params = { name: "Alicia", email: "alice@test.com", age: 30, role: "admin" }
+      let gate = Depot.Gate.cast_record(record, params, ["name", "role"])
+      match Depot.Repo.update(schema, gate) do
+        Err(_) -> assert false
+        Ok(updated) -> do
+          assert updated.name == "Alicia"
+          assert updated.role == "admin"
+          assert updated.id == record.id
+        end
+      end
+    end
+  end
 end
 
 test "update persists to Vault" do
   clear_users()
-  let record = insert_user("Alice", "alice@test.com", 30, "user")
-  let schema = user_schema()
-  let params = { name: "Alicia", email: "alice@test.com", age: 30, role: "admin" }
-  let gate = Depot.Gate.cast_record(record, params, ["name", "role"])
-  Depot.Repo.update(schema, gate)
-  let fetched = unwrap_some(Depot.Repo.get(schema, record.id))
-  assert fetched.name == "Alicia"
-  assert fetched.role == "admin"
+  match insert_user("Alice", "alice@test.com", 30, "user") do
+    Err(_) -> assert false
+    Ok(record) -> do
+      let schema = user_schema()
+      let params = { name: "Alicia", email: "alice@test.com", age: 30, role: "admin" }
+      let gate = Depot.Gate.cast_record(record, params, ["name", "role"])
+      let _ = Depot.Repo.update(schema, gate)
+      match Depot.Repo.get(schema, record.id) do
+        None    -> assert false
+        Some(fetched) -> do
+          assert fetched.name == "Alicia"
+          assert fetched.role == "admin"
+        end
+      end
+    end
+  end
 end
 
 test "update returns Err when gate is invalid" do
   clear_users()
-  let record = insert_user("Alice", "alice@test.com", 30, "user")
-  let schema = user_schema()
-  let params = { name: "", email: "alice@test.com", age: 30, role: "admin" }
-  let gate = Depot.Gate.cast_record(record, params, ["name", "role"])
-    |> Depot.Gate.validate_required(["name"])
-  let result = Depot.Repo.update(schema, gate)
-  assert is_err(result) == true
-  let g = unwrap_err(result)
-  assert Depot.Gate.is_valid(g) == false
+  match insert_user("Alice", "alice@test.com", 30, "user") do
+    Err(_) -> assert false
+    Ok(record) -> do
+      let schema = user_schema()
+      let params = { name: "", email: "alice@test.com", age: 30, role: "admin" }
+      let gate = Depot.Gate.cast_record(record, params, ["name", "role"])
+        |> Depot.Gate.validate_required(["name"])
+      let result = Depot.Repo.update(schema, gate)
+      assert is_err(result) == true
+      match result do
+        Err(g) -> assert Depot.Gate.is_valid(g) == false
+        Ok(_)  -> assert false
+      end
+    end
+  end
 end
 
 test "update returns Err when pk not in gate base" do
@@ -348,20 +378,28 @@ end
 
 test "insert then get by id" do
   clear_users()
-  let record = insert_user("Charlie", "charlie@test.com", 25, "user")
-  let schema = user_schema()
-  let found = Depot.Repo.get(schema, record.id)
-  assert found != None
+  match insert_user("Charlie", "charlie@test.com", 25, "user") do
+    Err(_) -> assert false
+    Ok(record) -> do
+      let schema = user_schema()
+      let found = Depot.Repo.get(schema, record.id)
+      assert found != None
+    end
+  end
 end
 
 test "insert then delete then get returns None" do
   clear_users()
-  let record = insert_user("Dana", "dana@test.com", 28, "user")
-  let schema = user_schema()
-  let del_result = Depot.Repo.delete(schema, record.id)
-  assert del_result != Err("not found")
-  let after = Depot.Repo.get(schema, record.id)
-  assert after == None
+  match insert_user("Dana", "dana@test.com", 28, "user") do
+    Err(_) -> assert false
+    Ok(record) -> do
+      let schema = user_schema()
+      let del_result = Depot.Repo.delete(schema, record.id)
+      assert del_result != Err("not found")
+      let after = Depot.Repo.get(schema, record.id)
+      assert after == None
+    end
+  end
 end
 
 test "delete returns Err for missing id" do
@@ -372,8 +410,8 @@ end
 
 test "all returns list of all records" do
   clear_users()
-  let _a = insert_user("E1", "e1@test.com", 20, "user")
-  let _b = insert_user("E2", "e2@test.com", 21, "user")
+  let _ = insert_user("E1", "e1@test.com", 20, "user")
+  let _ = insert_user("E2", "e2@test.com", 21, "user")
   let schema = user_schema()
   let records = Depot.Repo.all(schema)
   assert List.length(records) == 2
@@ -381,7 +419,7 @@ end
 
 test "delete_all removes all records" do
   clear_users()
-  let _a = insert_user("F1", "f1@test.com", 20, "user")
+  let _ = insert_user("F1", "f1@test.com", 20, "user")
   let schema = user_schema()
   Depot.Repo.delete_all(schema)
   let records = Depot.Repo.all(schema)
@@ -390,12 +428,16 @@ end
 
 test "update changes field value" do
   clear_users()
-  let record = insert_user("Greta", "g@test.com", 30, "user")
-  let schema = user_schema()
-  let params = { name: "Greta Updated", email: "g@test.com", age: 30, role: "user" }
-  let gate = Depot.Gate.cast_record(record, params, ["name"])
-  let result = Depot.Repo.update(schema, gate)
-  assert is_err(result) == false
+  match insert_user("Greta", "g@test.com", 30, "user") do
+    Err(_) -> assert false
+    Ok(record) -> do
+      let schema = user_schema()
+      let params = { name: "Greta Updated", email: "g@test.com", age: 30, role: "user" }
+      let gate = Depot.Gate.cast_record(record, params, ["name"])
+      let result = Depot.Repo.update(schema, gate)
+      assert is_err(result) == false
+    end
+  end
 end
 
 test "get returns None for missing id" do
@@ -406,9 +448,9 @@ end
 
 test "insert multiple users then all count" do
   clear_users()
-  let _1 = insert_user("H1", "h1@test.com", 20, "user")
-  let _2 = insert_user("H2", "h2@test.com", 21, "user")
-  let _3 = insert_user("H3", "h3@test.com", 22, "user")
+  let _ = insert_user("H1", "h1@test.com", 20, "user")
+  let _ = insert_user("H2", "h2@test.com", 21, "user")
+  let _ = insert_user("H3", "h3@test.com", 22, "user")
   let schema = user_schema()
   let records = Depot.Repo.all(schema)
   assert List.length(records) == 3

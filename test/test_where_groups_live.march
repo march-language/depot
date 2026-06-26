@@ -15,6 +15,9 @@
 
 mod TestWhereGroupsLive do
 
+needs IO.NetConnect
+needs IO.Random
+
 import Connection
 import Ast
 import Build

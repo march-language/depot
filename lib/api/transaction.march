@@ -20,6 +20,10 @@ mod Depot.Transaction do
 import Db
 import Pool
 
+needs IO.NetConnect
+needs IO.Random
+needs IO.Spawn
+
 -- ---- Depth tracking (keyed by conn_key) ----
 
 pfn depth_table() do

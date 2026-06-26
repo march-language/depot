@@ -20,6 +20,10 @@ mod Depot.Migration do
 import Db
 import Depot.Transaction
 
+needs IO.NetConnect
+needs IO.Random
+needs IO.Spawn
+
 -- ---------------------------------------------------------------------------
 -- Private helpers
 -- ---------------------------------------------------------------------------
@@ -128,7 +132,6 @@ end
 fn column_sql(name, spec) do
   match spec do
     (typ, opts) -> column_sql_with_opts(name, to_string(typ), opts)
-    other       -> "\"" ++ name ++ "\" " ++ sql_type(to_string(other))
   end
 end
 
@@ -136,7 +139,6 @@ end
 fn parse_col_spec(spec) do
   match spec do
     (typ, _opts) -> to_string(typ)
-    other        -> to_string(other)
   end
 end
 

@@ -3,6 +3,8 @@
 
 mod TestDecode do
 
+needs IO.NetConnect
+
 import Decode
 
 test "read_u16 zero" do

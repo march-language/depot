@@ -13,6 +13,9 @@
 
 mod TestLivePostgres do
 
+needs IO.NetConnect
+needs IO.Random
+
 import Connection
 
 fn test_config() do

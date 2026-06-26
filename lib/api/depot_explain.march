@@ -65,9 +65,9 @@ end
 -- True when only `analyze` (or nothing) differs from defaults, so we can
 -- emit the shorter syntax.
 pfn use_short_form(opts) do
-  opts.verbose == false
-    && opts.costs == true
-    && opts.buffers == false
+  !opts.verbose
+    && opts.costs
+    && !opts.buffers
     && opts.format_ == "text"
 end
 

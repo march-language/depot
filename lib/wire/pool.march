@@ -7,6 +7,10 @@ import Connection
 import Db
 import Depot.Query
 
+needs IO.NetConnect
+needs IO.Random
+needs IO.Spawn
+
 -- ---- Pool types ----
 
 --- Configuration for a PostgreSQL connection pool.

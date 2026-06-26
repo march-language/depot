@@ -8,6 +8,9 @@ mod TestDepotDbRepoSqlite do
 
 needs Ffi
 needs IO.Foreign
+needs IO.NetConnect
+needs IO.Random
+needs IO.Spawn
 
 import Db
 import Depot.DbRepo

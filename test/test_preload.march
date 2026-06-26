@@ -5,6 +5,9 @@ mod TestPreload do
 
 needs Ffi
 needs IO.Foreign
+needs IO.NetConnect
+needs IO.Random
+needs IO.Spawn
 
 import Ast
 import Build

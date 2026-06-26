@@ -495,20 +495,6 @@ pfn compile_one_order_inline(order_expr) do
   end
 end
 
--- Build ORDER BY items as a list (used by compile_subquery_inline via subq_orders).
-pfn compile_order_items_inline(orders) do
-  fn go(rem, acc) do
-    match rem do
-    Nil -> List.reverse(acc)
-    Cons(order_expr, rest) -> do
-      let item_sql = compile_one_order_inline(order_expr)
-      go(rest, Cons(item_sql, acc))
-    end
-    end
-  end
-  go(orders, Nil)
-end
-
 -- ---- LIMIT / OFFSET ----
 
 pfn compile_limit(lim) do
@@ -696,7 +682,6 @@ pfn compile_expr(e, st) do
   ExprParam(n) -> ("$" ++ int_to_string(n), st)
   Raw(sql)     -> (sql, st)
   Fragment(tmpl, args) -> compile_frag(tmpl, args, st, "")
-  _         -> ("/* unsupported expr */", st)
   end
 end
 
@@ -761,7 +746,6 @@ pfn compile_expr_inline(e) do
   ExprParam(n)   -> "$" ++ int_to_string(n)
   Raw(sql)       -> sql
   Fragment(tmpl, args) -> compile_frag_inline(tmpl, args, "")
-  _              -> "/* unsupported */"
   end
 end
 
@@ -964,7 +948,6 @@ pfn subq_expr(e) do
   -- -> compile_subquery_inline -> subq_select -> ... -> subq_expr), which
   -- defeats tail-call analysis on compile_subquery_inline and its helpers.
   Fragment(_, _) -> "/* fragment in subquery */"
-  _              -> "/* unsupported */"
   end
 end
 

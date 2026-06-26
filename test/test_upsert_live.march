@@ -13,6 +13,8 @@ mod TestUpsertLive do
 
 needs Ffi
 needs IO.Foreign
+needs IO.NetConnect
+needs IO.Random
 
 import Connection
 import Db

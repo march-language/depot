@@ -10,6 +10,9 @@ mod TestSqliteLive do
 
 needs Ffi
 needs IO.Foreign
+needs IO.NetConnect
+needs IO.Random
+needs IO.Spawn
 
 import Db
 import Depot.Transaction
@@ -19,13 +22,7 @@ import Ast
 import MutationBuild
 import MutationExec
 
--- Open an in-memory SQLite connection or crash with a clear message.
-pfn open_mem() do
-  match Sqlite.open_conn(":memory:") do
-    Ok(conn) -> conn
-    Err(e)   -> panic("open_conn(:memory:) failed: " ++ e)
-  end
-end
+pfn open_mem() do Sqlite.open_conn(":memory:") end
 
 -- ---- Tests ----
 
@@ -40,42 +37,50 @@ test "open: Sqlite.open_conn(:memory:) returns Ok" do
 end
 
 test "dialect: sqlite conn returns sqlite" do
-  let conn = open_mem()
-  assert Db.dialect(conn) == "sqlite"
+  match open_mem() do
+    Err(e) -> do let _ = println(e) assert false end
+    Ok(conn) -> assert Db.dialect(conn) == "sqlite"
+  end
 end
 
 test "query: SELECT 1 returns one row with value 1" do
-  let conn = open_mem()
-  match Db.query(conn, "SELECT 1") do
-    Err(e) -> do
-      let _ = println("SELECT 1 failed: " ++ e)
-      assert false
-    end
-    Ok(r) ->
-      match r.rows do
-        Cons(Cons(Some(v), Nil), Nil) -> assert v == "1"
-        _                             -> do
-          let _ = println("unexpected rows shape")
+  match open_mem() do
+    Err(e) -> do let _ = println(e) assert false end
+    Ok(conn) ->
+      match Db.query(conn, "SELECT 1") do
+        Err(e) -> do
+          let _ = println("SELECT 1 failed: " ++ e)
           assert false
         end
+        Ok(r) ->
+          match r.rows do
+            Cons(Cons(Some(v), Nil), Nil) -> assert v == "1"
+            _                             -> do
+              let _ = println("unexpected rows shape")
+              assert false
+            end
+          end
       end
   end
 end
 
 test "exec: CREATE TABLE + INSERT ($1) + SELECT round-trip" do
-  let conn = open_mem()
-  match Db.query(conn, "CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT NOT NULL)") do
-    Err(e) -> do let _ = println("CREATE failed: " ++ e) assert false end
-    Ok(_)  ->
-      match Db.exec(conn, "INSERT INTO items (name) VALUES ($1)", [ParamText("hello")]) do
-        Err(e) -> do let _ = println("INSERT failed: " ++ e) assert false end
+  match open_mem() do
+    Err(e) -> do let _ = println(e) assert false end
+    Ok(conn) ->
+      match Db.query(conn, "CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT NOT NULL)") do
+        Err(e) -> do let _ = println("CREATE failed: " ++ e) assert false end
         Ok(_)  ->
-          match Db.query(conn, "SELECT name FROM items") do
-            Err(e) -> do let _ = println("SELECT failed: " ++ e) assert false end
-            Ok(r)  ->
-              match r.rows do
-                Cons(Cons(Some(name), Nil), Nil) -> assert name == "hello"
-                _ -> do let _ = println("unexpected SELECT rows") assert false end
+          match Db.exec(conn, "INSERT INTO items (name) VALUES ($1)", [ParamText("hello")]) do
+            Err(e) -> do let _ = println("INSERT failed: " ++ e) assert false end
+            Ok(_)  ->
+              match Db.query(conn, "SELECT name FROM items") do
+                Err(e) -> do let _ = println("SELECT failed: " ++ e) assert false end
+                Ok(r)  ->
+                  match r.rows do
+                    Cons(Cons(Some(name), Nil), Nil) -> assert name == "hello"
+                    _ -> do let _ = println("unexpected SELECT rows") assert false end
+                  end
               end
           end
       end
@@ -83,21 +88,24 @@ test "exec: CREATE TABLE + INSERT ($1) + SELECT round-trip" do
 end
 
 test "exec: multi-param $1 $2 bind" do
-  let conn = open_mem()
-  match Db.query(conn, "CREATE TABLE kv (k TEXT, v TEXT)") do
-    Err(_) -> assert false
-    Ok(_)  ->
-      match Db.exec(conn, "INSERT INTO kv (k, v) VALUES ($1, $2)",
-                    [ParamText("key1"), ParamText("val1")]) do
-        Err(e) -> do let _ = println("INSERT failed: " ++ e) assert false end
+  match open_mem() do
+    Err(e) -> do let _ = println(e) assert false end
+    Ok(conn) ->
+      match Db.query(conn, "CREATE TABLE kv (k TEXT, v TEXT)") do
+        Err(_) -> assert false
         Ok(_)  ->
-          match Db.query(conn, "SELECT k, v FROM kv") do
-            Err(e) -> do let _ = println("SELECT failed: " ++ e) assert false end
-            Ok(r)  ->
-              match r.rows do
-                Cons(Cons(Some(k), Cons(Some(v), Nil)), Nil) ->
-                  assert k == "key1" && v == "val1"
-                _ -> assert false
+          match Db.exec(conn, "INSERT INTO kv (k, v) VALUES ($1, $2)",
+                        [ParamText("key1"), ParamText("val1")]) do
+            Err(e) -> do let _ = println("INSERT failed: " ++ e) assert false end
+            Ok(_)  ->
+              match Db.query(conn, "SELECT k, v FROM kv") do
+                Err(e) -> do let _ = println("SELECT failed: " ++ e) assert false end
+                Ok(r)  ->
+                  match r.rows do
+                    Cons(Cons(Some(k), Cons(Some(v), Nil)), Nil) ->
+                      assert k == "key1" && v == "val1"
+                    _ -> assert false
+                  end
               end
           end
       end
@@ -105,19 +113,22 @@ test "exec: multi-param $1 $2 bind" do
 end
 
 test "exec: NULL column yields None" do
-  let conn = open_mem()
-  match Db.query(conn, "CREATE TABLE nullable (x TEXT)") do
-    Err(_) -> assert false
-    Ok(_)  ->
-      match Db.exec(conn, "INSERT INTO nullable (x) VALUES ($1)", [ParamNull]) do
-        Err(e) -> do let _ = println("INSERT NULL failed: " ++ e) assert false end
+  match open_mem() do
+    Err(e) -> do let _ = println(e) assert false end
+    Ok(conn) ->
+      match Db.query(conn, "CREATE TABLE nullable (x TEXT)") do
+        Err(_) -> assert false
         Ok(_)  ->
-          match Db.query(conn, "SELECT x FROM nullable") do
-            Err(_) -> assert false
-            Ok(r)  ->
-              match r.rows do
-                Cons(Cons(None, Nil), Nil) -> assert true
-                _                          -> assert false
+          match Db.exec(conn, "INSERT INTO nullable (x) VALUES ($1)", [ParamNull]) do
+            Err(e) -> do let _ = println("INSERT NULL failed: " ++ e) assert false end
+            Ok(_)  ->
+              match Db.query(conn, "SELECT x FROM nullable") do
+                Err(_) -> assert false
+                Ok(r)  ->
+                  match r.rows do
+                    Cons(Cons(None, Nil), Nil) -> assert true
+                    _                          -> assert false
+                  end
               end
           end
       end
@@ -125,41 +136,51 @@ test "exec: NULL column yields None" do
 end
 
 test "query: result.columns reflects SELECT list" do
-  let conn = open_mem()
-  match Db.query(conn, "SELECT 42 AS answer, 'hi' AS greeting") do
-    Err(e) -> do let _ = println("SELECT failed: " ++ e) assert false end
-    Ok(r)  -> assert r.columns == ["answer", "greeting"]
+  match open_mem() do
+    Err(e) -> do let _ = println(e) assert false end
+    Ok(conn) ->
+      match Db.query(conn, "SELECT 42 AS answer, 'hi' AS greeting") do
+        Err(e) -> do let _ = println("SELECT failed: " ++ e) assert false end
+        Ok(r)  -> assert r.columns == ["answer", "greeting"]
+      end
   end
 end
 
 test "exec: prepare error propagates as Err" do
-  let conn = open_mem()
-  match Db.query(conn, "NOT VALID SQL AT ALL") do
-    Err(_) -> assert true
-    Ok(_)  -> assert false
+  match open_mem() do
+    Err(e) -> do let _ = println(e) assert false end
+    Ok(conn) ->
+      match Db.query(conn, "NOT VALID SQL AT ALL") do
+        Err(_) -> assert true
+        Ok(_)  -> assert false
+      end
   end
 end
 
 test "MutationExec.exec_insert via SQLite" do
-  let conn = open_mem()
-  match Db.query(conn, "CREATE TABLE users (name TEXT NOT NULL, email TEXT NOT NULL)") do
-    Err(e) -> do let _ = println("CREATE failed: " ++ e) assert false end
-    Ok(_)  ->
-      let i = insert_into("users")
-             |> insert_cols(["name", "email"])
-             |> insert_row([PString("alice"), PString("a@example.com")])
-      match MutationExec.exec_insert(conn, i) do
-        Err(e) -> do let _ = println("exec_insert failed: " ++ e) assert false end
-        Ok(_)  ->
-          match Db.query(conn, "SELECT name, email FROM users") do
-            Err(e) -> do let _ = println("SELECT failed: " ++ e) assert false end
-            Ok(r)  ->
-              match r.rows do
-                Cons(Cons(Some(name), Cons(Some(email), Nil)), Nil) ->
-                  assert name == "alice" && email == "a@example.com"
-                _ -> assert false
+  match open_mem() do
+    Err(e) -> do let _ = println(e) assert false end
+    Ok(conn) ->
+      match Db.query(conn, "CREATE TABLE users (name TEXT NOT NULL, email TEXT NOT NULL)") do
+        Err(e) -> do let _ = println("CREATE failed: " ++ e) assert false end
+        Ok(_)  -> do
+          let i = insert_into("users")
+                 |> insert_cols(["name", "email"])
+                 |> insert_row([PString("alice"), PString("a@example.com")])
+          match MutationExec.exec_insert(conn, i) do
+            Err(e) -> do let _ = println("exec_insert failed: " ++ e) assert false end
+            Ok(_)  ->
+              match Db.query(conn, "SELECT name, email FROM users") do
+                Err(e) -> do let _ = println("SELECT failed: " ++ e) assert false end
+                Ok(r)  ->
+                  match r.rows do
+                    Cons(Cons(Some(name), Cons(Some(email), Nil)), Nil) ->
+                      assert name == "alice" && email == "a@example.com"
+                    _ -> assert false
+                  end
               end
           end
+        end
       end
   end
 end
@@ -167,21 +188,24 @@ end
 -- ---- Transaction tests ----
 
 test "Transaction.run: commit path persists data" do
-  let conn = open_mem()
-  match Db.query(conn, "CREATE TABLE tx_t (v TEXT)") do
-    Err(e) -> do let _ = println("CREATE: " ++ e) assert false end
-    Ok(_) ->
-      match Depot.Transaction.run(conn, fn c ->
-        Db.exec(c, "INSERT INTO tx_t VALUES ($1)", [ParamText("committed")])
-      ) do
-        Err(e) -> do let _ = println("tx: " ++ e) assert false end
+  match open_mem() do
+    Err(e) -> do let _ = println(e) assert false end
+    Ok(conn) ->
+      match Db.query(conn, "CREATE TABLE tx_t (v TEXT)") do
+        Err(e) -> do let _ = println("CREATE: " ++ e) assert false end
         Ok(_) ->
-          match Db.query(conn, "SELECT v FROM tx_t") do
-            Err(e) -> do let _ = println("SELECT: " ++ e) assert false end
-            Ok(r) ->
-              match r.rows do
-                Cons(Cons(Some(v), Nil), Nil) -> assert v == "committed"
-                _ -> assert false
+          match Depot.Transaction.run(conn, fn c ->
+            Db.exec(c, "INSERT INTO tx_t VALUES ($1)", [ParamText("committed")])
+          ) do
+            Err(e) -> do let _ = println("tx: " ++ e) assert false end
+            Ok(_) ->
+              match Db.query(conn, "SELECT v FROM tx_t") do
+                Err(e) -> do let _ = println("SELECT: " ++ e) assert false end
+                Ok(r) ->
+                  match r.rows do
+                    Cons(Cons(Some(v), Nil), Nil) -> assert v == "committed"
+                    _ -> assert false
+                  end
               end
           end
       end
@@ -189,21 +213,25 @@ test "Transaction.run: commit path persists data" do
 end
 
 test "Transaction.run: Err return rolls back" do
-  let conn = open_mem()
-  match Db.query(conn, "CREATE TABLE tx_rb (v TEXT)") do
-    Err(e) -> do let _ = println("CREATE: " ++ e) assert false end
-    Ok(_) ->
-      let _ = Depot.Transaction.run(conn, fn c ->
-        let _ = Db.exec(c, "INSERT INTO tx_rb VALUES ($1)", [ParamText("rollme")])
-        Err("deliberate rollback")
-      )
-      match Db.query(conn, "SELECT v FROM tx_rb") do
-        Err(e) -> do let _ = println("SELECT: " ++ e) assert false end
-        Ok(r) ->
-          match r.rows do
-            Nil -> assert true
-            _   -> assert false
+  match open_mem() do
+    Err(e) -> do let _ = println(e) assert false end
+    Ok(conn) ->
+      match Db.query(conn, "CREATE TABLE tx_rb (v TEXT)") do
+        Err(e) -> do let _ = println("CREATE: " ++ e) assert false end
+        Ok(_) -> do
+          let _ = Depot.Transaction.run(conn, fn c ->
+            let _ = Db.exec(c, "INSERT INTO tx_rb VALUES ($1)", [ParamText("rollme")])
+            Err("deliberate rollback")
+          )
+          match Db.query(conn, "SELECT v FROM tx_rb") do
+            Err(e) -> do let _ = println("SELECT: " ++ e) assert false end
+            Ok(r) ->
+              match r.rows do
+                Nil -> assert true
+                _   -> assert false
+              end
           end
+        end
       end
   end
 end
@@ -211,22 +239,26 @@ end
 -- Raw savepoint test: verifies SQLite SAVEPOINT semantics without nesting
 -- Depot.Transaction.run (which would nest __try_call_val — march#8 in native mode).
 test "SQLite SAVEPOINT: release commits inner work into outer transaction" do
-  let conn = open_mem()
-  let _ = Db.query(conn, "CREATE TABLE tx_nest (v TEXT)")
-  let _ = Db.query(conn, "BEGIN")
-  let _ = Db.exec(conn, "INSERT INTO tx_nest VALUES ($1)", [ParamText("outer")])
-  let _ = Db.query(conn, "SAVEPOINT sp_1")
-  let _ = Db.exec(conn, "INSERT INTO tx_nest VALUES ($1)", [ParamText("inner")])
-  let _ = Db.query(conn, "RELEASE SAVEPOINT sp_1")
-  let _ = Db.query(conn, "COMMIT")
-  match Db.query(conn, "SELECT v FROM tx_nest ORDER BY v") do
-    Err(e) -> do let _ = println("SELECT: " ++ e) assert false end
-    Ok(r) ->
-      match r.rows do
-        Cons(Cons(Some(a), Nil), Cons(Cons(Some(b), Nil), Nil)) ->
-          assert a == "inner" && b == "outer"
-        _ -> assert false
+  match open_mem() do
+    Err(e) -> do let _ = println(e) assert false end
+    Ok(conn) -> do
+      let _ = Db.query(conn, "CREATE TABLE tx_nest (v TEXT)")
+      let _ = Db.query(conn, "BEGIN")
+      let _ = Db.exec(conn, "INSERT INTO tx_nest VALUES ($1)", [ParamText("outer")])
+      let _ = Db.query(conn, "SAVEPOINT sp_1")
+      let _ = Db.exec(conn, "INSERT INTO tx_nest VALUES ($1)", [ParamText("inner")])
+      let _ = Db.query(conn, "RELEASE SAVEPOINT sp_1")
+      let _ = Db.query(conn, "COMMIT")
+      match Db.query(conn, "SELECT v FROM tx_nest ORDER BY v") do
+        Err(e) -> do let _ = println("SELECT: " ++ e) assert false end
+        Ok(r) ->
+          match r.rows do
+            Cons(Cons(Some(a), Nil), Cons(Cons(Some(b), Nil), Nil)) ->
+              assert a == "inner" && b == "outer"
+            _ -> assert false
+          end
       end
+    end
   end
 end
 

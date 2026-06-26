@@ -68,7 +68,6 @@ end
 fn parse_field_spec(spec) do
   match spec do
     (typ, opts) -> (to_string(typ), record_entries(opts))
-    other       -> (to_string(other), Nil)
   end
 end
 
@@ -86,7 +85,6 @@ end
 fn parse_one_assoc(kind, name, spec) do
   match spec do
     (target, opts) -> (kind, name, to_string(target), record_entries(opts))
-    other          -> (kind, name, to_string(other), Nil)
   end
 end
 
@@ -166,7 +164,7 @@ end
 fn is_not_virtual(field_entry) do
   let (_, spec) = field_entry
   let (_, opts) = spec
-  alist_get(opts, "virtual", false) == false
+  !alist_get(opts, "virtual", false)
 end
 
 fn field_entry_name(field_entry) do

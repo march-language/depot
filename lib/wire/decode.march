@@ -5,6 +5,8 @@ mod Decode do
 
 import Message
 
+needs IO.NetConnect
+
 -- ---- Cursor helpers ----
 
 --- Reads a big-endian unsigned 16-bit integer from bytes at position `pos`.

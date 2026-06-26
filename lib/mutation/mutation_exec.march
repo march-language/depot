@@ -19,6 +19,9 @@ import Mutation
 import MutationCompile
 import Db
 
+needs IO.NetConnect
+needs IO.Random
+
 --- Execute an `Insert` ADT against a live connection.
 ---
 --- Compiles to parameterized SQL via `MutationCompile.compile_insert` and

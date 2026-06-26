@@ -70,7 +70,7 @@ fn note(m, _ev) do
 end
 
 fn panicking_handler(_) do
-  panic("boom")
+  assert false
 end
 
 -- ---- Fake result builder for instrument tests ----------------------------

@@ -3,6 +3,9 @@
 
 mod TestConnection do
 
+needs IO.NetConnect
+needs IO.Random
+
 import Connection
 
 test "default_config" do

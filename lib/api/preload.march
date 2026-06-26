@@ -22,8 +22,11 @@ import Ast
 import Build
 import Compile
 import Db
-import Depot.Query
 import Pool
+
+needs IO.NetConnect
+needs IO.Random
+needs IO.Spawn
 
 --- Extracts all non-null values of `col_name` from a QueryResult.
 ---

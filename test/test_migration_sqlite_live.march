@@ -10,17 +10,15 @@ mod TestMigrationSqliteLive do
 
 needs Ffi
 needs IO.Foreign
+needs IO.NetConnect
+needs IO.Random
+needs IO.Spawn
 
 import Db
 import Depot.Migration
 import Sqlite
 
-pfn open_mem() do
-  match Sqlite.open_conn(":memory:") do
-    Ok(conn) -> conn
-    Err(e)   -> panic("open_conn(:memory:) failed: " ++ e)
-  end
-end
+pfn open_mem() do Sqlite.open_conn(":memory:") end
 
 -- Three simple migrations: each creates / drops a table.
 pfn m1() do
@@ -56,74 +54,96 @@ pfn table_exists(conn, name) do
 end
 
 test "migrate: schema_migrations table created with SQLite schema" do
-  let conn = open_mem()
-  match Depot.Migration.migrate(conn, Nil) do
-    Err(e) -> do let _ = println("migrate: " ++ e) assert false end
-    Ok(_)  -> assert table_exists(conn, "schema_migrations")
+  match open_mem() do
+    Err(e) -> do let _ = println(e) assert false end
+    Ok(conn) ->
+      match Depot.Migration.migrate(conn, Nil) do
+        Err(e) -> do let _ = println("migrate: " ++ e) assert false end
+        Ok(_)  -> assert table_exists(conn, "schema_migrations")
+      end
   end
 end
 
 test "migrate: applies all pending migrations" do
-  let conn = open_mem()
-  match Depot.Migration.migrate(conn, all_migs()) do
-    Err(e) -> do let _ = println("migrate: " ++ e) assert false end
-    Ok(n)  -> do
-      assert n == 3
-      assert table_exists(conn, "mig1")
-      assert table_exists(conn, "mig2")
-      assert table_exists(conn, "mig3")
-    end
+  match open_mem() do
+    Err(e) -> do let _ = println(e) assert false end
+    Ok(conn) ->
+      match Depot.Migration.migrate(conn, all_migs()) do
+        Err(e) -> do let _ = println("migrate: " ++ e) assert false end
+        Ok(n)  -> do
+          assert n == 3
+          assert table_exists(conn, "mig1")
+          assert table_exists(conn, "mig2")
+          assert table_exists(conn, "mig3")
+        end
+      end
   end
 end
 
 test "migrate: is idempotent (second call applies 0 migrations)" do
-  let conn = open_mem()
-  let _ = Depot.Migration.migrate(conn, all_migs())
-  match Depot.Migration.migrate(conn, all_migs()) do
-    Err(e) -> do let _ = println("second migrate: " ++ e) assert false end
-    Ok(n)  -> assert n == 0
+  match open_mem() do
+    Err(e) -> do let _ = println(e) assert false end
+    Ok(conn) -> do
+      let _ = Depot.Migration.migrate(conn, all_migs())
+      match Depot.Migration.migrate(conn, all_migs()) do
+        Err(e) -> do let _ = println("second migrate: " ++ e) assert false end
+        Ok(n)  -> assert n == 0
+      end
+    end
   end
 end
 
 test "rollback: reverses the most recent migration" do
-  let conn = open_mem()
-  let _ = Depot.Migration.migrate(conn, all_migs())
-  match Depot.Migration.rollback(conn, all_migs(), 1) do
-    Err(e) -> do let _ = println("rollback: " ++ e) assert false end
-    Ok(n)  -> do
-      assert n == 1
-      assert table_exists(conn, "mig1")
-      assert table_exists(conn, "mig2")
-      assert table_exists(conn, "mig3") == false
+  match open_mem() do
+    Err(e) -> do let _ = println(e) assert false end
+    Ok(conn) -> do
+      let _ = Depot.Migration.migrate(conn, all_migs())
+      match Depot.Migration.rollback(conn, all_migs(), 1) do
+        Err(e) -> do let _ = println("rollback: " ++ e) assert false end
+        Ok(n)  -> do
+          assert n == 1
+          assert table_exists(conn, "mig1")
+          assert table_exists(conn, "mig2")
+          assert table_exists(conn, "mig3") == false
+        end
+      end
     end
   end
 end
 
 test "rollback: reverses all migrations when n >= count" do
-  let conn = open_mem()
-  let _ = Depot.Migration.migrate(conn, all_migs())
-  match Depot.Migration.rollback(conn, all_migs(), 10) do
-    Err(e) -> do let _ = println("rollback all: " ++ e) assert false end
-    Ok(n)  -> do
-      assert n == 3
-      assert table_exists(conn, "mig1") == false
-      assert table_exists(conn, "mig2") == false
-      assert table_exists(conn, "mig3") == false
+  match open_mem() do
+    Err(e) -> do let _ = println(e) assert false end
+    Ok(conn) -> do
+      let _ = Depot.Migration.migrate(conn, all_migs())
+      match Depot.Migration.rollback(conn, all_migs(), 10) do
+        Err(e) -> do let _ = println("rollback all: " ++ e) assert false end
+        Ok(n)  -> do
+          assert n == 3
+          assert table_exists(conn, "mig1") == false
+          assert table_exists(conn, "mig2") == false
+          assert table_exists(conn, "mig3") == false
+        end
+      end
     end
   end
 end
 
 test "migrate after rollback: re-applies missing migrations" do
-  let conn = open_mem()
-  let _ = Depot.Migration.migrate(conn, all_migs())
-  let _ = Depot.Migration.rollback(conn, all_migs(), 2)
-  match Depot.Migration.migrate(conn, all_migs()) do
-    Err(e) -> do let _ = println("re-migrate: " ++ e) assert false end
-    Ok(n)  -> do
-      assert n == 2
-      assert table_exists(conn, "mig1")
-      assert table_exists(conn, "mig2")
-      assert table_exists(conn, "mig3")
+  match open_mem() do
+    Err(e) -> do let _ = println(e) assert false end
+    Ok(conn) -> do
+      let _ = Depot.Migration.migrate(conn, all_migs())
+      let _ = Depot.Migration.rollback(conn, all_migs(), 2)
+      match Depot.Migration.migrate(conn, all_migs()) do
+        Err(e) -> do let _ = println("re-migrate: " ++ e) assert false end
+        Ok(n)  -> do
+          assert n == 2
+          assert table_exists(conn, "mig1")
+          assert table_exists(conn, "mig2")
+          assert table_exists(conn, "mig3")
+        end
+      end
     end
   end
 end

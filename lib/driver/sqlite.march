@@ -24,6 +24,8 @@ import Bytes
 
 needs Ffi
 needs IO.Foreign
+needs IO.NetConnect
+needs IO.Random
 
 -- Opaque handle to a sqlite3* connection.
 resource Db

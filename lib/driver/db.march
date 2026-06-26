@@ -17,6 +17,9 @@ mod Db do
 import Connection
 import Message
 
+needs IO.NetConnect
+needs IO.Random
+
 --- Result type shared by all connection dispatch functions.
 --- Matches the anonymous record returned by Connection.simple_query /
 --- Connection.exec_prepared so higher-level code is backend-agnostic.

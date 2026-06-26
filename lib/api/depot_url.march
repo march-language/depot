@@ -8,8 +8,6 @@
 
 mod Depot.Url do
 
-import Connection
-
 --- A parsed database URL target.
 --- PgTarget holds a ConnConfig ready for Connection.connect or Pool.start.
 --- SqliteTarget holds the path string for Sqlite.open_conn.

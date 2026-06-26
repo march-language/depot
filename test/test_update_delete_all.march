@@ -20,6 +20,8 @@ mod TestUpdateDeleteAll do
 
 needs Ffi
 needs IO.Foreign
+needs IO.NetConnect
+needs IO.Random
 
 import Ast
 import Build
