@@ -16,7 +16,6 @@
 
 mod Sqlite do
 
-import Db
 import Message
 import List
 import String

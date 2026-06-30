@@ -6,9 +6,7 @@
 mod MutationCompile do
 
 import Ast
-import Mutation
 import Message
-import Compile
 
 -- Compile state: tracks current $N counter and accumulated params.
 type MutState = { param_count : Int, acc_params : List(Param) }

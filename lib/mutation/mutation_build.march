@@ -4,7 +4,6 @@
 mod MutationBuild do
 
 import Ast
-import Mutation
 import Depot.Schema
 
 -- ---- INSERT builders ----
