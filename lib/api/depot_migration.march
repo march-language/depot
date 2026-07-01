@@ -132,6 +132,10 @@ end
 fn column_sql(name, spec) do
   match spec do
     (typ, opts) -> column_sql_with_opts(name, to_string(typ), opts)
+    -- Bare spec: plain type, no options.  The value arrives type-erased (via
+    -- record_entries), so the tuple arm cannot be exhaustive at runtime —
+    -- without this arm a bare "String" spec is a match-failure panic natively.
+    _ -> "\"" ++ name ++ "\" " ++ sql_type(to_string(spec))
   end
 end
 
@@ -139,6 +143,7 @@ end
 fn parse_col_spec(spec) do
   match spec do
     (typ, _opts) -> to_string(typ)
+    _ -> to_string(spec)
   end
 end
 

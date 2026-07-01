@@ -68,6 +68,10 @@ end
 fn parse_field_spec(spec) do
   match spec do
     (typ, opts) -> (to_string(typ), record_entries(opts))
+    -- Bare spec: no options.  The value arrives type-erased (via
+    -- record_entries), so the tuple arm cannot be exhaustive at runtime —
+    -- without this arm every bare spec is a match-failure panic natively.
+    _ -> (to_string(spec), Nil)
   end
 end
 
@@ -85,6 +89,11 @@ end
 fn parse_one_assoc(kind, name, spec) do
   match spec do
     (target, opts) -> (kind, name, to_string(target), record_entries(opts))
+    -- Bare spec (e.g. posts: "Post"): target only, no options.  The value
+    -- arrives type-erased (via record_entries), so the tuple arm cannot be
+    -- exhaustive at runtime — without this arm a bare target is a match
+    -- failure.
+    _ -> (kind, name, to_string(spec), Nil)
   end
 end
 
