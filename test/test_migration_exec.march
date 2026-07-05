@@ -9,9 +9,13 @@ needs IO.NetConnect
 needs IO.Random
 needs IO.Spawn
 
+import Ast
+import Build
+import Compile
 import Connection
 import Db
 import Depot.Migration
+import Depot.Query
 
 fn test_config() do
   default_config("postgres", "depot_test")
@@ -37,6 +41,15 @@ pfn table_exists(conn, table) do
         _ -> false
       end
     Err(_) -> false
+  end
+end
+
+-- Look up a column value in a Depot.Query.exec_sql row (an assoc list of
+-- (String, Option(String)) pairs, as produced by zip_cols in depot_query.march).
+pfn row_get(row, key) do
+  match row do
+    Nil -> None
+    Cons((k, v), rest) -> if k == key do v else row_get(rest, key) end
   end
 end
 
@@ -218,6 +231,85 @@ test "create_index_expr builds a GIN index over a to_tsvector expression" do
     end
     let _ = Db.query(conn, "DROP TABLE IF EXISTS ts_demo2")
     assert result
+  )
+end
+
+test "ts_match + ts_rank_expr find and rank rows using a GIN-indexed tsvector column" do
+  with_conn(fn conn ->
+    let _ = Db.query(conn, "DROP TABLE IF EXISTS ts_search_demo")
+    let _ = Db.query(conn,
+      "CREATE TABLE ts_search_demo (id serial primary key, title text, body_tsv tsvector)")
+    let _ = Db.query(conn,
+      "INSERT INTO ts_search_demo (title, body_tsv) VALUES " ++
+      "('Postgres intro', to_tsvector('english', 'PostgreSQL is a powerful search engine')), " ++
+      "('Cooking', to_tsvector('english', 'A recipe for chocolate cake')), " ++
+      "('Search deep dive', to_tsvector('english', 'Full text search in Postgres is fast and powerful'))")
+
+    -- Finding 1's chosen pairing: a real tsvector column indexed via plain
+    -- create_index (NOT create_index_expr), matching ts_match's bare-column
+    -- predicate and ts_rank_expr's bare-column ranking.
+    let idx_outcome = Depot.Migration.run(conn, fn () ->
+      Depot.Migration.create_index("ts_search_demo", ["body_tsv"], { using: "gin" })
+    )
+
+    match idx_outcome do
+      Err(e) -> do
+        let _ = println("create_index err: " ++ e)
+        let _ = Db.query(conn, "DROP TABLE IF EXISTS ts_search_demo")
+        assert false
+      end
+      Ok(_) -> do
+        -- Filter with Depot.Query.ts_match against the bare tsvector column.
+        let q = Depot.Query.from_table("ts_search_demo")
+          |> Depot.Query.ts_match("body_tsv", "postgres search")
+        let match_result = Depot.Query.exec_sql(q, conn)
+
+        -- Rank with Depot.Query.ts_rank_expr against the SAME bare column,
+        -- composed via the lower-level Build/Compile path since ranking is
+        -- a select_as/order_by projection concern (see ts_rank_expr's doc).
+        let rank_expr = Depot.Query.ts_rank_expr("body_tsv", "postgres search")
+        let ranked_ast = Build.from("ts_search_demo")
+          |> Build.where_(Ast.Expr.Fragment("? @@ plainto_tsquery(?)",
+               [Ast.Expr.Col("body_tsv"), Ast.Expr.Lit(Ast.SqlValue.PString("postgres search"))]))
+          |> Build.select_as(Ast.Expr.Col("title"), "title")
+          |> Build.select_as(rank_expr, "rank")
+          |> Build.order_by(rank_expr, Ast.Desc)
+        let compiled = Compile.compile_parameterized(ranked_ast)
+        let rank_result = Db.exec(conn, compiled.sql, compiled.params)
+
+        let _ = Db.query(conn, "DROP TABLE IF EXISTS ts_search_demo")
+
+        -- plainto_tsquery("postgres search") ANDs the terms ('postgr' & 'search'),
+        -- so only the row containing BOTH words matches — "Postgres intro"
+        -- (only "postgres") and "Cooking" (neither) are correctly excluded.
+        let match_ok = match match_result do
+          Ok(rows) ->
+            match rows do
+              Cons(row, Nil) -> row_get(row, "title") == Some("Search deep dive")
+              _ -> false
+            end
+          Err(e) -> do
+            let _ = println("ts_match exec_sql err: " ++ e)
+            false
+          end
+        end
+
+        let rank_ok = match rank_result do
+          Ok(r) ->
+            match r.rows do
+              Cons(Cons(Some(top_title), Cons(Some(_), Nil)), Nil) ->
+                top_title == "Search deep dive"
+              _ -> false
+            end
+          Err(e) -> do
+            let _ = println("ts_rank_expr exec err: " ++ e)
+            false
+          end
+        end
+
+        assert (match_ok && rank_ok)
+      end
+    end
   )
 end
 

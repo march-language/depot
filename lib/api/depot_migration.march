@@ -290,6 +290,11 @@ opts is a record with optional fields:
 
     Depot.Migration.create_index("users", ["email"], { unique: true })
     Depot.Migration.create_index("articles", ["tags"], { using: "gin" })
+
+For full-text search: this is the pairing for `Depot.Query.ts_match` — build
+a GIN index over a real `tsvector`-typed column with
+`create_index(table, [field], { using: "gin" })`, not `create_index_expr`.
+See `Depot.Query.ts_match`'s doc comment for the full contract.
 """
 fn create_index(table, columns, opts) do
   let opts_entries = record_entries(opts)
@@ -313,6 +318,18 @@ bare column list — e.g. a GIN index over `to_tsvector('english', body)`.
 
 `index_expr` is embedded verbatim (no escaping): callers must not put user
 input directly in this string.
+
+**Different use case from `create_index` + `Depot.Query.ts_match`:** this
+function indexes a COMPUTED expression over a plain column (e.g. wrapping a
+text column in `to_tsvector(...)`) for when you don't have a stored
+`tsvector` column. Querying against an expression index requires the WHERE
+clause to use the IDENTICAL expression — `Depot.Query.ts_match/3` filters a
+BARE column instead, so it does NOT hit an index built by this function; that
+combination silently falls back to a Seq Scan. If you have a real `tsvector`
+column (maintained by a trigger or generated column), index it with plain
+`create_index(table, [field], { using: "gin" })` and use `ts_match`/
+`ts_rank_expr` against that column — see `Depot.Query.ts_match`'s doc comment
+for the full pairing.
 
 opts is a record with optional fields:
   unique — Bool (default false)

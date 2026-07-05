@@ -320,26 +320,32 @@ end
 
 test "ts_match appends a plainto_tsquery predicate" do
   let q = Depot.Query.from_table("articles")
-    |> Depot.Query.ts_match("body", "postgres search")
+    |> Depot.Query.ts_match("body_tsv", "postgres search")
   let sql = Depot.Query.to_sql(q)
   assert (String.contains(sql, "@@ plainto_tsquery"))
-  assert (String.contains(sql, "\"body\""))
+  assert (String.contains(sql, "\"body_tsv\""))
 end
 
 test "ts_match composes with other where_ predicates" do
   let q = Depot.Query.from_table("articles")
     |> Depot.Query.where_gt("views", "100")
-    |> Depot.Query.ts_match("body", "postgres")
+    |> Depot.Query.ts_match("body_tsv", "postgres")
   let sql = Depot.Query.to_sql(q)
   assert (String.contains(sql, "views"))
   assert (String.contains(sql, "plainto_tsquery"))
 end
 
-test "ts_rank_expr builds a ts_rank fragment expression" do
-  let e = Depot.Query.ts_rank_expr("body", "postgres search")
+test "ts_rank_expr builds a ts_rank fragment expression over the bare column" do
+  let e = Depot.Query.ts_rank_expr("body_tsv", "postgres search")
   match e do
     Expr.Fragment(tmpl, args) ->
-      assert (String.contains(tmpl, "ts_rank"))
+      let _ = assert (String.contains(tmpl, "ts_rank"))
+      let _ = assert (String.contains(tmpl, "body_tsv"))
+      -- Must rank the bare tsvector column directly — NOT re-wrap it in
+      -- to_tsvector(...), which would be a Postgres type error since
+      -- to_tsvector only accepts text, not tsvector, as input. This is
+      -- the column-type contract shared with ts_match (see Finding 1).
+      let _ = assert (String.contains(tmpl, "to_tsvector") == false)
       assert (List.length(args) == 1)
     _ -> assert false
   end

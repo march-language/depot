@@ -451,6 +451,25 @@ end
 doc """
 WHERE field @@ plainto_tsquery(search_term) — PostgreSQL full-text search predicate.
 
+**Column-type contract:** `field` must already be a `tsvector`-typed column
+(e.g. maintained via a trigger or a generated column), NOT a plain text
+column and NOT a `to_tsvector(...)` expression. This predicate filters the
+bare column directly (`"field" @@ plainto_tsquery(...)`) — Postgres has no
+`text @@ tsquery` operator, so calling this against a plain text column is a
+SQL type error.
+
+**Indexing:** to make this predicate use a GIN index, index the SAME bare
+tsvector column with `Depot.Migration.create_index(table, [field], { using:
+"gin" })` — NOT `create_index_expr`. `create_index_expr` is for a DIFFERENT
+use case: indexing a computed `to_tsvector(...)` expression over a plain text
+column when you don't have a stored tsvector column. Querying against an
+expression index requires the WHERE clause to use the identical expression,
+which `ts_match` (a bare-column predicate) does not do — pairing `ts_match`
+with a `create_index_expr` index silently falls back to a Seq Scan.
+
+`ts_rank_expr/2` ranks the same bare tsvector column, so the two compose
+directly: `ts_match(q, "body_tsv", term)` + `ts_rank_expr("body_tsv", term)`.
+
 Uses a raw SQL Fragment; search_term travels as a bound Lit inside the
 Fragment's own argument list. This predicate compiles correctly via
 `exec_sql/2` (which compiles $N params directly from the query AST). If you
@@ -459,23 +478,31 @@ predicate's param will render correctly in the SQL from `to_sql/1` (inlined,
 via compile_inline) but will NOT appear in `to_params/1`'s list — prefer
 exec_sql/2 for queries using ts_match.
 
-    Depot.Query.from_table("articles") |> Depot.Query.ts_match("body", "postgres search")
+    Depot.Query.from_table("articles") |> Depot.Query.ts_match("body_tsv", "postgres search")
 """
 fn ts_match(query, field, search_term) do
-  add_sql_where_no_param(query, Ast.Expr.Fragment("? @@ plainto_tsquery(?)", [Ast.Expr.Col(field), Ast.Expr.Lit(Ast.SqlValue.PString(search_term))]))
+  add_sql_where_no_param(query, Ast.Expr.Fragment("? @@ plainto_tsquery(?)", [Ast.Expr.Col(field), Ast.Expr.Lit(PString(search_term))]))
 end
 
 doc """
-Builds a `ts_rank(to_tsvector(field), plainto_tsquery(search_term))`
-expression for use in `select_as`/`order_by` — ranking is a projection
-concern, so this returns an `Expr`, not a query. `search_term` is a bound
-Fragment param (same mechanism as `ts_match`), not a hand-concatenated
-literal, so it needs no manual SQL-escaping.
+Builds a `ts_rank(field, plainto_tsquery(search_term))` expression for use
+with `Build.select_as`/`Build.order_by` — ranking is a projection concern, so
+this returns an `Expr`, not a query. `search_term` is a bound Fragment param
+(same mechanism as `ts_match`), not a hand-concatenated literal, so it needs
+no manual SQL-escaping.
 
-    Depot.Query.ts_rank_expr("body", "postgres search")
+Same column-type contract as `ts_match`: `field` must already be a
+`tsvector`-typed column — pass the SAME field name given to `ts_match` so the
+rank reflects the same tsvector data being filtered.
+
+Like `ts_match`, this Fragment param will NOT appear in `to_params/1`'s
+list — prefer `exec_sql/2` (or `Db.exec` with `Compile.compile_parameterized`)
+for queries built with ts_rank_expr.
+
+    Depot.Query.ts_rank_expr("body_tsv", "postgres search")
 """
 fn ts_rank_expr(field, search_term) do
-  Ast.Expr.Fragment("ts_rank(to_tsvector(" ++ field ++ "), plainto_tsquery(?))", [Ast.Expr.Lit(PString(search_term))])
+  Ast.Expr.Fragment("ts_rank(" ++ field ++ ", plainto_tsquery(?))", [Ast.Expr.Lit(PString(search_term))])
 end
 
 -- ---------------------------------------------------------------------------
