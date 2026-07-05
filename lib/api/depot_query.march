@@ -448,6 +448,23 @@ fn where_is_not_null(query, field) do
   add_sql_where_no_param(query, Ast.Expr.IsNotNull(Ast.Expr.Col(field)))
 end
 
+doc """
+WHERE field @@ plainto_tsquery(search_term) — PostgreSQL full-text search predicate.
+
+Uses a raw SQL Fragment; search_term travels as a bound Lit inside the
+Fragment's own argument list. This predicate compiles correctly via
+`exec_sql/2` (which compiles $N params directly from the query AST). If you
+build SQL manually via `to_sql/1` + `to_params/1` instead, note this
+predicate's param will render correctly in the SQL from `to_sql/1` (inlined,
+via compile_inline) but will NOT appear in `to_params/1`'s list — prefer
+exec_sql/2 for queries using ts_match.
+
+    Depot.Query.from_table("articles") |> Depot.Query.ts_match("body", "postgres search")
+"""
+fn ts_match(query, field, search_term) do
+  add_sql_where_no_param(query, Ast.Expr.Fragment("? @@ plainto_tsquery(?)", [Ast.Expr.Col(field), Ast.Expr.Lit(Ast.SqlValue.PString(search_term))]))
+end
+
 -- ---------------------------------------------------------------------------
 -- SQL generation
 -- ---------------------------------------------------------------------------

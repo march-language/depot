@@ -316,4 +316,23 @@ test "to_params returns empty for IS NOT NULL condition" do
   assert List.length(params) == 0
 end
 
+-- ---- Full-text search helpers ----
+
+test "ts_match appends a plainto_tsquery predicate" do
+  let q = Depot.Query.from_table("articles")
+    |> Depot.Query.ts_match("body", "postgres search")
+  let sql = Depot.Query.to_sql(q)
+  assert (String.contains(sql, "@@ plainto_tsquery"))
+  assert (String.contains(sql, "\"body\""))
+end
+
+test "ts_match composes with other where_ predicates" do
+  let q = Depot.Query.from_table("articles")
+    |> Depot.Query.where_gt("views", "100")
+    |> Depot.Query.ts_match("body", "postgres")
+  let sql = Depot.Query.to_sql(q)
+  assert (String.contains(sql, "views"))
+  assert (String.contains(sql, "plainto_tsquery"))
+end
+
 end
