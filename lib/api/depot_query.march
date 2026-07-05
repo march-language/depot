@@ -465,6 +465,19 @@ fn ts_match(query, field, search_term) do
   add_sql_where_no_param(query, Ast.Expr.Fragment("? @@ plainto_tsquery(?)", [Ast.Expr.Col(field), Ast.Expr.Lit(Ast.SqlValue.PString(search_term))]))
 end
 
+doc """
+Builds a `ts_rank(to_tsvector(field), plainto_tsquery(search_term))`
+expression for use in `select_as`/`order_by` — ranking is a projection
+concern, so this returns an `Expr`, not a query. `search_term` is a bound
+Fragment param (same mechanism as `ts_match`), not a hand-concatenated
+literal, so it needs no manual SQL-escaping.
+
+    Depot.Query.ts_rank_expr("body", "postgres search")
+"""
+fn ts_rank_expr(field, search_term) do
+  Ast.Expr.Fragment("ts_rank(to_tsvector(" ++ field ++ "), plainto_tsquery(?))", [Ast.Expr.Lit(PString(search_term))])
+end
+
 -- ---------------------------------------------------------------------------
 -- SQL generation
 -- ---------------------------------------------------------------------------

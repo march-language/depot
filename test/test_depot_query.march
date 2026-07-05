@@ -335,4 +335,14 @@ test "ts_match composes with other where_ predicates" do
   assert (String.contains(sql, "plainto_tsquery"))
 end
 
+test "ts_rank_expr builds a ts_rank fragment expression" do
+  let e = Depot.Query.ts_rank_expr("body", "postgres search")
+  match e do
+    Expr.Fragment(tmpl, args) ->
+      assert (String.contains(tmpl, "ts_rank"))
+      assert (List.length(args) == 1)
+    _ -> assert false
+  end
+end
+
 end
