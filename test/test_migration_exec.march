@@ -189,4 +189,36 @@ test "create_index with using: gin emits a GIN index" do
   )
 end
 
+test "create_index_expr builds a GIN index over a to_tsvector expression" do
+  with_conn(fn conn ->
+    let _ = Db.query(conn, "DROP TABLE IF EXISTS ts_demo2")
+    let _ = Db.query(conn, "CREATE TABLE ts_demo2 (id serial primary key, body text)")
+    let outcome = Depot.Migration.run(conn, fn () ->
+      Depot.Migration.create_index_expr("ts_demo2", "to_tsvector('english', body)", { using: "gin", name: "ts_demo2_body_gin" })
+    )
+    let result = match outcome do
+      Err(e) -> do
+        let _ = println("create_index_expr err: " ++ e)
+        false
+      end
+      Ok(_) -> do
+        let idx_sql = "SELECT indexdef FROM pg_indexes WHERE tablename = 'ts_demo2' AND indexname = 'ts_demo2_body_gin'"
+        match Db.query(conn, idx_sql) do
+          Ok(r) ->
+            match r.rows do
+              Cons(Cons(Some(def), Nil), Nil) -> String.contains(def, "USING gin") && String.contains(def, "to_tsvector")
+              _ -> false
+            end
+          Err(e) -> do
+            let _ = println("index lookup failed: " ++ e)
+            false
+          end
+        end
+      end
+    end
+    let _ = Db.query(conn, "DROP TABLE IF EXISTS ts_demo2")
+    assert result
+  )
+end
+
 end -- mod TestMigrationExec

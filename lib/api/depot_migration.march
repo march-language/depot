@@ -162,6 +162,16 @@ pfn join_strings(lst, sep) do
   String.join(lst, sep)
 end
 
+-- Build a "USING <method> " clause fragment from an opts_entries alist,
+-- or "" if no `using` option was supplied. Shared by create_index and
+-- create_index_expr to avoid duplicating this match.
+pfn using_clause(opts_entries) do
+  match alist_get_opt(opts_entries, "using") do
+    Some(m) -> "USING " ++ to_string(m) ++ " "
+    None -> ""
+  end
+end
+
 -- ---------------------------------------------------------------------------
 -- Public API
 -- ---------------------------------------------------------------------------
@@ -291,12 +301,37 @@ fn create_index(table, columns, opts) do
       table ++ "_" ++ col_part ++ "_index"
   end
   let unique_str = if is_unique do "UNIQUE " else "" end
-  let using_str = match alist_get_opt(opts_entries, "using") do
-    Some(m) -> "USING " ++ to_string(m) ++ " "
-    None -> ""
-  end
+  let using_str = using_clause(opts_entries)
   let col_list = join_strings(List.map(columns, fn c -> "\"" ++ to_string(c) ++ "\""), ", ")
   let sql = "CREATE " ++ unique_str ++ "INDEX \"" ++ idx_name ++ "\" ON \"" ++ table ++ "\" " ++ using_str ++ "(" ++ col_list ++ ")"
+  log_sql(sql)
+end
+
+doc """
+Generate a CREATE INDEX statement over a raw SQL expression rather than a
+bare column list — e.g. a GIN index over `to_tsvector('english', body)`.
+
+`index_expr` is embedded verbatim (no escaping): callers must not put user
+input directly in this string.
+
+opts is a record with optional fields:
+  unique — Bool (default false)
+  name   — custom index name string (recommended: expression indexes don't
+           have an obvious auto-generated name, so pass one explicitly)
+  using  — index method string, e.g. "gin", "gist" (default: btree)
+
+    Depot.Migration.create_index_expr("articles", "to_tsvector('english', body)", { using: "gin", name: "articles_body_gin" })
+"""
+fn create_index_expr(table, index_expr, opts) do
+  let opts_entries = record_entries(opts)
+  let is_unique = alist_get(opts_entries, "unique", false)
+  let idx_name = match alist_get_opt(opts_entries, "name") do
+    Some(n) -> to_string(n)
+    None -> table ++ "_expr_index"
+  end
+  let unique_str = if is_unique do "UNIQUE " else "" end
+  let using_str = using_clause(opts_entries)
+  let sql = "CREATE " ++ unique_str ++ "INDEX \"" ++ idx_name ++ "\" ON \"" ++ table ++ "\" " ++ using_str ++ "(" ++ to_string(index_expr) ++ ")"
   log_sql(sql)
 end
 
