@@ -1,0 +1,80 @@
+-- test/test_wire_param_repro.march
+--
+-- NEGATIVE CONTROL for the wire-protocol parameter-corruption bug. This is the
+-- minimal create_user-shaped parameterized INSERT (4 ParamText, one a long pbkdf2
+-- hash with a random salt each call), run 100x. CONFIRMED (Jun 30 2026): in this
+-- standalone/test-harness context it runs CLEAN — 0/100, no crash. So the bug does
+-- NOT reproduce from a plain loop of these INSERTs; it requires the LIVE HTTP-SERVER
+-- runtime context (see repro_live_signup.sh / the forgepm live server, where the
+-- identical INSERT fails ~50% and SIGSEGVs). That contrast is itself the key clue:
+-- the corruption is tied to the server runtime (request handler context / connection
+-- churn / memory state after the HTTP server + thread pool start), not the INSERT
+-- shape alone. Keep this as a baseline: a fix should keep it green, and the real
+-- validation is the live-server repro going 20/20.
+--
+-- Run just this:  forge test --filter wire_param   (from /Users/80197052/code/depot)
+mod TestWireParamRepro do
+
+  needs IO.NetConnect
+  needs IO.Random
+  needs IO.Console
+
+  import Connection
+  import Db
+
+pfn cfg() do
+  full_config("localhost", 5432, "postgres", "forgepm_dev", Some(""))
+end
+
+-- One create_user-shaped INSERT on a FRESH connection (exactly like forgepm Repo.with_conn).
+pfn one_insert(i) do
+  match Connection.connect(cfg()) do
+  Err(e)  -> Err("connect: " ++ e)
+  Ok(raw) -> do
+    let db   = Db.from_postgres(raw)
+    let id   = Crypto.random_hex(16)
+    let hash = Crypto.hash_password("password")   -- long; random salt -> varied content each call
+    let r = Db.exec(db,
+      "INSERT INTO rc_repro (id, username, email, password_hash) VALUES ($1, $2, $3, $4)",
+      [ParamText(id),
+       ParamText("u" ++ int_to_string(i)),
+       ParamText("e" ++ int_to_string(i) ++ "@x.test"),
+       ParamText(hash)])
+    let _ = Db.close(db)
+    match r do
+    Err(e) -> Err("exec: " ++ e)
+    Ok(_)  -> Ok(())
+    end
+  end
+  end
+end
+
+pfn loop_go(i, n, fail) do
+  if i > n do fail
+  else
+    match one_insert(i) do
+    Ok(_)  -> loop_go(i + 1, n, fail)
+    Err(e) -> do
+      let _ = println("  FAIL #" ++ int_to_string(i) ++ ": " ++ e)
+      loop_go(i + 1, n, fail + 1)
+    end
+    end
+  end
+end
+
+test "wire_param: 100 create_user-shaped INSERTs neither corrupt nor crash" do
+  match Connection.connect(cfg()) do
+  Err(e) -> println("SKIP (no Postgres at the configured DB): " ++ e)
+  Ok(raw) -> do
+    let db = Db.from_postgres(raw)
+    let _  = Db.exec(db, "DROP TABLE IF EXISTS rc_repro", Nil)
+    let _  = Db.exec(db, "CREATE TABLE rc_repro (id TEXT, username TEXT, email TEXT, password_hash TEXT)", Nil)
+    let _  = Db.close(db)
+    let fail = loop_go(1, 100, 0)
+    println("=== " ++ int_to_string(fail) ++ " / 100 failed ===")
+    assert fail == 0
+  end
+  end
+end
+
+end

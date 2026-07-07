@@ -152,7 +152,7 @@ end
 fn soft_delete_for_table(table) do
   Update({
     table_: table,
-    sets: [("deleted_at", Raw("NOW()"))],
+    sets: [("deleted_at", Expr.Raw("NOW()"))],
     wheres: Nil,
     returning_: Nil
   })
@@ -183,7 +183,7 @@ end
 --- Pair with `Connection.exec_prepared` + rows_affected/status-tag
 --- parsing on the execution side.
 fn classify_locked_update_result(rows_affected) do
-  if rows_affected == 1 then Ok(()) else Err("stale_entry")
+  if rows_affected == 1 do Ok(()) else Err("stale_entry") end
 end
 
 -- ---- DELETE builders ----

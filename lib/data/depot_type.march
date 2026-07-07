@@ -20,7 +20,7 @@ mod Depot.Type do
 --- lowercase. Returns None if the string doesn't contain '@'.
 fn email_cast(s) do
   let normalised = String.to_lowercase(String.trim(s))
-  if String.contains(normalised, "@") then Some(normalised) else None
+  if String.contains(normalised, "@") do Some(normalised) else None end
 end
 
 --- Encode an already-cast email for the wire.
@@ -45,7 +45,7 @@ fn enum_dump(mapping, march_label) do
   match mapping do
   Nil -> None
   Cons((m, d), rest) ->
-    if m == march_label then Some(PString(d)) else enum_dump(rest, march_label)
+    if m == march_label do Some(PString(d)) else enum_dump(rest, march_label) end
   end
 end
 
@@ -54,7 +54,7 @@ fn enum_load(mapping, db_value) do
   match mapping do
   Nil -> None
   Cons((m, d), rest) ->
-    if d == db_value then Some(m) else enum_load(rest, db_value)
+    if d == db_value do Some(m) else enum_load(rest, db_value) end
   end
 end
 

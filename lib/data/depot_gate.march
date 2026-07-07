@@ -125,7 +125,7 @@ pfn alist_get(pairs, key) do
   match pairs do
   Nil -> None
   Cons((k, v), rest) ->
-    if k == key then Some(v) else alist_get(rest, key)
+    if k == key do Some(v) else alist_get(rest, key) end
   end
 end
 
@@ -136,7 +136,7 @@ pfn alist_set(pairs, key, value) do
     Nil ->
       List.append(List.reverse(acc), Cons((key, value), Nil))
     Cons((k, v), rest) ->
-      if k == key then List.append(List.reverse(acc), Cons((key, value), rest)) else go(rest, Cons((k, v), acc))
+      if k == key do List.append(List.reverse(acc), Cons((key, value), rest)) else go(rest, Cons((k, v), acc)) end
     end
   end
   go(pairs, Nil)
@@ -156,7 +156,7 @@ pfn alist_get_all(pairs, key) do
     match ps do
     Nil -> List.reverse(acc)
     Cons((k, v), rest) ->
-      if k == key then go(rest, Cons(v, acc)) else go(rest, acc)
+      if k == key do go(rest, Cons(v, acc)) else go(rest, acc) end
     end
   end
   go(pairs, Nil)
@@ -170,8 +170,9 @@ end
 -- Check if a value is "blank" — empty string or whitespace-only.
 -- For string values, trims whitespace; for non-strings, always non-blank.
 fn is_blank(v) do
-  if v == "" then true
+  if v == "" do true
   else String.trim(to_string(v)) == ""
+  end
 end
 
 -- ---------------------------------------------------------------------------
@@ -210,11 +211,11 @@ pfn apply_number_opts(form, field, n, opts) do
     Nil -> f
     Cons(opt, rest) ->
       go(rest, match opt do
-      NumMin(m) -> if n < m then add_error(f, field, "must be greater than or equal to " ++ int_to_string(m)) else f
-      NumMax(m) -> if n > m then add_error(f, field, "must be less than or equal to " ++ int_to_string(m)) else f
-      NumGreaterThan(m) -> if n <= m then add_error(f, field, "must be greater than " ++ int_to_string(m)) else f
-      NumLessThan(m) -> if n >= m then add_error(f, field, "must be less than " ++ int_to_string(m)) else f
-      NumEqualTo(m) -> if n != m then add_error(f, field, "must be equal to " ++ int_to_string(m)) else f
+      NumMin(m) -> if n < m do add_error(f, field, "must be greater than or equal to " ++ int_to_string(m)) else f end
+      NumMax(m) -> if n > m do add_error(f, field, "must be less than or equal to " ++ int_to_string(m)) else f end
+      NumGreaterThan(m) -> if n <= m do add_error(f, field, "must be greater than " ++ int_to_string(m)) else f end
+      NumLessThan(m) -> if n >= m do add_error(f, field, "must be less than " ++ int_to_string(m)) else f end
+      NumEqualTo(m) -> if n != m do add_error(f, field, "must be equal to " ++ int_to_string(m)) else f end
       NumMessage(_) -> f
       end)
     end
@@ -407,7 +408,7 @@ end
 doc """
 Returns true if the form has no validation errors.
 
-    if Depot.Gate.is_valid(form) then persist(form) else render_errors(form) end
+    if Depot.Gate.is_valid(form) do persist(form) else render_errors(form) end
 """
 fn is_valid(form) do
   form_valid(form)
@@ -447,7 +448,7 @@ fn validate_required(form, fields) do
     Cons(field, rest) ->
       go(rest, match get_field(f, field) do
       None    -> add_error(f, field, "can't be blank")
-      Some(v) -> if is_blank(v) then add_error(f, field, "can't be blank") else f
+      Some(v) -> if is_blank(v) do add_error(f, field, "can't be blank") else f end
       end)
     end
   end
@@ -460,9 +461,9 @@ pfn apply_length_opts(form, field, len, opts) do
     Nil -> f
     Cons(opt, rest) ->
       go(rest, match opt do
-      LenMin(n) -> if len < n then add_error(f, field, "should be at least " ++ int_to_string(n) ++ " byte(s)") else f
-      LenMax(n) -> if len > n then add_error(f, field, "should be at most " ++ int_to_string(n) ++ " byte(s)") else f
-      LenExact(n) -> if len != n then add_error(f, field, "should be exactly " ++ int_to_string(n) ++ " byte(s)") else f
+      LenMin(n) -> if len < n do add_error(f, field, "should be at least " ++ int_to_string(n) ++ " byte(s)") else f end
+      LenMax(n) -> if len > n do add_error(f, field, "should be at most " ++ int_to_string(n) ++ " byte(s)") else f end
+      LenExact(n) -> if len != n do add_error(f, field, "should be exactly " ++ int_to_string(n) ++ " byte(s)") else f end
       LenMessage(_) -> f
       end)
     end
@@ -507,7 +508,7 @@ fn validate_format(form, field, pattern) do
   match get_field(form, field) do
   None    -> form
   Some(v) ->
-    if Regex.matches(pattern, v) then form else add_error(form, field, "has invalid format")
+    if Regex.matches(pattern, v) do form else add_error(form, field, "has invalid format") end
   end
 end
 
@@ -520,7 +521,7 @@ fn validate_inclusion(form, field, values) do
   match get_field(form, field) do
   None    -> form
   Some(v) ->
-    if List.member(values, v) then form else add_error(form, field, "is not a valid value")
+    if List.member(values, v) do form else add_error(form, field, "is not a valid value") end
   end
 end
 
@@ -533,7 +534,7 @@ fn validate_exclusion(form, field, values) do
   match get_field(form, field) do
   None    -> form
   Some(v) ->
-    if List.member(values, v) then add_error(form, field, "is reserved") else form
+    if List.member(values, v) do add_error(form, field, "is reserved") else form end
   end
 end
 
@@ -570,7 +571,7 @@ fn validate_acceptance(form, field) do
   match get_field(form, field) do
   None    -> add_error(form, field, "must be accepted")
   Some(v) ->
-    if v == "true" || v == "1" then form else add_error(form, field, "must be accepted")
+    if v == "true" || v == "1" do form else add_error(form, field, "must be accepted") end
   end
 end
 
@@ -590,7 +591,7 @@ fn validate_confirmation(form, field) do
     None ->
       add_error(form, conf_field, "can't be blank")
     Some(cv) ->
-      if v == cv then form else add_error(form, conf_field, "does not match " ++ field)
+      if v == cv do form else add_error(form, conf_field, "does not match " ++ field) end
     end
   end
 end
@@ -603,7 +604,7 @@ The validator receives the field value and returns:
   Some(msg)   -- invalid, add this error message
 
     form |> Depot.Gate.validate_change("username", fn v ->
-      if String.byte_size(v) < 3 then Some("too short") else None end
+      if String.byte_size(v) < 3 do Some("too short") else None end
     )
 """
 fn validate_change(form, field, validator) do
@@ -691,7 +692,7 @@ fn apply_constraint_error(form, constraint_name) do
     match cs do
     Nil -> form
     Cons(DbConstraint(_, field, name, msg), rest) ->
-      if name == constraint_name then add_error(form, field, msg) else go(rest)
+      if name == constraint_name do add_error(form, field, msg) else go(rest) end
     end
   end
   go(form_constraints(form))

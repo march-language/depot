@@ -33,7 +33,7 @@ fn read_i32(b, pos) do
     Bytes.get(b, pos + 1) * 65536    +
     Bytes.get(b, pos + 2) * 256      +
     Bytes.get(b, pos + 3)
-  if raw >= 2147483648 then raw - 4294967296 else raw
+  if raw >= 2147483648 do raw - 4294967296 else raw end
 end
 
 --- Reads a null-terminated C string from bytes starting at `pos`.
@@ -47,8 +47,9 @@ end
 fn read_cstring(b, pos) do
   fn go(i, acc) do
     let byte = Bytes.get(b, i)
-    if byte == 0 then (Bytes.to_string(Bytes.from_list(List.reverse(acc))), i + 1)
+    if byte == 0 do (Bytes.to_string(Bytes.from_list(List.reverse(acc))), i + 1)
     else go(i + 1, Cons(byte, acc))
+    end
   end
   go(pos, Nil)
 end
@@ -63,8 +64,9 @@ end
 --- 2
 fn read_bytes_field(b, pos) do
   let len = read_i32(b, pos)
-  if len == -1 then (None, pos + 4)
+  if len == -1 do (None, pos + 4)
   else (Some(Bytes.slice(b, pos + 4, len)), pos + 4 + len)
+  end
 end
 
 -- ---- Error/Notice field parsing ----
@@ -111,11 +113,12 @@ fn parse_one_field_desc(b, pos) do
 end
 
 fn parse_field_descs(b, pos, n, acc) do
-  if n == 0 then List.reverse(acc)
+  if n == 0 do List.reverse(acc)
   else
     match parse_one_field_desc(b, pos) do
     (fd, next) -> parse_field_descs(b, next, n - 1, Cons(fd, acc))
     end
+  end
 end
 
 fn parse_data_columns(b, pos, n) do
@@ -123,21 +126,24 @@ fn parse_data_columns(b, pos, n) do
 end
 
 pfn parse_data_columns_acc(b, pos, n, acc) do
-  if n == 0 then List.reverse(acc)
+  if n == 0 do List.reverse(acc)
   else
     match read_bytes_field(b, pos) do
     (col, next) -> parse_data_columns_acc(b, next, n - 1, Cons(col, acc))
     end
+  end
 end
 
 fn parse_sasl_mechanisms(b, pos, acc) do
-  if pos >= Bytes.length(b) then List.reverse(acc)
+  if pos >= Bytes.length(b) do List.reverse(acc)
   else
-    if Bytes.get(b, pos) == 0 then List.reverse(acc)
+    if Bytes.get(b, pos) == 0 do List.reverse(acc)
     else
       match read_cstring(b, pos) do
       (mech, next) -> parse_sasl_mechanisms(b, next, Cons(mech, acc))
       end
+    end
+  end
 end
 
 -- ---- Sub-decoders ----
@@ -227,16 +233,18 @@ fn recv_msg(fd) do
     let type_byte   = Bytes.get(header, 0)
     let msg_len     = read_i32(header, 1)
     let payload_len = msg_len - 4
-    if payload_len < 0 then
+    if payload_len < 0 do
       Err("invalid message: negative payload length")
     else
-      if payload_len == 0 then
+      if payload_len == 0 do
         decode(type_byte, Bytes.empty())
       else
         match tcp_recv_exact(fd, payload_len) do
         Err(e)      -> Err("recv payload: " ++ e)
         Ok(payload) -> decode(type_byte, payload)
         end
+      end
+    end
   end
   end
 end

@@ -79,7 +79,7 @@ end
 
 fn md5_password(password, user, salt) do
   let inner = md5(password ++ user)
-  let outer = md5("md5" ++ inner ++ Bytes.to_string(salt))
+  let outer = md5(inner ++ Bytes.to_string(salt))
   "md5" ++ outer
 end
 
@@ -130,8 +130,9 @@ pfn lookup_field(fields, key) do
   match fields do
   Nil -> ""
   Cons((k, v), rest) ->
-    if k == key then v
+    if k == key do v
     else lookup_field(rest, key)
+    end
   end
 end
 
@@ -182,10 +183,10 @@ pfn authenticate_scram(fd, cfg, mechanisms) do
   fn has_scram(mechs) do
     match mechs do
     Nil -> false
-    Cons(m, rest) -> if m == "SCRAM-SHA-256" then true else has_scram(rest)
+    Cons(m, rest) -> if m == "SCRAM-SHA-256" do true else has_scram(rest) end
     end
   end
-  if has_scram(mechanisms) then do
+  if has_scram(mechanisms) do
     let nonce          = base64_encode(random_bytes(18))
     let user           = cfg.user
     let client_first   = scram_client_first_msg(user, nonce)
@@ -204,7 +205,7 @@ pfn authenticate_scram(fd, cfg, mechanisms) do
         let iterations    = Option.unwrap_or(string_to_int(iter_str), 4096)
         -- Verify the server nonce starts with our client nonce (RFC 5802 §5).
         -- A mismatch indicates a MITM or a misbehaving server; abort immediately.
-        if !String.starts_with(combined_nonce, nonce) then
+        if !String.starts_with(combined_nonce, nonce) do
           Err("SCRAM: server nonce does not contain client nonce prefix")
         else do
         let pw            = Option.unwrap_or(cfg.password, "")
@@ -223,7 +224,7 @@ pfn authenticate_scram(fd, cfg, mechanisms) do
             let server_final = Bytes.to_string(server_final_bytes)
             let sfinal_fields = scram_parse_server_first(server_final)
             let server_sig_b64 = lookup_field(sfinal_fields, "v")
-            if server_sig_b64 == expected_server_sig then
+            if server_sig_b64 == expected_server_sig do
               match recv_msg(fd) do
               Ok(AuthOk) -> Ok(())
               Ok(ErrorResponse(fields)) -> Err("auth failed: " ++ fields.message)
@@ -232,19 +233,22 @@ pfn authenticate_scram(fd, cfg, mechanisms) do
               end
             else
               Err("SCRAM server signature verification failed")
+            end
           end
           Ok(ErrorResponse(fields)) -> Err("auth failed: " ++ fields.message)
           Ok(_) -> Err("unexpected reply after SASL response")
           end
         end
         end  -- else do
+        end  -- if !String.starts_with(...) (line 207)
       end
       Ok(ErrorResponse(fields)) -> Err("server rejected connection: " ++ fields.message)
       Ok(_) -> Err("unexpected reply after SASL initial")
       end
     end
-  end else
+  else
     Err("server offered no supported SASL mechanism")
+  end
 end
 
 -- ---- Auth exchange ----

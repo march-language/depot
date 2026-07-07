@@ -38,10 +38,11 @@ pfn put_assoc(pairs, field, value) do
     match rem do
     Nil -> List.append(List.reverse(acc), Cons((field, value), Nil))
     Cons((k, v), rest) ->
-      if k == field then
+      if k == field do
         List.append(List.reverse(acc), Cons((k, value), rest))
       else
         go(rest, Cons((k, v), acc))
+      end
     end
   end
   go(pairs, Nil)
@@ -57,7 +58,7 @@ end
 pfn get_assoc(pairs, field) do
   match pairs do
   Nil -> None
-  Cons((k, v), rest) -> if k == field then Some(v) else get_assoc(rest, field)
+  Cons((k, v), rest) -> if k == field do Some(v) else get_assoc(rest, field) end
   end
 end
 

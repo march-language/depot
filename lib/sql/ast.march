@@ -158,7 +158,7 @@ impl Eq(Expr) do
     (SubqueryExpr(x),      SubqueryExpr(y))     -> x == y
     (FnCall(n1, xs),       FnCall(n2, ys))      -> n1 == n2 && xs == ys
     (ExprParam(x),         ExprParam(y))        -> x == y
-    (Raw(x),               Raw(y))              -> x == y
+    (Expr.Raw(x),               Expr.Raw(y))              -> x == y
     (Fragment(t1, xs),     Fragment(t2, ys))    -> t1 == t2 && xs == ys
     (InSubquery(x, q1),    InSubquery(y, q2))   -> x == y && q1 == q2
     (NotInSubquery(x, q1), NotInSubquery(y, q2)) -> x == y && q1 == q2

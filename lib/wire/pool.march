@@ -62,12 +62,13 @@ fn rev_conns_acc(lst, acc) do
 end
 
 fn warm_up(conn_cfg, target, acc, count) do
-  if count >= target then acc
+  if count >= target do acc
   else
     match Connection.connect(conn_cfg) do
     Ok(conn) -> warm_up(conn_cfg, target, Cons(Db.from_postgres(conn), acc), count + 1)
     Err(_)   -> warm_up(conn_cfg, target, acc, count + 1)
     end
+  end
 end
 
 fn ping_conns(conns, acc) do
@@ -100,8 +101,9 @@ fn replenish_idle(cfg_opt, healthy) do
   Some(cfg) -> do
     let n = list_len(healthy)
     let deficit = cfg.min_size - n
-    if deficit > 0 then warm_up(cfg.conn_config, deficit, healthy, 0)
+    if deficit > 0 do warm_up(cfg.conn_config, deficit, healthy, 0)
     else healthy
+    end
   end
   end
 end
@@ -192,7 +194,7 @@ fn handle_checkout(state : PoolState) do
         new_state: { state with idle: rest, idle_count: state.idle_count - 1,
                                  checked_out: state.checked_out + 1 } }
     Nil ->
-      if state.checked_out < cfg.max_size then
+      if state.checked_out < cfg.max_size do
         match Connection.connect(cfg.conn_config) do
         Ok(new_conn) ->
           { conn: Some(Db.from_postgres(new_conn)),
@@ -202,6 +204,7 @@ fn handle_checkout(state : PoolState) do
         end
       else
         { conn: None, new_state: state }
+      end
     end
   end
 end

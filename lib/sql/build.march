@@ -47,7 +47,7 @@ fn with_deleted(q) do
   Query(f) -> match f.wheres do
     Cons(Where(e), rest) -> match e do
       Expr.IsNull(inner) -> match inner do
-        Expr.Col(name) -> if name == "deleted_at" then Query({ f with wheres: rest }) else q
+        Expr.Col(name) -> if name == "deleted_at" do Query({ f with wheres: rest }) else q end
         _              -> q
       end
       _ -> q
@@ -118,7 +118,7 @@ end
 --- true
 fn where_in(q, expr, vals) do
   match vals do
-  Nil   -> where_(q, Raw("FALSE"))
+  Nil   -> where_(q, Expr.Raw("FALSE"))
   _     -> where_(q, In(expr, vals))
   end
 end
@@ -148,7 +148,7 @@ end
 --- true
 fn where_or(q, exprs) do
   match exprs do
-  Nil             -> where_(q, Raw("FALSE"))
+  Nil             -> where_(q, Expr.Raw("FALSE"))
   Cons(e, Nil)    -> where_(q, e)
   _               -> where_(q, fold_or(exprs))
   end
@@ -375,11 +375,11 @@ pfn fold_or(exprs) do
     end
   end
   match exprs do
-  Nil          -> Raw("FALSE")
+  Nil          -> Expr.Raw("FALSE")
   Cons(e, Nil) -> e
   Cons(_, _)   -> match rev(exprs, Nil) do
     Cons(last, rest) -> go(rest, last)
-    Nil              -> Raw("FALSE")
+    Nil              -> Expr.Raw("FALSE")
     end
   end
 end

@@ -31,14 +31,14 @@ needs IO.Spawn
 pfn alist_get(lst, key, default) do
   match lst do
     Nil -> default
-    Cons((k, v), rest) -> if k == key then v else alist_get(rest, key, default)
+    Cons((k, v), rest) -> if k == key do v else alist_get(rest, key, default) end
   end
 end
 
 pfn alist_get_opt(lst, key) do
   match lst do
     Nil -> None
-    Cons((k, v), rest) -> if k == key then Some(v) else alist_get_opt(rest, key)
+    Cons((k, v), rest) -> if k == key do Some(v) else alist_get_opt(rest, key) end
   end
 end
 
@@ -853,7 +853,7 @@ fn rollback(conn, migrations, n) do
       -- applied is ascending; we want the last n in descending order.
       let total = list_length(applied)
       let skip  = total - n
-      let tail  = list_drop(applied, if skip < 0 then 0 else skip)
+      let tail  = list_drop(applied, if skip < 0 do 0 else skip end)
       let descending = reverse_ints(tail, Nil)
       run_downs(conn, migrations, descending)
   end

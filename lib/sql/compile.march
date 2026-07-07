@@ -527,7 +527,7 @@ pfn compile_expr(e, st) do
       PInt(n)    -> ParamText(int_to_string(n))
       PFloat(f_) -> ParamText(float_to_string(f_))
       PString(s) -> ParamText(s)
-      PBool(b)   -> ParamText(if b then "t" else "f")
+      PBool(b)   -> ParamText(if b do "t" else "f" end)
       PNull      -> ParamNull
     end
     ("$" ++ int_to_string(nc), { param_count: nc, params: Cons(param, st.params) })
@@ -680,7 +680,7 @@ pfn compile_expr(e, st) do
   end
   CountAll     -> ("COUNT(*)", st)
   ExprParam(n) -> ("$" ++ int_to_string(n), st)
-  Raw(sql)     -> (sql, st)
+  Expr.Raw(sql)     -> (sql, st)
   Fragment(tmpl, args) -> compile_frag(tmpl, args, st, "")
   end
 end
@@ -744,7 +744,7 @@ pfn compile_expr_inline(e) do
   Expr.Max(inner)     -> "MAX("   ++ compile_expr_inline(inner) ++ ")"
   CountAll       -> "COUNT(*)"
   ExprParam(n)   -> "$" ++ int_to_string(n)
-  Raw(sql)       -> sql
+  Expr.Raw(sql)       -> sql
   Fragment(tmpl, args) -> compile_frag_inline(tmpl, args, "")
   end
 end
@@ -941,7 +941,7 @@ pfn subq_expr(e) do
   Expr.Max(inner)     -> "MAX("   ++ subq_expr(inner) ++ ")"
   CountAll       -> "COUNT(*)"
   ExprParam(n)   -> "$" ++ int_to_string(n)
-  Raw(sql)       -> sql
+  Expr.Raw(sql)       -> sql
   -- Fragment is intentionally a placeholder inside subqueries: calling
   -- compile_frag_inline would close a mutual-recursion cycle (subq_expr ->
   -- compile_frag_inline -> compile_frag_bytes_inline -> compile_expr_inline
@@ -965,7 +965,7 @@ pfn compile_frag_bytes(bytes, args, st, acc) do
     match rem do
     Nil -> (acc_, st_)
     Cons(b, rest) ->
-      if b == 63 then
+      if b == 63 do
         match args_ do
         Nil -> go(rest, Nil, st_, acc_ ++ "?")
         Cons(arg, rest_args) -> do
@@ -975,6 +975,7 @@ pfn compile_frag_bytes(bytes, args, st, acc) do
         end
       else
         go(rest, args_, st_, acc_ ++ Bytes.to_string(Bytes.from_list(Cons(b, Nil))))
+      end
     end
   end
   go(bytes, args, st, acc)
@@ -990,7 +991,7 @@ pfn compile_frag_bytes_inline(bytes, args, acc) do
     match rem do
     Nil -> acc_
     Cons(b, rest) ->
-      if b == 63 then
+      if b == 63 do
         match args_ do
         Nil -> go(rest, Nil, acc_ ++ "?")
         Cons(arg, rest_args) ->
@@ -998,6 +999,7 @@ pfn compile_frag_bytes_inline(bytes, args, acc) do
         end
       else
         go(rest, args_, acc_ ++ Bytes.to_string(Bytes.from_list(Cons(b, Nil))))
+      end
     end
   end
   go(bytes, args, acc)
@@ -1011,8 +1013,9 @@ pfn escape_sql_str(s) do
     match bytes do
     Nil -> Bytes.to_string(Bytes.from_list(List.reverse(acc)))
     Cons(b, rest) ->
-      if b == 39 then go(rest, Cons(39, Cons(39, acc)))
+      if b == 39 do go(rest, Cons(39, Cons(39, acc)))
       else go(rest, Cons(b, acc))
+      end
     end
   end
   go(Bytes.to_list(Bytes.from_string(s)), Nil)
@@ -1023,7 +1026,7 @@ pfn sql_value_to_string(v) do
   PInt(n)    -> int_to_string(n)
   PFloat(f_) -> float_to_string(f_)
   PString(s) -> quote_string(s)
-  PBool(b)   -> if b then "TRUE" else "FALSE"
+  PBool(b)   -> if b do "TRUE" else "FALSE" end
   PNull      -> "NULL"
   end
 end
@@ -1034,8 +1037,9 @@ pfn escape_ident(s) do
     match bytes do
     Nil -> Bytes.to_string(Bytes.from_list(List.reverse(acc)))
     Cons(b, rest) ->
-      if b == 34 then go(rest, Cons(34, Cons(34, acc)))
+      if b == 34 do go(rest, Cons(34, Cons(34, acc)))
       else go(rest, Cons(b, acc))
+      end
     end
   end
   go(Bytes.to_list(Bytes.from_string(s)), Nil)

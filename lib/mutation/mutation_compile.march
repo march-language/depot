@@ -322,7 +322,7 @@ fn compile_expr_m(e, st) do
     let (s, st2) = compile_expr_m(inner, st)
     (s ++ " ILIKE " ++ quote_str(pat), st2)
   end
-  Raw(sql) -> (sql, st)
+  Expr.Raw(sql) -> (sql, st)
   ExprParam(n) -> (expr_param_str(n), st)
   _            -> ("/* unsupported */", st)
   end
@@ -349,7 +349,7 @@ fn compile_expr_inline_m(e) do
   Lit(v)         -> sql_val_str(v)
   Expr.Col(name)      -> quote_ident(name)
   QCol(t, name)  -> quote_ident(t) ++ "." ++ quote_ident(name)
-  Raw(sql)       -> sql
+  Expr.Raw(sql)       -> sql
   _              -> "/* unsupported */"
   end
 end
@@ -362,8 +362,9 @@ fn escape_sql_str(s) do
     match bytes do
     Nil -> Bytes.to_string(Bytes.from_list(List.reverse(acc)))
     Cons(b, rest) ->
-      if b == 39 then go(rest, Cons(39, Cons(39, acc)))
+      if b == 39 do go(rest, Cons(39, Cons(39, acc)))
       else go(rest, Cons(b, acc))
+      end
     end
   end
   go(Bytes.to_list(Bytes.from_string(s)), Nil)
@@ -376,7 +377,7 @@ fn sqlval_to_param(v) do
   PInt(n)    -> ParamText(int_to_string(n))
   PFloat(f_) -> ParamText(float_to_string(f_))
   PString(s) -> ParamText(s)
-  PBool(b)   -> ParamText(if b then "t" else "f")
+  PBool(b)   -> ParamText(if b do "t" else "f" end)
   PNull      -> ParamNull
   end
 end
@@ -386,7 +387,7 @@ fn sql_val_str(v) do
   PInt(n)    -> int_to_string(n)
   PFloat(f_) -> float_to_string(f_)
   PString(s) -> quote_str(s)
-  PBool(b)   -> if b then "TRUE" else "FALSE"
+  PBool(b)   -> if b do "TRUE" else "FALSE" end
   PNull      -> "NULL"
   end
 end
@@ -397,8 +398,9 @@ fn escape_ident(s) do
     match bytes do
     Nil -> Bytes.to_string(Bytes.from_list(List.reverse(acc)))
     Cons(b, rest) ->
-      if b == 34 then go(rest, Cons(34, Cons(34, acc)))
+      if b == 34 do go(rest, Cons(34, Cons(34, acc)))
       else go(rest, Cons(b, acc))
+      end
     end
   end
   go(Bytes.to_list(Bytes.from_string(s)), Nil)

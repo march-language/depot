@@ -55,11 +55,13 @@ end
 --- defaults the short `EXPLAIN ANALYZE ...` form is used; otherwise a
 --- parenthesised option list is emitted.
 fn explain_sql(sql, opts) do
-  if use_short_form(opts) then
-    if opts.analyze then "EXPLAIN ANALYZE " ++ sql
+  if use_short_form(opts) do
+    if opts.analyze do "EXPLAIN ANALYZE " ++ sql
     else "EXPLAIN " ++ sql
+    end
   else
     "EXPLAIN (" ++ build_opt_list(opts) ++ ") " ++ sql
+  end
 end
 
 -- True when only `analyze` (or nothing) differs from defaults, so we can
@@ -72,12 +74,13 @@ pfn use_short_form(opts) do
 end
 
 pfn build_opt_list(opts) do
-  let parts_a = if opts.analyze then Cons("ANALYZE", Nil) else Nil
-  let parts_v = if opts.verbose then Cons("VERBOSE", parts_a) else parts_a
-  let parts_b = if opts.buffers then Cons("BUFFERS", parts_v) else parts_v
-  let parts_f = if opts.format_ == "text" then parts_b
+  let parts_a = if opts.analyze do Cons("ANALYZE", Nil) else Nil end
+  let parts_v = if opts.verbose do Cons("VERBOSE", parts_a) else parts_a end
+  let parts_b = if opts.buffers do Cons("BUFFERS", parts_v) else parts_v end
+  let parts_f = if opts.format_ == "text" do parts_b
                 else Cons("FORMAT " ++ opts.format_, parts_b)
-  let parts_c = if opts.costs then parts_f else Cons("COSTS OFF", parts_f)
+                end
+  let parts_c = if opts.costs do parts_f else Cons("COSTS OFF", parts_f) end
   join_commas(parts_c)
 end
 
@@ -109,9 +112,10 @@ end
 -- Strip a leading "-> " produced by nested plan nodes, if present.
 pfn strip_arrow(s) do
   let t = String.trim(s)
-  if String.starts_with(t, "-> ") then
+  if String.starts_with(t, "-> ") do
     String.slice(t, 3, String.byte_size(t) - 3)
   else t
+  end
 end
 
 -- Split "Seq Scan on users  (cost=..)" into ("Seq Scan", "users"). Returns
@@ -132,9 +136,11 @@ end
 pfn find_substring(hay, needle, pos) do
   let hl = String.byte_size(hay)
   let nl = String.byte_size(needle)
-  if pos + nl > hl then None
-  else if String.slice(hay, pos, nl) == needle then Some(pos)
+  if pos + nl > hl do None
+  else if String.slice(hay, pos, nl) == needle do Some(pos)
   else find_substring(hay, needle, pos + 1)
+  end
+  end
 end
 
 -- Read the leading identifier from a string (stops at space, '(', or end).
@@ -144,12 +150,15 @@ end
 
 pfn take_ident_at(s, i) do
   let n = String.byte_size(s)
-  if i >= n then s
+  if i >= n do s
   else do
     let ch = String.slice(s, i, 1)
-    if ch == " " then String.slice(s, 0, i)
-    else if ch == "(" then String.trim(String.slice(s, 0, i))
+    if ch == " " do String.slice(s, 0, i)
+    else if ch == "(" do String.trim(String.slice(s, 0, i))
     else take_ident_at(s, i + 1)
+    end
+    end
+  end
   end
 end
 
