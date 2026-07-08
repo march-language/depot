@@ -77,7 +77,7 @@ jobs:
       - name: Set up March
         uses: march-language/setup-march@main
         with:
-          march-version: c00a6b1c8f3c740a24c514db83d98b6e03b09511
+          march-version: 6f29e6f5f78f58bfa5e78575123e3aa89d02ea54
 
       - name: Build
         run: forge build
