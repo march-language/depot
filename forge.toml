@@ -2,7 +2,7 @@
 name = "depot"
 version = "0.1.0"
 type = "lib"
-description = "Depot database library for March"
+description = "A composable ORM toolkit for March — schemas, queries, validation, migrations, and a built-in PostgreSQL wire client"
 author = "Chase Gilliam"
 license = "MIT"
 

@@ -35,17 +35,26 @@ let adults =
 
 ## Installation
 
-Depot is a March library. Add it to your project's `forge.toml`:
+Depot is published on the [forge registry](https://forgepm.org/packages/depot).
+Add it to your project with:
+
+```bash
+forge add depot
+```
+
+That records a registry dependency in your `forge.toml`:
+
+```toml
+[deps]
+depot = { registry = "forge", version = "0.1.0" }
+```
+
+You can also depend on it by git, or by local path during development:
 
 ```toml
 [deps]
 depot = { git = "https://github.com/march-language/depot.git" }
-```
-
-Or pin a local checkout during development:
-
-```toml
-[deps]
+# or
 depot = { path = "../depot" }
 ```
 
