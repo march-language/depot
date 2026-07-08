@@ -70,8 +70,14 @@ jobs:
           sudo install -m 755 libblake3.so /usr/local/lib/libblake3.so
           sudo ldconfig
 
+      # Pinned (not @main): depot's CI doubles as a canary for march's stdlib/
+      # toolchain, so an unrelated upstream regression on march's main can
+      # turn depot's CI red with nothing to fix on depot's side. Bump this
+      # SHA deliberately when picking up new march changes.
       - name: Set up March
         uses: march-language/setup-march@main
+        with:
+          march-version: c00a6b1c8f3c740a24c514db83d98b6e03b09511
 
       - name: Build
         run: forge build
