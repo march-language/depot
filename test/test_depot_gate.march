@@ -473,7 +473,7 @@ describe "Depot.Gate.validate_change (custom)" do
     let form =
       cast([("code", "ABC")], ["code"])
       |> Depot.Gate.validate_change("code", fn v ->
-           if String.byte_size(v) == 3 then None else Some("must be 3 chars")
+           if String.byte_size(v) == 3 do None else Some("must be 3 chars") end
          )
     assert (is_valid(form))
   end
@@ -482,7 +482,7 @@ describe "Depot.Gate.validate_change (custom)" do
     let form =
       cast([("code", "AB")], ["code"])
       |> Depot.Gate.validate_change("code", fn v ->
-           if String.byte_size(v) == 3 then None else Some("must be 3 chars")
+           if String.byte_size(v) == 3 do None else Some("must be 3 chars") end
          )
     assert (!is_valid(form))
     assert (get_errors(form, "code") == ["must be 3 chars"])
