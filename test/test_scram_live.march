@@ -1,0 +1,72 @@
+-- test/test_scram_live.march
+-- Live SCRAM-SHA-256 authentication smoke test.
+--
+-- test_live_postgres.march only exercises trust auth against a superuser, so
+-- the entire SASL path (SASLInitialResponse/SASLResponse encoding, the RFC 5802
+-- attribute format, and the ClientProof crypto) went untested. A fresh
+-- `postgres:16` container defaults to password_encryption=scram-sha-256, so any
+-- real deployment hits this path — and three bugs lived here undetected:
+--   * encode/1 had no arm for SASLInitialResponse/SASLResponse (serialized to
+--     empty bytes), so the client never sent client-first and the server hung
+--     until authentication_timeout, surfacing as "recv header: connection closed"
+--   * the client built the nonce/proof attributes with ":" instead of "=" ("r:",
+--     "p:"), violating RFC 5802 attribute-value syntax
+--   * StoredKey used the 64-char hex string from `sha256` instead of the raw
+--     32-byte digest, producing a wrong ClientProof (server rejects with 28P01)
+--
+-- Fixture — a scram-sha-256 Postgres reachable at 127.0.0.1:5544:
+--
+--   docker run -d --name depot-scram-test -p 5544:5432 \
+--     -e POSTGRES_USER=scram_user -e POSTGRES_PASSWORD=s3cret \
+--     -e POSTGRES_DB=depot_test -e POSTGRES_HOST_AUTH_METHOD=scram-sha-256 \
+--     -e POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256 postgres:16
+--
+-- If the fixture is absent every test errors at `connect`, which reads as a
+-- fixture problem rather than a logic regression.
+
+mod TestScramLive do
+
+needs IO.NetConnect
+needs IO.Random
+
+import Connection
+
+fn scram_config() do
+  full_config("127.0.0.1", 5544, "scram_user", "depot_test", Some("s3cret"))
+end
+
+test "SCRAM-SHA-256 auth completes and SELECT 1 round-trips" do
+  match connect(scram_config()) do
+  Err(e) ->
+    let _ = println("scram connect error: " ++ e)
+    assert false
+  Ok(conn) ->
+    let result = simple_query(conn, "SELECT 1")
+    let _ = close(conn)
+    match result do
+    Err(e) ->
+      let _ = println("query error: " ++ e)
+      assert false
+    Ok(r) ->
+      match r.rows do
+      Cons(Cons(Some(s), Nil), Nil) -> assert s == "1"
+      _ -> assert false
+      end
+    end
+  end
+end
+
+test "SCRAM-SHA-256 rejects a wrong password without hanging" do
+  -- A wrong password must fail fast with a server error (the ClientProof does
+  -- not verify), never block until authentication_timeout.
+  let cfg = full_config("127.0.0.1", 5544, "scram_user", "depot_test", Some("wrong-password"))
+  match connect(cfg) do
+  Ok(conn) ->
+    let _ = close(conn)
+    assert false
+  Err(_) ->
+    assert true
+  end
+end
+
+end -- mod TestScramLive

@@ -88,6 +88,15 @@ fn encode(msg : FrontendMessage) : Bytes do
   Terminate -> frame(88, Bytes.empty())
   PasswordMessage(pw) ->
     frame(112, cstring(pw))
+  SASLInitialResponse(mechanism, initial_response) ->
+    -- Frontend 'p' message: mechanism cstring, then Int32 response length,
+    -- then the client-first-message bytes.
+    frame(112, Bytes.concat(
+      cstring(mechanism),
+      Bytes.concat(i32_be(Bytes.length(initial_response)), initial_response)))
+  SASLResponse(response) ->
+    -- Frontend 'p' message: bare client-final-message bytes.
+    frame(112, response)
   Describe(DescribeStatement(name)) ->
     frame(68, Bytes.concat(Bytes.from_list([83]), cstring(name)))
   Describe(DescribePortal(name)) ->

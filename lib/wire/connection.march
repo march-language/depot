@@ -90,14 +90,14 @@ end
 -- ---- SCRAM-SHA-256 helpers ----
 
 pfn scram_client_first_bare(user, nonce) do
-  "n=" ++ user ++ ",r:" ++ nonce
+  "n=" ++ user ++ ",r=" ++ nonce
 end
 
 pfn scram_client_first_msg(user, nonce) do
   "n,," ++ scram_client_first_bare(user, nonce)
 end
 
--- Accumulate "k=v,k:v,..." pairs. Module-level (not nested in
+-- Accumulate "k=v,k=v,..." pairs. Module-level (not nested in
 -- scram_parse_server_first) so march's arity check records its 2-arg arity
 -- correctly — a nested recursive helper currently trips a false-positive
 -- "expects 1 argument" here.
@@ -115,7 +115,7 @@ fn scram_parse_fields(s, acc) do
 end
 
 pfn scram_parse_server_first(server_first) do
-  -- Parse "r=combined-nonce,s:base64-salt,i:iterations"
+  -- Parse "r=combined-nonce,s=base64-salt,i=iterations"
   scram_parse_fields(server_first, Nil)
 end
 
@@ -150,6 +150,28 @@ pfn scram_xor_bytes(a, b) do
   Bytes.from_list(zip_xor(Bytes.to_list(a), Bytes.to_list(b), Nil))
 end
 
+-- SHA-256 of `data` as the raw 32-byte digest.
+--
+-- TODO(march-bug): the `sha256` builtin is declared `(Bytes) -> Bytes` but
+-- actually returns a 64-char lowercase hex *string* value. That value is a
+-- String at runtime yet typed Bytes, so no `Bytes.*` helper can touch it
+-- (`Bytes.to_string`/`Bytes.length` pattern-match the Bytes ctor and panic)
+-- and it can't be retyped to String for `Bytes.from_hex`. We launder it
+-- through a base64 round-trip — both are C builtins that read the value's
+-- raw bytes — to rematerialise a proper Bytes ADT holding the hex ASCII,
+-- then decode the hex to the 32 raw bytes. Replace with a direct call once
+-- `sha256` (or a `sha256_bytes`) yields real Bytes.
+pfn scram_sha256_raw(data) do
+  match base64_decode(base64_encode(sha256(data))) do
+  Ok(hex_bytes) ->
+    match Bytes.from_hex(Bytes.to_string(hex_bytes)) do
+    Ok(raw) -> raw
+    Err(_)  -> Bytes.empty()
+    end
+  Err(_) -> Bytes.empty()
+  end
+end
+
 pfn scram_hmac(key_bytes, msg) do
   -- Bytes-domain HMAC: SCRAM (RFC 5802) keys with SaltedPassword/StoredKey
   -- bytes. `hmac_sha256` is the String-domain variant (returns Result); the
@@ -167,7 +189,7 @@ pfn scram_compute_proof(password, salt_b64, iterations, client_first_bare, serve
     Err(_) -> Bytes.empty()
   end
   let client_key     = scram_hmac(salted_pw, "Client Key")
-  let stored_key     = sha256(client_key)
+  let stored_key     = scram_sha256_raw(client_key)
   let auth_message   = client_first_bare ++ "," ++ server_first ++ "," ++ client_final_no_proof
   let client_sig     = scram_hmac(stored_key, auth_message)
   let client_proof   = scram_xor_bytes(client_key, client_sig)
@@ -210,11 +232,11 @@ pfn authenticate_scram(fd, cfg, mechanisms) do
         else do
         let pw            = Option.unwrap_or(cfg.password, "")
         let channel_bind  = "biws"  -- base64("n,,")
-        let client_final_no_proof = "c=" ++ channel_bind ++ ",r:" ++ combined_nonce
+        let client_final_no_proof = "c=" ++ channel_bind ++ ",r=" ++ combined_nonce
         let (proof, expected_server_sig) =
           scram_compute_proof(pw, salt_b64, iterations, client_first_bare,
                               server_first, client_final_no_proof)
-        let client_final = client_final_no_proof ++ ",p:" ++ proof
+        let client_final = client_final_no_proof ++ ",p=" ++ proof
         match send_msg(fd, SASLResponse(Bytes.from_string(client_final))) do
         Err(e) -> Err("scram send response: " ++ e)
         Ok(_)  ->
