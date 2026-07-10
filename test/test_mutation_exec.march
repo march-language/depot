@@ -37,7 +37,7 @@ test "exec_insert compiles INSERT ... RETURNING \"id\"" do
   let i = insert_into("users")
          |> insert_cols(["name"])
          |> insert_row([PString("Alice")])
-         |> insert_returning([SelectField(Col("id"))])
+         |> insert_returning([SelectField(Expr.Col("id"))])
   let c = MutationCompile.compile_insert(i)
   assert c.sql == "INSERT INTO \"users\" (\"name\") VALUES ($1) RETURNING \"id\""
 end
@@ -48,7 +48,7 @@ test "exec_update compiles UPDATE ... RETURNING *" do
   let u = Update({
     table_: "users",
     sets: [("name", Lit(PString("Bob")))],
-    wheres: [Where(Eq(Col("id"), Lit(PInt(1))))],
+    wheres: [Where(Expr.Eq(Expr.Col("id"), Lit(PInt(1))))],
     returning_: [SelectAll]
   })
   let c = MutationCompile.compile_update(u)
@@ -59,10 +59,10 @@ end
 -- ---- DELETE ----
 
 test "exec_delete compiles DELETE ... RETURNING \"id\"" do
-  let d = Delete({
+  let d = Delete.Delete({
     table_: "users",
-    wheres: [Where(Eq(Col("id"), Lit(PInt(5))))],
-    returning_: [SelectField(Col("id"))]
+    wheres: [Where(Expr.Eq(Expr.Col("id"), Lit(PInt(5))))],
+    returning_: [SelectField(Expr.Col("id"))]
   })
   let c = MutationCompile.compile_delete(d)
   assert c.sql == "DELETE FROM \"users\" WHERE \"id\" = $1 RETURNING \"id\""

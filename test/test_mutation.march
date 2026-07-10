@@ -43,7 +43,7 @@ test "Update ADT type" do
   let u = Update({
     table_: "users",
     sets: [("name", Lit(PString("Bob")))],
-    wheres: [Where(Eq(Col("id"), Lit(PInt(1))))],
+    wheres: [Where(Expr.Eq(Expr.Col("id"), Lit(PInt(1))))],
     returning_: [SelectAll]
   })
   match u do
@@ -59,13 +59,13 @@ test "Update ADT type" do
 end
 
 test "Delete ADT type" do
-  let d = Delete({
+  let d = Delete.Delete({
     table_: "posts",
-    wheres: [Where(Eq(Col("id"), Lit(PInt(99))))],
+    wheres: [Where(Expr.Eq(Expr.Col("id"), Lit(PInt(99))))],
     returning_: Nil
   })
   match d do
-  Delete(f) -> do
+  Delete.Delete(f) -> do
     assert f.table_ == "posts"
     assert List.length(f.wheres) == 1
   end
@@ -129,7 +129,7 @@ test "update builder" do
   let u = update("users")
          |> set_("name", Lit(PString("Carol")))
          |> set_("active", Lit(PBool(true)))
-         |> update_where(Eq(Col("id"), Lit(PInt(7))))
+         |> update_where(Expr.Eq(Expr.Col("id"), Lit(PInt(7))))
          |> update_returning_all()
   match u do
   Update(f) -> do
@@ -146,9 +146,9 @@ end
 
 test "delete builder" do
   let d = delete_from("sessions")
-         |> delete_where(Eq(Col("user_id"), Lit(PInt(42))))
+         |> delete_where(Expr.Eq(Expr.Col("user_id"), Lit(PInt(42))))
   match d do
-  Delete(f) -> do
+  Delete.Delete(f) -> do
     assert f.table_ == "sessions"
     assert List.length(f.wheres) == 1
   end
@@ -157,10 +157,10 @@ end
 
 test "delete with RETURNING builder" do
   let d = delete_from("tokens")
-         |> delete_where(Eq(Col("user_id"), Lit(PInt(7))))
+         |> delete_where(Expr.Eq(Expr.Col("user_id"), Lit(PInt(7))))
          |> delete_returning([SelectField(Expr.Col("id"))])
   match d do
-  Delete(f) ->
+  Delete.Delete(f) ->
     match f.returning_ do
     Cons(SelectField(_), Nil) -> ()
     _ -> assert false
@@ -231,7 +231,7 @@ end
 test "compile UPDATE" do
   let u = update("users")
          |> set_("active", Lit(PBool(false)))
-         |> update_where(Eq(Col("id"), Lit(PInt(42))))
+         |> update_where(Expr.Eq(Expr.Col("id"), Lit(PInt(42))))
          |> update_returning_all()
   let r = compile_update(u)
   let sql = r.sql
@@ -243,7 +243,7 @@ test "compile UPDATE multiple SET" do
   let u = update("orders")
          |> set_("status", Lit(PString("shipped")))
          |> set_("shipped_at", Lit(PString("2026-01-01")))
-         |> update_where(Eq(Col("id"), Lit(PInt(7))))
+         |> update_where(Expr.Eq(Expr.Col("id"), Lit(PInt(7))))
   let r = compile_update(u)
   let sql = r.sql
   assert sql == "UPDATE \"orders\" SET \"status\" = $1, \"shipped_at\" = $2 WHERE \"id\" = $3"
@@ -252,7 +252,7 @@ end
 
 test "compile DELETE with RETURNING" do
   let d = delete_from("sessions")
-         |> delete_where(Eq(Col("user_id"), Lit(PInt(5))))
+         |> delete_where(Expr.Eq(Expr.Col("user_id"), Lit(PInt(5))))
          |> delete_returning_all()
   let r = compile_delete(d)
   let sql = r.sql
@@ -262,7 +262,7 @@ end
 
 test "compile DELETE without RETURNING" do
   let d = delete_from("logs")
-         |> delete_where(Lt(Col("created_at"), Lit(PString("2025-01-01"))))
+         |> delete_where(Expr.Lt(Expr.Col("created_at"), Lit(PString("2025-01-01"))))
   let r = compile_delete(d)
   let sql = r.sql
   assert sql == "DELETE FROM \"logs\" WHERE \"created_at\" < $1"
@@ -274,7 +274,7 @@ end
 test "compile UPDATE WHERE Neq" do
   let u = update("t")
          |> set_("v", Lit(PInt(1)))
-         |> update_where(Neq(Col("id"), Lit(PInt(99))))
+         |> update_where(Expr.Neq(Expr.Col("id"), Lit(PInt(99))))
   let r = compile_update(u)
   let sql = r.sql
   assert sql == "UPDATE \"t\" SET \"v\" = $1 WHERE \"id\" <> $2"
@@ -283,7 +283,7 @@ end
 test "compile UPDATE WHERE Lt" do
   let u = update("orders")
          |> set_("flagged", Lit(PBool(true)))
-         |> update_where(Lt(Col("total"), Lit(PInt(10))))
+         |> update_where(Expr.Lt(Expr.Col("total"), Lit(PInt(10))))
   let r = compile_update(u)
   let sql = r.sql
   assert sql == "UPDATE \"orders\" SET \"flagged\" = $1 WHERE \"total\" < $2"
@@ -292,7 +292,7 @@ end
 test "compile UPDATE WHERE Gt" do
   let u = update("users")
          |> set_("senior", Lit(PBool(true)))
-         |> update_where(Gt(Col("age"), Lit(PInt(60))))
+         |> update_where(Expr.Gt(Expr.Col("age"), Lit(PInt(60))))
   let r = compile_update(u)
   let sql = r.sql
   assert sql == "UPDATE \"users\" SET \"senior\" = $1 WHERE \"age\" > $2"
@@ -301,7 +301,7 @@ end
 test "compile UPDATE WHERE Lte" do
   let u = update("items")
          |> set_("active", Lit(PBool(false)))
-         |> update_where(Lte(Col("stock"), Lit(PInt(0))))
+         |> update_where(Expr.Lte(Expr.Col("stock"), Lit(PInt(0))))
   let r = compile_update(u)
   let sql = r.sql
   assert sql == "UPDATE \"items\" SET \"active\" = $1 WHERE \"stock\" <= $2"
@@ -310,7 +310,7 @@ end
 test "compile UPDATE WHERE Gte" do
   let u = update("tasks")
          |> set_("priority", Lit(PString("high")))
-         |> update_where(Gte(Col("score"), Lit(PInt(90))))
+         |> update_where(Expr.Gte(Expr.Col("score"), Lit(PInt(90))))
   let r = compile_update(u)
   let sql = r.sql
   assert sql == "UPDATE \"tasks\" SET \"priority\" = $1 WHERE \"score\" >= $2"
@@ -318,9 +318,9 @@ end
 
 test "compile DELETE WHERE And" do
   let d = delete_from("sessions")
-         |> delete_where(And(
-              Eq(Col("user_id"), Lit(PInt(1))),
-              Eq(Col("active"), Lit(PBool(false)))))
+         |> delete_where(Expr.And(
+              Expr.Eq(Expr.Col("user_id"), Lit(PInt(1))),
+              Expr.Eq(Expr.Col("active"), Lit(PBool(false)))))
   let r = compile_delete(d)
   let sql = r.sql
   assert sql == "DELETE FROM \"sessions\" WHERE (\"user_id\" = $1 AND \"active\" = $2)"
@@ -329,9 +329,9 @@ end
 
 test "compile DELETE WHERE Or" do
   let d = delete_from("logs")
-         |> delete_where(Or(
-              Eq(Col("level"), Lit(PString("debug"))),
-              Eq(Col("level"), Lit(PString("trace")))))
+         |> delete_where(Expr.Or(
+              Expr.Eq(Expr.Col("level"), Lit(PString("debug"))),
+              Expr.Eq(Expr.Col("level"), Lit(PString("trace")))))
   let r = compile_delete(d)
   let sql = r.sql
   assert sql == "DELETE FROM \"logs\" WHERE (\"level\" = $1 OR \"level\" = $2)"
@@ -339,7 +339,7 @@ end
 
 test "compile DELETE WHERE Not" do
   let d = delete_from("bans")
-         |> delete_where(Not(Eq(Col("active"), Lit(PBool(true)))))
+         |> delete_where(Expr.Not(Expr.Eq(Expr.Col("active"), Lit(PBool(true)))))
   let r = compile_delete(d)
   let sql = r.sql
   assert sql == "DELETE FROM \"bans\" WHERE NOT (\"active\" = $1)"
@@ -347,7 +347,7 @@ end
 
 test "compile DELETE WHERE IsNull" do
   let d = delete_from("drafts")
-         |> delete_where(IsNull(Col("published_at")))
+         |> delete_where(Expr.IsNull(Expr.Col("published_at")))
   let r = compile_delete(d)
   let sql = r.sql
   assert sql == "DELETE FROM \"drafts\" WHERE \"published_at\" IS NULL"
@@ -356,7 +356,7 @@ end
 
 test "compile DELETE WHERE IsNotNull" do
   let d = delete_from("queue")
-         |> delete_where(IsNotNull(Col("completed_at")))
+         |> delete_where(Expr.IsNotNull(Expr.Col("completed_at")))
   let r = compile_delete(d)
   let sql = r.sql
   assert sql == "DELETE FROM \"queue\" WHERE \"completed_at\" IS NOT NULL"
@@ -365,7 +365,7 @@ end
 test "compile UPDATE WHERE In" do
   let u = update("users")
          |> set_("notified", Lit(PBool(true)))
-         |> update_where(In(Col("id"), [Lit(PInt(1)), Lit(PInt(2)), Lit(PInt(3))]))
+         |> update_where(In(Expr.Col("id"), [Lit(PInt(1)), Lit(PInt(2)), Lit(PInt(3))]))
   let r = compile_update(u)
   let sql = r.sql
   assert sql == "UPDATE \"users\" SET \"notified\" = $1 WHERE \"id\" IN ($2, $3, $4)"
@@ -375,7 +375,7 @@ end
 test "compile UPDATE WHERE NotIn" do
   let u = update("posts")
          |> set_("visible", Lit(PBool(false)))
-         |> update_where(NotIn(Col("status"), [Lit(PString("published")), Lit(PString("featured"))]))
+         |> update_where(NotIn(Expr.Col("status"), [Lit(PString("published")), Lit(PString("featured"))]))
   let r = compile_update(u)
   let sql = r.sql
   assert sql == "UPDATE \"posts\" SET \"visible\" = $1 WHERE \"status\" NOT IN ($2, $3)"
@@ -384,7 +384,7 @@ end
 test "compile UPDATE WHERE Between" do
   let u = update("products")
          |> set_("on_sale", Lit(PBool(true)))
-         |> update_where(Between(Col("price"), Lit(PInt(10)), Lit(PInt(50))))
+         |> update_where(Between(Expr.Col("price"), Lit(PInt(10)), Lit(PInt(50))))
   let r = compile_update(u)
   let sql = r.sql
   assert sql == "UPDATE \"products\" SET \"on_sale\" = $1 WHERE \"price\" BETWEEN $2 AND $3"
@@ -393,7 +393,7 @@ end
 
 test "compile DELETE WHERE FnCall" do
   let d = delete_from("users")
-         |> delete_where(Eq(FnCall("LOWER", [Col("email")]), Lit(PString("test@test.com"))))
+         |> delete_where(Expr.Eq(FnCall("LOWER", [Expr.Col("email")]), Lit(PString("test@test.com"))))
   let r = compile_delete(d)
   let sql = r.sql
   assert sql == "DELETE FROM \"users\" WHERE LOWER(\"email\") = $1"
@@ -401,7 +401,7 @@ end
 
 test "compile DELETE WHERE Like" do
   let d = delete_from("logs")
-         |> delete_where(Like(Col("message"), "%error%"))
+         |> delete_where(Like(Expr.Col("message"), "%error%"))
   let r = compile_delete(d)
   let sql = r.sql
   assert sql == "DELETE FROM \"logs\" WHERE \"message\" LIKE '%error%'"
@@ -409,7 +409,7 @@ end
 
 test "compile DELETE WHERE ILike" do
   let d = delete_from("comments")
-         |> delete_where(ILike(Col("body"), "%spam%"))
+         |> delete_where(ILike(Expr.Col("body"), "%spam%"))
   let r = compile_delete(d)
   let sql = r.sql
   assert sql == "DELETE FROM \"comments\" WHERE \"body\" ILIKE '%spam%'"
@@ -433,7 +433,7 @@ end
 -- so short-arm exit paths null-init (or per-arm-scope) their RC cleanup.
 --
 -- test "compile DELETE WHERE ExprParam" do
---   let d = Delete({
+--   let d = Delete.Delete({
 --     table_     = "t",
 --     wheres     = [Where(ExprParam(1))],
 --     returning_ = Nil
@@ -448,8 +448,8 @@ test "compile UPDATE OrWhere" do
   let u = Update({
     table_: "users",
     sets: [("active", Lit(PBool(false)))],
-    wheres: [Where(Eq(Col("role"), Lit(PString("banned")))),
-                  OrWhere(Eq(Col("status"), Lit(PString("suspended"))))],
+    wheres: [Where(Expr.Eq(Expr.Col("role"), Lit(PString("banned")))),
+                  OrWhere(Expr.Eq(Expr.Col("status"), Lit(PString("suspended"))))],
     returning_: Nil
   })
   let r = compile_update(u)
@@ -459,7 +459,7 @@ end
 
 test "compile DELETE WHERE QCol" do
   let d = delete_from("order_items")
-         |> delete_where(Eq(QCol("order_items", "order_id"), Lit(PInt(5))))
+         |> delete_where(Expr.Eq(QCol("order_items", "order_id"), Lit(PInt(5))))
   let r = compile_delete(d)
   let sql = r.sql
   assert sql == "DELETE FROM \"order_items\" WHERE \"order_items\".\"order_id\" = $1"
@@ -469,7 +469,7 @@ test "compile INSERT RETURNING SelectAs" do
   let i = insert_into("products")
          |> insert_cols(["name", "price"])
          |> insert_row([PString("Widget"), PInt(10)])
-         |> insert_returning([SelectAs(Col("id"), "new_id"), SelectField(Col("name"))])
+         |> insert_returning([SelectAs(Expr.Col("id"), "new_id"), SelectField(Expr.Col("name"))])
   let r = compile_insert(i)
   let sql = r.sql
   assert sql == "INSERT INTO \"products\" (\"name\", \"price\") VALUES ($1, $2) RETURNING \"id\" AS \"new_id\", \"name\""
@@ -479,7 +479,7 @@ test "compile INSERT ON CONFLICT DO UPDATE inline expr" do
   let i = insert_into("kv")
          |> insert_cols(["key", "val"])
          |> insert_row([PString("x"), PInt(1)])
-         |> on_conflict_do_update([("val", Lit(PInt(99))), ("key", Col("key"))])
+         |> on_conflict_do_update([("val", Lit(PInt(99))), ("key", Expr.Col("key"))])
   let r = compile_insert(i)
   let sql = r.sql
   assert sql == "INSERT INTO \"kv\" (\"key\", \"val\") VALUES ($1, $2) ON CONFLICT DO UPDATE SET \"val\" = 99, \"key\" = \"key\""
@@ -516,8 +516,8 @@ end
 
 test "compile UPDATE SET with Col expr (no param)" do
   let u = update("counters")
-         |> set_("n", Col("n"))
-         |> update_where(Eq(Col("id"), Lit(PInt(7))))
+         |> set_("n", Expr.Col("n"))
+         |> update_where(Expr.Eq(Expr.Col("id"), Lit(PInt(7))))
   let r = compile_update(u)
   let sql = r.sql
   assert sql == "UPDATE \"counters\" SET \"n\" = \"n\" WHERE \"id\" = $1"
@@ -542,7 +542,7 @@ end
 
 test "compile DELETE WHERE Like with single-quote pattern" do
   let d = delete_from("docs")
-         |> delete_where(Like(Col("content"), "it's%"))
+         |> delete_where(Like(Expr.Col("content"), "it's%"))
   let r = compile_delete(d)
   let sql = r.sql
   assert sql == "DELETE FROM \"docs\" WHERE \"content\" LIKE 'it''s%'"
@@ -550,7 +550,7 @@ end
 
 test "compile DELETE WHERE ILike with single-quote pattern" do
   let d = delete_from("docs")
-         |> delete_where(ILike(Col("title"), "can't%"))
+         |> delete_where(ILike(Expr.Col("title"), "can't%"))
   let r = compile_delete(d)
   let sql = r.sql
   assert sql == "DELETE FROM \"docs\" WHERE \"title\" ILIKE 'can''t%'"
@@ -607,14 +607,14 @@ test "compile INSERT ON CONFLICT DO UPDATE PFloat inline" do
 end
 
 -- DISABLED: same forge codegen bug as "compile DELETE WHERE ExprParam" above.
--- `Add(...)` falls through to the `_ -> ("/* unsupported */", st)` wildcard
+-- `Expr.Add(...)` falls through to the `_ -> ("/* unsupported */", st)` wildcard
 -- arm of compile_expr_m, and the wildcard exit path segfaults in the shared
 -- match epilogue's RC decref of an uninitialized stack slot.
 --
 -- test "compile_expr_m unsupported expr returns /* unsupported */" do
 --   let u = Update({
 --     table_     = "t",
---     sets       = [("v", Add(Col("x"), Lit(PInt(1))))],
+--     sets       = [("v", Expr.Add(Expr.Col("x"), Lit(PInt(1))))],
 --     wheres     = Nil,
 --     returning_  = Nil
 --   })
@@ -627,7 +627,7 @@ test "compile UPDATE with empty SET list (degenerate)" do
   let u = Update({
     table_: "t",
     sets: Nil,
-    wheres: [Where(Eq(Col("id"), Lit(PInt(1))))],
+    wheres: [Where(Expr.Eq(Expr.Col("id"), Lit(PInt(1))))],
     returning_: Nil
   })
   let r = compile_update(u)
@@ -639,7 +639,7 @@ test "compile INSERT returning SelectField" do
   let i = insert_into("users")
          |> insert_cols(["name"])
          |> insert_row([PString("Alice")])
-         |> insert_returning([SelectField(Col("id")), SelectField(Col("name"))])
+         |> insert_returning([SelectField(Expr.Col("id")), SelectField(Expr.Col("name"))])
   let r = compile_insert(i)
   let sql = r.sql
   assert sql == "INSERT INTO \"users\" (\"name\") VALUES ($1) RETURNING \"id\", \"name\""
@@ -669,7 +669,7 @@ test "compile INSERT RETURNING SelectField unsupported expr" do
   let i = insert_into("t")
          |> insert_cols(["x"])
          |> insert_row([PInt(1)])
-         |> insert_returning([SelectField(Add(Col("x"), Lit(PInt(1))))])
+         |> insert_returning([SelectField(Expr.Add(Expr.Col("x"), Lit(PInt(1))))])
   let r = compile_insert(i)
   let sql = r.sql
   assert String.contains(sql, "/* unsupported */") == true
@@ -718,14 +718,14 @@ end
 -- ---- SELECT compile tests (covers Compile.march in this unit) ----
 
 test "compile SELECT basic in mutation module" do
-  let q = from("users") |> where_(Eq(Col("active"), Lit(PBool(true))))
+  let q = from("users") |> where_(Expr.Eq(Expr.Col("active"), Lit(PBool(true))))
   let r = compile(q)
   let sql = r.sql
   assert String.contains(sql, "WHERE") == true
 end
 
 test "compile_inline SELECT in mutation module" do
-  let q = from("products") |> where_(Gt(Col("price"), Lit(PInt(10))))
+  let q = from("products") |> where_(Expr.Gt(Expr.Col("price"), Lit(PInt(10))))
   let r = compile_inline(q)
   let sql = r.sql
   assert String.contains(sql, ">") == true
@@ -735,7 +735,7 @@ end
 
 test "compile JOIN in mutation module" do
   let q = from("orders")
-         |> join("users", Eq(QCol("orders","user_id"), QCol("users","id")))
+         |> join("users", Expr.Eq(QCol("orders","user_id"), QCol("users","id")))
   let r = compile(q)
   let sql = r.sql
   assert String.contains(sql, "INNER JOIN") == true
@@ -743,21 +743,21 @@ end
 
 test "compile LEFT JOIN in mutation module" do
   let q = from("orders")
-         |> left_join("users", Eq(QCol("orders","user_id"), QCol("users","id")))
+         |> left_join("users", Expr.Eq(QCol("orders","user_id"), QCol("users","id")))
   let r = compile(q)
   let sql = r.sql
   assert String.contains(sql, "LEFT JOIN") == true
 end
 
 test "compile_inline RIGHT JOIN in mutation module" do
-  let q = from("a") |> right_join("b", Eq(Col("a_id"), Col("id")))
+  let q = from("a") |> right_join("b", Expr.Eq(Expr.Col("a_id"), Expr.Col("id")))
   let r = compile_inline(q)
   let sql = r.sql
   assert String.contains(sql, "RIGHT JOIN") == true
 end
 
 test "compile_inline FULL OUTER JOIN in mutation module" do
-  let q = from("a") |> full_join("b", Eq(Col("a_id"), Col("id")))
+  let q = from("a") |> full_join("b", Expr.Eq(Expr.Col("a_id"), Expr.Col("id")))
   let r = compile_inline(q)
   let sql = r.sql
   assert String.contains(sql, "FULL OUTER JOIN") == true
@@ -772,8 +772,8 @@ end
 
 test "compile GROUP BY HAVING in mutation module" do
   let q = from("sales")
-         |> group_by([Col("region")])
-         |> having(Gt(Count(Col("id")), Lit(PInt(5))))
+         |> group_by([Expr.Col("region")])
+         |> having(Expr.Gt(Expr.Count(Expr.Col("id")), Lit(PInt(5))))
   let r = compile(q)
   let sql = r.sql
   assert String.contains(sql, "GROUP BY") == true
@@ -783,8 +783,8 @@ end
 
 test "compile_inline GROUP BY HAVING in mutation module" do
   let q = from("orders")
-         |> group_by([Col("status")])
-         |> having(Gt(CountAll, Lit(PInt(0))))
+         |> group_by([Expr.Col("status")])
+         |> having(Expr.Gt(CountAll, Lit(PInt(0))))
   let r = compile_inline(q)
   let sql = r.sql
   assert String.contains(sql, "GROUP BY") == true
@@ -794,7 +794,7 @@ end
 
 test "compile ORDER BY NULLS in mutation module" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    orders: [OrderExpr(Col("x"), AscNullsFirst)],
+    orders: [OrderExpr(Expr.Col("x"), AscNullsFirst)],
     wheres: Nil, joins: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -804,7 +804,7 @@ end
 
 test "compile_inline ORDER BY NULLS in mutation module" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    orders: [OrderExpr(Col("x"), DescNullsLast)],
+    orders: [OrderExpr(Expr.Col("x"), DescNullsLast)],
     wheres: Nil, joins: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -814,7 +814,7 @@ end
 
 test "compile_inline arithmetic in mutation module" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Gt(Add(Col("a"), Col("b")), Lit(PInt(0))))],
+    wheres: [Where(Expr.Gt(Expr.Add(Expr.Col("a"), Expr.Col("b")), Lit(PInt(0))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -824,17 +824,17 @@ end
 
 test "compile_inline Sub Mul Div in mutation module" do
   let q1 = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Gt(Sub(Col("a"), Col("b")), Lit(PInt(0))))],
+    wheres: [Where(Expr.Gt(Expr.Sub(Expr.Col("a"), Expr.Col("b")), Lit(PInt(0))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q1)).sql, "-") == true
   let q2 = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Gt(Mul(Col("a"), Col("b")), Lit(PInt(0))))],
+    wheres: [Where(Expr.Gt(Expr.Mul(Expr.Col("a"), Expr.Col("b")), Lit(PInt(0))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q2)).sql, "*") == true
   let q3 = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Gt(Div(Col("a"), Col("b")), Lit(PInt(0))))],
+    wheres: [Where(Expr.Gt(Expr.Div(Expr.Col("a"), Expr.Col("b")), Lit(PInt(0))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q3)).sql, "/") == true
@@ -842,7 +842,7 @@ end
 
 test "compile_inline boolean ops in mutation module" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(And(Gt(Col("x"), Lit(PInt(0))), Lt(Col("x"), Lit(PInt(10)))))],
+    wheres: [Where(Expr.And(Expr.Gt(Expr.Col("x"), Lit(PInt(0))), Expr.Lt(Expr.Col("x"), Lit(PInt(10)))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -852,12 +852,12 @@ end
 
 test "compile_inline Or Not in mutation module" do
   let q1 = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Or(Eq(Col("x"), Lit(PInt(1))), Eq(Col("x"), Lit(PInt(2)))))],
+    wheres: [Where(Expr.Or(Expr.Eq(Expr.Col("x"), Lit(PInt(1))), Expr.Eq(Expr.Col("x"), Lit(PInt(2)))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q1)).sql, " OR ") == true
   let q2 = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Not(Eq(Col("x"), Lit(PInt(0)))))],
+    wheres: [Where(Expr.Not(Expr.Eq(Expr.Col("x"), Lit(PInt(0)))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q2)).sql, "NOT (") == true
@@ -865,12 +865,12 @@ end
 
 test "compile_inline IS NULL IS NOT NULL in mutation module" do
   let q1 = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(IsNull(Col("x")))],
+    wheres: [Where(Expr.IsNull(Expr.Col("x")))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q1)).sql, "IS NULL") == true
   let q2 = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(IsNotNull(Col("x")))],
+    wheres: [Where(Expr.IsNotNull(Expr.Col("x")))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q2)).sql, "IS NOT NULL") == true
@@ -878,17 +878,17 @@ end
 
 test "compile_inline In NotIn Between in mutation module" do
   let qi = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(In(Col("id"), [Lit(PInt(1)), Lit(PInt(2))]))],
+    wheres: [Where(In(Expr.Col("id"), [Lit(PInt(1)), Lit(PInt(2))]))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(qi)).sql, "IN (1, 2)") == true
   let qni = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(NotIn(Col("s"), [Lit(PString("a")), Lit(PString("b"))]))],
+    wheres: [Where(NotIn(Expr.Col("s"), [Lit(PString("a")), Lit(PString("b"))]))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(qni)).sql, "NOT IN") == true
   let qb = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Between(Col("x"), Lit(PInt(1)), Lit(PInt(10))))],
+    wheres: [Where(Between(Expr.Col("x"), Lit(PInt(1)), Lit(PInt(10))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(qb)).sql, "BETWEEN 1 AND 10") == true
@@ -896,37 +896,37 @@ end
 
 test "compile_inline FnCall Like ILike in mutation module" do
   let qf = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Eq(FnCall("LOWER", [Col("email")]), Lit(PString("x"))))],
+    wheres: [Where(Expr.Eq(FnCall("LOWER", [Expr.Col("email")]), Lit(PString("x"))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(qf)).sql, "LOWER") == true
   let ql = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Like(Col("n"), "%a%"))],
+    wheres: [Where(Like(Expr.Col("n"), "%a%"))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(ql)).sql, "LIKE") == true
   let qi = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(ILike(Col("n"), "%a%"))],
+    wheres: [Where(ILike(Expr.Col("n"), "%a%"))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(qi)).sql, "ILIKE") == true
 end
 
 test "compile_inline aggregates in mutation module" do
-  let q1 = Query({ from_: FromTable("t"), selects: Nil, group_bys: [Col("x")],
-    havings: [Where(Gt(Sum(Col("v")), Lit(PInt(0))))],
+  let q1 = Query({ from_: FromTable("t"), selects: Nil, group_bys: [Expr.Col("x")],
+    havings: [Where(Expr.Gt(Expr.Sum(Expr.Col("v")), Lit(PInt(0))))],
     wheres: Nil, joins: Nil, orders: Nil, limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q1)).sql, "SUM") == true
-  let q2 = Query({ from_: FromTable("t"), selects: Nil, group_bys: [Col("x")],
-    havings: [Where(Gt(Avg(Col("v")), Lit(PFloat(0.0))))],
+  let q2 = Query({ from_: FromTable("t"), selects: Nil, group_bys: [Expr.Col("x")],
+    havings: [Where(Expr.Gt(Avg(Expr.Col("v")), Lit(PFloat(0.0))))],
     wheres: Nil, joins: Nil, orders: Nil, limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q2)).sql, "AVG") == true
-  let q3 = Query({ from_: FromTable("t"), selects: Nil, group_bys: [Col("x")],
-    havings: [Where(Gt(Min(Col("v")), Lit(PInt(0))))],
+  let q3 = Query({ from_: FromTable("t"), selects: Nil, group_bys: [Expr.Col("x")],
+    havings: [Where(Expr.Gt(Expr.Min(Expr.Col("v")), Lit(PInt(0))))],
     wheres: Nil, joins: Nil, orders: Nil, limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q3)).sql, "MIN") == true
-  let q4 = Query({ from_: FromTable("t"), selects: Nil, group_bys: [Col("x")],
-    havings: [Where(Lt(Max(Col("v")), Lit(PInt(1000))))],
+  let q4 = Query({ from_: FromTable("t"), selects: Nil, group_bys: [Expr.Col("x")],
+    havings: [Where(Expr.Lt(Expr.Max(Expr.Col("v")), Lit(PInt(1000))))],
     wheres: Nil, joins: Nil, orders: Nil, limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q4)).sql, "MAX") == true
 end
@@ -941,7 +941,7 @@ test "compile_inline Exists SubqueryExpr in mutation module" do
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(qe)).sql, "EXISTS") == true
   let qs = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Gt(Col("score"), SubqueryExpr(sub)))],
+    wheres: [Where(Expr.Gt(Expr.Col("score"), SubqueryExpr(sub)))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(qs)).sql, "SELECT") == true
@@ -954,7 +954,7 @@ test "compile_inline SelectAll SelectAs in mutation module" do
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert (compile_inline(q1)).sql == "SELECT * FROM \"t\""
   let q2 = Query({ from_: FromTable("t"),
-    selects: [SelectAs(Col("id"), "my_id")],
+    selects: [SelectAs(Expr.Col("id"), "my_id")],
     wheres: Nil, joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q2)).sql, "AS \"my_id\"") == true
@@ -962,8 +962,8 @@ end
 
 test "compile_inline OrWhere in mutation module" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Eq(Col("role"), Lit(PString("a")))),
-              OrWhere(Eq(Col("role"), Lit(PString("b"))))],
+    wheres: [Where(Expr.Eq(Expr.Col("role"), Lit(PString("a")))),
+              OrWhere(Expr.Eq(Expr.Col("role"), Lit(PString("b"))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q)).sql, "OR") == true
@@ -971,9 +971,9 @@ end
 
 test "compile HAVING Sum Avg Min Max in mutation module" do
   let q = Query({ from_: FromTable("t"),
-    selects: [SelectAs(Sum(Col("amt")), "total")],
-    group_bys: [Col("cat")],
-    havings: [Where(Gt(Sum(Col("amt")), Lit(PInt(100))))],
+    selects: [SelectAs(Expr.Sum(Expr.Col("amt")), "total")],
+    group_bys: [Expr.Col("cat")],
+    havings: [Where(Expr.Gt(Expr.Sum(Expr.Col("amt")), Lit(PInt(100))))],
     wheres: Nil, joins: Nil, orders: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile(q)).sql, "SUM") == true
@@ -989,7 +989,7 @@ test "compile Exists SubqueryExpr parameterized in mutation module" do
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile(qe)).sql, "EXISTS") == true
   let qs = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Gt(Col("score"), SubqueryExpr(sub)))],
+    wheres: [Where(Expr.Gt(Expr.Col("score"), SubqueryExpr(sub)))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile(qs)).sql, "SELECT") == true
@@ -997,12 +997,12 @@ end
 
 test "compile Add Sub Mul Div parameterized in mutation module" do
   let q1 = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Gt(Add(Col("a"), Col("b")), Lit(PInt(0))))],
+    wheres: [Where(Expr.Gt(Expr.Add(Expr.Col("a"), Expr.Col("b")), Lit(PInt(0))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile(q1)).sql, "+") == true
   let q2 = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Gt(Sub(Col("a"), Col("b")), Lit(PInt(0))))],
+    wheres: [Where(Expr.Gt(Expr.Sub(Expr.Col("a"), Expr.Col("b")), Lit(PInt(0))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile(q2)).sql, "-") == true
@@ -1012,7 +1012,7 @@ end
 
 test "compile_inline PBool false in mutation module" do
   let q = Query({ from_: FromTable("settings"), selects: Nil,
-    wheres: [Where(Eq(Col("enabled"), Lit(PBool(false))))],
+    wheres: [Where(Expr.Eq(Expr.Col("enabled"), Lit(PBool(false))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1022,7 +1022,7 @@ end
 
 test "compile_inline PFloat in mutation module" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Gt(Col("score"), Lit(PFloat(0.5))))],
+    wheres: [Where(Expr.Gt(Expr.Col("score"), Lit(PFloat(0.5))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1032,7 +1032,7 @@ end
 
 test "compile_inline PNull in mutation module" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(IsNull(Col("x")))],
+    wheres: [Where(Expr.IsNull(Expr.Col("x")))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1042,7 +1042,7 @@ end
 
 test "compile Neq in mutation module" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Neq(Col("status"), Lit(PString("inactive"))))],
+    wheres: [Where(Expr.Neq(Expr.Col("status"), Lit(PString("inactive"))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1052,7 +1052,7 @@ end
 
 test "compile Lte in mutation module" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Lte(Col("priority"), Lit(PInt(10))))],
+    wheres: [Where(Expr.Lte(Expr.Col("priority"), Lit(PInt(10))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1062,7 +1062,7 @@ end
 
 test "compile Gte in mutation module" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Gte(Col("age"), Lit(PInt(18))))],
+    wheres: [Where(Expr.Gte(Expr.Col("age"), Lit(PInt(18))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1072,7 +1072,7 @@ end
 
 test "compile And in mutation module" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(And(Eq(Col("a"), Lit(PInt(1))), Eq(Col("b"), Lit(PInt(2)))))],
+    wheres: [Where(Expr.And(Expr.Eq(Expr.Col("a"), Lit(PInt(1))), Expr.Eq(Expr.Col("b"), Lit(PInt(2)))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1082,7 +1082,7 @@ end
 
 test "compile Or in mutation module" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Or(Eq(Col("type"), Lit(PString("a"))), Eq(Col("type"), Lit(PString("b")))))],
+    wheres: [Where(Expr.Or(Expr.Eq(Expr.Col("type"), Lit(PString("a"))), Expr.Eq(Expr.Col("type"), Lit(PString("b")))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1092,7 +1092,7 @@ end
 
 test "compile Not in mutation module" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Not(Eq(Col("deleted"), Lit(PBool(true)))))],
+    wheres: [Where(Expr.Not(Expr.Eq(Expr.Col("deleted"), Lit(PBool(true)))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1102,7 +1102,7 @@ end
 
 test "compile Like in mutation module" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Like(Col("name"), "A%"))],
+    wheres: [Where(Like(Expr.Col("name"), "A%"))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1112,7 +1112,7 @@ end
 
 test "compile ILike in mutation module" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(ILike(Col("name"), "a%"))],
+    wheres: [Where(ILike(Expr.Col("name"), "a%"))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1122,7 +1122,7 @@ end
 
 test "compile Between in mutation module" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Between(Col("price"), Lit(PInt(10)), Lit(PInt(100))))],
+    wheres: [Where(Between(Expr.Col("price"), Lit(PInt(10)), Lit(PInt(100))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1132,7 +1132,7 @@ end
 
 test "compile In in mutation module" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(In(Col("color"), [Lit(PString("red")), Lit(PString("blue"))]))],
+    wheres: [Where(In(Expr.Col("color"), [Lit(PString("red")), Lit(PString("blue"))]))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1142,7 +1142,7 @@ end
 
 test "compile NotIn in mutation module" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(NotIn(Col("status"), [Lit(PString("banned"))]))],
+    wheres: [Where(NotIn(Expr.Col("status"), [Lit(PString("banned"))]))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1152,7 +1152,7 @@ end
 
 test "compile IsNotNull in mutation module" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(IsNotNull(Col("email")))],
+    wheres: [Where(Expr.IsNotNull(Expr.Col("email")))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1162,12 +1162,12 @@ end
 
 test "compile Mul Div in mutation module" do
   let q1 = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Gt(Mul(Col("x"), Col("y")), Lit(PInt(0))))],
+    wheres: [Where(Expr.Gt(Expr.Mul(Expr.Col("x"), Expr.Col("y")), Lit(PInt(0))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile(q1)).sql, "*") == true
   let q2 = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Gt(Div(Col("x"), Col("y")), Lit(PInt(0))))],
+    wheres: [Where(Expr.Gt(Expr.Div(Expr.Col("x"), Expr.Col("y")), Lit(PInt(0))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile(q2)).sql, "/") == true
@@ -1175,7 +1175,7 @@ end
 
 test "compile SELECT with aggregates in mutation module" do
   let q = Query({ from_: FromTable("orders"),
-    selects: [SelectAs(Sum(Col("amount")), "total"), SelectAs(CountAll, "n")],
+    selects: [SelectAs(Expr.Sum(Expr.Col("amount")), "total"), SelectAs(CountAll, "n")],
     wheres: Nil, joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1186,7 +1186,7 @@ test "compile SELECT with aggregates in mutation module" do
 end
 
 test "compile DISTINCT in mutation module" do
-  let q = Query({ from_: FromTable("categories"), selects: [SelectField(Col("name"))],
+  let q = Query({ from_: FromTable("categories"), selects: [SelectField(Expr.Col("name"))],
     wheres: Nil, joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: Distinct })
   let r = compile(q)
@@ -1207,7 +1207,7 @@ end
 
 test "compile GROUP BY in mutation module" do
   let q = Query({ from_: FromTable("events"), selects: Nil,
-    group_bys: [Col("type"), Col("date")],
+    group_bys: [Expr.Col("type"), Expr.Col("date")],
     wheres: Nil, joins: Nil, orders: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1217,8 +1217,8 @@ end
 
 test "compile HAVING in mutation module" do
   let q = Query({ from_: FromTable("orders"), selects: Nil,
-    group_bys: [Col("status")],
-    havings: [Where(Gte(Count(Col("id")), Lit(PInt(5))))],
+    group_bys: [Expr.Col("status")],
+    havings: [Where(Expr.Gte(Expr.Count(Expr.Col("id")), Lit(PInt(5))))],
     wheres: Nil, joins: Nil, orders: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1228,7 +1228,7 @@ end
 
 test "compile ORDER BY ASC DESC in mutation module" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    orders: [OrderExpr(Col("name"), Asc), OrderExpr(Col("created_at"), Desc)],
+    orders: [OrderExpr(Expr.Col("name"), Asc), OrderExpr(Expr.Col("created_at"), Desc)],
     wheres: Nil, joins: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1240,7 +1240,7 @@ end
 
 test "compile INNER JOIN in mutation module" do
   let q = Query({ from_: FromTable("a"), selects: Nil,
-    joins: [JoinClause(Inner, "b", Eq(QCol("a", "bid"), QCol("b", "id")))],
+    joins: [JoinClause(Inner, "b", Expr.Eq(QCol("a", "bid"), QCol("b", "id")))],
     wheres: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1250,7 +1250,7 @@ end
 
 test "compile LEFT JOIN in mutation module" do
   let q = Query({ from_: FromTable("posts"), selects: Nil,
-    joins: [JoinClause(Left, "tags", Eq(QCol("posts", "id"), QCol("tags", "post_id")))],
+    joins: [JoinClause(Left, "tags", Expr.Eq(QCol("posts", "id"), QCol("tags", "post_id")))],
     wheres: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1260,7 +1260,7 @@ end
 
 test "compile RIGHT JOIN in mutation module" do
   let q = Query({ from_: FromTable("a"), selects: Nil,
-    joins: [JoinClause(Right, "b", Eq(QCol("a", "bid"), QCol("b", "id")))],
+    joins: [JoinClause(Right, "b", Expr.Eq(QCol("a", "bid"), QCol("b", "id")))],
     wheres: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1270,7 +1270,7 @@ end
 
 test "compile multiple WHERE params in mutation module" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Eq(Col("x"), Lit(PInt(1)))), Where(Eq(Col("y"), Lit(PString("z"))))],
+    wheres: [Where(Expr.Eq(Expr.Col("x"), Lit(PInt(1)))), Where(Expr.Eq(Expr.Col("y"), Lit(PString("z"))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1287,14 +1287,14 @@ test "mutation UPDATE with all binops" do
     |> set_("b", Lit(PFloat(1.5)))
     |> set_("c", Lit(PBool(true)))
     |> set_("d", Lit(PNull))
-    |> update_where(Neq(Col("a"), Lit(PInt(0))))
-    |> update_where(Lt(Col("b"), Lit(PInt(10))))
-    |> update_where(Gt(Col("c"), Lit(PInt(0))))
-    |> update_where(Lte(Col("d"), Lit(PInt(100))))
-    |> update_where(Gte(Col("e"), Lit(PInt(5))))
-    |> update_where(And(IsNull(Col("x")), IsNotNull(Col("y"))))
-    |> update_where(Or(Eq(Col("p"), Lit(PInt(1))), Eq(Col("p"), Lit(PInt(2)))))
-    |> update_where(Not(Eq(Col("q"), Lit(PInt(0)))))
+    |> update_where(Expr.Neq(Expr.Col("a"), Lit(PInt(0))))
+    |> update_where(Expr.Lt(Expr.Col("b"), Lit(PInt(10))))
+    |> update_where(Expr.Gt(Expr.Col("c"), Lit(PInt(0))))
+    |> update_where(Expr.Lte(Expr.Col("d"), Lit(PInt(100))))
+    |> update_where(Expr.Gte(Expr.Col("e"), Lit(PInt(5))))
+    |> update_where(Expr.And(Expr.IsNull(Expr.Col("x")), Expr.IsNotNull(Expr.Col("y"))))
+    |> update_where(Expr.Or(Expr.Eq(Expr.Col("p"), Lit(PInt(1))), Expr.Eq(Expr.Col("p"), Lit(PInt(2)))))
+    |> update_where(Expr.Not(Expr.Eq(Expr.Col("q"), Lit(PInt(0)))))
   let r = compile_update(u)
   let sql = r.sql
   assert String.contains(sql, "UPDATE") == true
@@ -1324,9 +1324,9 @@ end
 
 test "mutation DELETE with complex where" do
   let d = delete_from("t")
-    |> delete_where(And(Eq(Col("status"), Lit(PString("deleted"))),
-                        Lt(Col("updated_at"), Lit(PString("2026-01-01")))))
-    |> delete_returning([SelectField(Col("id"))])
+    |> delete_where(Expr.And(Expr.Eq(Expr.Col("status"), Lit(PString("deleted"))),
+                        Expr.Lt(Expr.Col("updated_at"), Lit(PString("2026-01-01")))))
+    |> delete_returning([SelectField(Expr.Col("id"))])
   let r = compile_delete(d)
   let sql = r.sql
   assert String.contains(sql, "DELETE FROM") == true
@@ -1338,7 +1338,7 @@ end
 
 test "mutation DELETE returning all" do
   let d = delete_from("t")
-    |> delete_where(Eq(Col("id"), Lit(PInt(1))))
+    |> delete_where(Expr.Eq(Expr.Col("id"), Lit(PInt(1))))
     |> delete_returning_all()
   let r = compile_delete(d)
   let sql = r.sql
@@ -1359,7 +1359,7 @@ test "mutation INSERT with ON CONFLICT DO UPDATE" do
   let i = insert_into("t")
     |> insert_cols(["a", "b"])
     |> insert_row([PInt(1), PString("x")])
-    |> on_conflict_do_update([("a", Col("a")), ("b", Raw("EXCLUDED.b"))])
+    |> on_conflict_do_update([("a", Expr.Col("a")), ("b", Raw("EXCLUDED.b"))])
   let r = compile_insert(i)
   let sql = r.sql
   assert String.contains(sql, "ON CONFLICT DO UPDATE SET") == true
@@ -1371,7 +1371,7 @@ test "mutation INSERT returning specific" do
   let i = insert_into("t")
     |> insert_cols(["a"])
     |> insert_row([PInt(1)])
-    |> insert_returning([SelectField(Col("id")), SelectField(Col("a"))])
+    |> insert_returning([SelectField(Expr.Col("id")), SelectField(Expr.Col("a"))])
   let r = compile_insert(i)
   let sql = r.sql
   assert String.contains(sql, "RETURNING") == true

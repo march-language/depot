@@ -32,7 +32,7 @@ end
 
 test "SELECT with columns" do
   let q = Query({
-    from_: FromTable("posts"), selects: [SelectField(Col("id")), SelectField(Col("title"))],
+    from_: FromTable("posts"), selects: [SelectField(Expr.Col("id")), SelectField(Expr.Col("title"))],
     wheres: Nil, joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct
   })
@@ -45,7 +45,7 @@ test "WHERE with param" do
   let q = Query({
     from_: FromTable("users"),
     selects: Nil,
-    wheres: [Where(Eq(Col("id"), Lit(PInt(42))))],
+    wheres: [Where(Expr.Eq(Expr.Col("id"), Lit(PInt(42))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct
   })
@@ -59,8 +59,8 @@ test "two WHERE params joined with AND" do
   let q = Query({
     from_: FromTable("products"),
     selects: Nil,
-    wheres: [Where(Eq(Col("active"), Lit(PBool(true)))),
-              Where(Eq(Col("price"), Lit(PInt(100))))],
+    wheres: [Where(Expr.Eq(Expr.Col("active"), Lit(PBool(true)))),
+              Where(Expr.Eq(Expr.Col("price"), Lit(PInt(100))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct
   })
@@ -73,7 +73,7 @@ test "NULL param" do
   let q = Query({
     from_: FromTable("t"),
     selects: Nil,
-    wheres: [Where(Eq(Col("x"), Lit(PNull)))],
+    wheres: [Where(Expr.Eq(Expr.Col("x"), Lit(PNull)))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct
   })
@@ -104,7 +104,7 @@ end
 test "ORDER BY DESC" do
   let q = Query({
     from_: FromTable("logs"), selects: Nil, wheres: Nil,
-    joins: Nil, orders: [OrderExpr(Col("created_at"), Desc)],
+    joins: Nil, orders: [OrderExpr(Expr.Col("created_at"), Desc)],
     group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct
   })
@@ -126,7 +126,7 @@ end
 test "IS NULL" do
   let q = Query({
     from_: FromTable("users"), selects: Nil,
-    wheres: [Where(IsNull(Col("deleted_at")))],
+    wheres: [Where(Expr.IsNull(Expr.Col("deleted_at")))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct
   })
@@ -137,7 +137,7 @@ end
 test "IS NOT NULL" do
   let q = Query({
     from_: FromTable("users"), selects: Nil,
-    wheres: [Where(IsNotNull(Col("confirmed_at")))],
+    wheres: [Where(Expr.IsNotNull(Expr.Col("confirmed_at")))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct
   })
@@ -158,7 +158,7 @@ end
 test "IN expr" do
   let q = Query({
     from_: FromTable("users"), selects: Nil,
-    wheres: [Where(In(Col("id"), [Lit(PInt(1)), Lit(PInt(2)), Lit(PInt(3))]))],
+    wheres: [Where(In(Expr.Col("id"), [Lit(PInt(1)), Lit(PInt(2)), Lit(PInt(3))]))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct
   })
@@ -170,7 +170,7 @@ end
 test "NOT IN expr" do
   let q = Query({
     from_: FromTable("t"), selects: Nil,
-    wheres: [Where(NotIn(Col("status"), [Lit(PString("banned")), Lit(PString("deleted"))]))],
+    wheres: [Where(NotIn(Expr.Col("status"), [Lit(PString("banned")), Lit(PString("deleted"))]))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct
   })
@@ -182,7 +182,7 @@ end
 test "BETWEEN expr" do
   let q = Query({
     from_: FromTable("products"), selects: Nil,
-    wheres: [Where(Between(Col("price"), Lit(PInt(10)), Lit(PInt(100))))],
+    wheres: [Where(Between(Expr.Col("price"), Lit(PInt(10)), Lit(PInt(100))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct
   })
@@ -194,7 +194,7 @@ end
 test "IN inline" do
   let q = Query({
     from_: FromTable("t"), selects: Nil,
-    wheres: [Where(In(Col("id"), [Lit(PInt(10)), Lit(PInt(20))]))],
+    wheres: [Where(In(Expr.Col("id"), [Lit(PInt(10)), Lit(PInt(20))]))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct
   })
@@ -205,7 +205,7 @@ end
 test "BETWEEN inline" do
   let q = Query({
     from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Between(Col("score"), Lit(PInt(0)), Lit(PInt(100))))],
+    wheres: [Where(Between(Expr.Col("score"), Lit(PInt(0)), Lit(PInt(100))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct
   })
@@ -227,9 +227,9 @@ end
 test "AND / OR / NOT boolean operators" do
   let q = Query({
     from_: FromTable("t"), selects: Nil,
-    wheres: [Where(And(
-      Eq(Col("a"), Lit(PInt(1))),
-      Or(Eq(Col("b"), Lit(PInt(2))), Not(IsNull(Col("c"))))
+    wheres: [Where(Expr.And(
+      Expr.Eq(Expr.Col("a"), Lit(PInt(1))),
+      Expr.Or(Expr.Eq(Expr.Col("b"), Lit(PInt(2))), Expr.Not(Expr.IsNull(Expr.Col("c"))))
     ))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct
@@ -241,7 +241,7 @@ end
 test "OrWhere clause" do
   let q = Query({
     from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Eq(Col("a"), Lit(PInt(1)))), OrWhere(Eq(Col("b"), Lit(PInt(2))))],
+    wheres: [Where(Expr.Eq(Expr.Col("a"), Lit(PInt(1)))), OrWhere(Expr.Eq(Expr.Col("b"), Lit(PInt(2))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct
   })
@@ -253,7 +253,7 @@ end
 test "INNER JOIN" do
   let q = Query({
     from_: FromTable("orders"), selects: Nil, wheres: Nil,
-    joins: [JoinClause(Inner, "users", Eq(QCol("orders", "user_id"), QCol("users", "id")))],
+    joins: [JoinClause(Inner, "users", Expr.Eq(QCol("orders", "user_id"), QCol("users", "id")))],
     orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct
   })
@@ -264,7 +264,7 @@ end
 test "LEFT JOIN" do
   let q = Query({
     from_: FromTable("users"), selects: Nil, wheres: Nil,
-    joins: [JoinClause(Left, "posts", Eq(QCol("posts", "user_id"), QCol("users", "id")))],
+    joins: [JoinClause(Left, "posts", Expr.Eq(QCol("posts", "user_id"), QCol("users", "id")))],
     orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct
   })
@@ -275,9 +275,9 @@ end
 test "GROUP BY" do
   let q = Query({
     from_: FromTable("orders"),
-    selects: [SelectField(Col("status")), SelectAs(CountAll, "n")],
+    selects: [SelectField(Expr.Col("status")), SelectAs(CountAll, "n")],
     wheres: Nil, joins: Nil, orders: Nil,
-    group_bys: [Col("status")],
+    group_bys: [Expr.Col("status")],
     havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct
   })
@@ -289,10 +289,10 @@ test "ORDER BY NULLS variants" do
   let q = Query({
     from_: FromTable("t"), selects: Nil, wheres: Nil, joins: Nil,
     orders: [
-      OrderExpr(Col("a"), AscNullsFirst),
-      OrderExpr(Col("b"), AscNullsLast),
-      OrderExpr(Col("c"), DescNullsFirst),
-      OrderExpr(Col("d"), DescNullsLast)
+      OrderExpr(Expr.Col("a"), AscNullsFirst),
+      OrderExpr(Expr.Col("b"), AscNullsLast),
+      OrderExpr(Expr.Col("c"), DescNullsFirst),
+      OrderExpr(Expr.Col("d"), DescNullsLast)
     ],
     group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct
@@ -304,7 +304,7 @@ end
 test "FnCall expr" do
   let q = Query({
     from_: FromTable("t"),
-    selects: [SelectField(FnCall("LOWER", [Col("email")]))],
+    selects: [SelectField(FnCall("LOWER", [Expr.Col("email")]))],
     wheres: Nil, joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct
   })
@@ -315,7 +315,7 @@ end
 test "LIKE with param" do
   let q = Query({
     from_: FromTable("users"), selects: Nil,
-    wheres: [Where(Like(Col("name"), "%alice%"))],
+    wheres: [Where(Like(Expr.Col("name"), "%alice%"))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct
   })
@@ -327,7 +327,7 @@ end
 test "string escaping in inline compile" do
   let q = Query({
     from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Eq(Col("name"), Lit(PString("O'Reilly"))))],
+    wheres: [Where(Expr.Eq(Expr.Col("name"), Lit(PString("O'Reilly"))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct
   })
@@ -338,7 +338,7 @@ end
 test "ILIKE in inline compile" do
   let q = Query({
     from_: FromTable("t"), selects: Nil,
-    wheres: [Where(ILike(Col("bio"), "%engineer%"))],
+    wheres: [Where(ILike(Expr.Col("bio"), "%engineer%"))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct
   })
@@ -348,7 +348,7 @@ end
 
 test "Neq operator" do
   let r = compile(Query({ from_: FromTable("users"), selects: Nil,
-    wheres: [Where(Neq(Col("status"), Lit(PString("banned"))))],
+    wheres: [Where(Expr.Neq(Expr.Col("status"), Lit(PString("banned"))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct }))
   assert r.sql == "SELECT * FROM \"users\" WHERE \"status\" <> $1"
@@ -357,25 +357,25 @@ end
 
 test "Lt Gt Lte Gte operators" do
   let lt_q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Lt(Col("age"), Lit(PInt(18))))],
+    wheres: [Where(Expr.Lt(Expr.Col("age"), Lit(PInt(18))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert (compile(lt_q)).sql == "SELECT * FROM \"t\" WHERE \"age\" < $1"
 
   let gt_q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Gt(Col("score"), Lit(PInt(100))))],
+    wheres: [Where(Expr.Gt(Expr.Col("score"), Lit(PInt(100))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert (compile(gt_q)).sql == "SELECT * FROM \"t\" WHERE \"score\" > $1"
 
   let lte_q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Lte(Col("n"), Lit(PInt(5))))],
+    wheres: [Where(Expr.Lte(Expr.Col("n"), Lit(PInt(5))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert (compile(lte_q)).sql == "SELECT * FROM \"t\" WHERE \"n\" <= $1"
 
   let gte_q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Gte(Col("n"), Lit(PInt(0))))],
+    wheres: [Where(Expr.Gte(Expr.Col("n"), Lit(PInt(0))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert (compile(gte_q)).sql == "SELECT * FROM \"t\" WHERE \"n\" >= $1"
@@ -383,25 +383,25 @@ end
 
 test "Add Sub Mul Div arithmetic in WHERE" do
   let add_q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Eq(Add(Col("x"), Lit(PInt(1))), Lit(PInt(5))))],
+    wheres: [Where(Expr.Eq(Expr.Add(Expr.Col("x"), Lit(PInt(1))), Lit(PInt(5))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert (compile(add_q)).sql == "SELECT * FROM \"t\" WHERE \"x\" + $1 = $2"
 
   let sub_q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Eq(Sub(Col("a"), Col("b")), Lit(PInt(0))))],
+    wheres: [Where(Expr.Eq(Expr.Sub(Expr.Col("a"), Expr.Col("b")), Lit(PInt(0))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert (compile(sub_q)).sql == "SELECT * FROM \"t\" WHERE \"a\" - \"b\" = $1"
 
   let mul_q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Eq(Mul(Col("price"), Lit(PInt(2))), Lit(PInt(100))))],
+    wheres: [Where(Expr.Eq(Expr.Mul(Expr.Col("price"), Lit(PInt(2))), Lit(PInt(100))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert (compile(mul_q)).sql == "SELECT * FROM \"t\" WHERE \"price\" * $1 = $2"
 
   let div_q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Eq(Div(Col("total"), Lit(PInt(100))), Lit(PInt(1))))],
+    wheres: [Where(Expr.Eq(Expr.Div(Expr.Col("total"), Lit(PInt(100))), Lit(PInt(1))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert (compile(div_q)).sql == "SELECT * FROM \"t\" WHERE \"total\" / $1 = $2"
@@ -409,11 +409,11 @@ end
 
 test "aggregate functions in SELECT" do
   let q = Query({ from_: FromTable("sales"),
-    selects: [SelectField(Sum(Col("amount"))),
-               SelectField(Avg(Col("score"))),
-               SelectField(Min(Col("price"))),
-               SelectField(Max(Col("price"))),
-               SelectField(Count(Col("id"))),
+    selects: [SelectField(Expr.Sum(Expr.Col("amount"))),
+               SelectField(Avg(Expr.Col("score"))),
+               SelectField(Expr.Min(Expr.Col("price"))),
+               SelectField(Expr.Max(Expr.Col("price"))),
+               SelectField(Expr.Count(Expr.Col("id"))),
                SelectField(CountAll)],
     wheres: Nil, joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
@@ -423,7 +423,7 @@ end
 
 test "ExprParam in WHERE" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Gte(Col("n"), ExprParam(5)))],
+    wheres: [Where(Expr.Gte(Expr.Col("n"), ExprParam(5)))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -433,7 +433,7 @@ end
 
 test "Exists in WHERE" do
   let sub = Query({ from_: FromTable("orders"), selects: Nil,
-    wheres: [Where(Eq(Col("user_id"), Col("id")))],
+    wheres: [Where(Expr.Eq(Expr.Col("user_id"), Expr.Col("id")))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let q = Query({ from_: FromTable("users"), selects: Nil,
@@ -467,11 +467,11 @@ end
 
 test "compile_inline with comparison operators" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Neq(Col("x"), Lit(PInt(0)))),
-              Where(Lt(Col("age"), Lit(PInt(18)))),
-              Where(Gt(Col("score"), Lit(PInt(100)))),
-              Where(Lte(Col("n"), Lit(PInt(5)))),
-              Where(Gte(Col("n"), Lit(PInt(0))))],
+    wheres: [Where(Expr.Neq(Expr.Col("x"), Lit(PInt(0)))),
+              Where(Expr.Lt(Expr.Col("age"), Lit(PInt(18)))),
+              Where(Expr.Gt(Expr.Col("score"), Lit(PInt(100)))),
+              Where(Expr.Lte(Expr.Col("n"), Lit(PInt(5)))),
+              Where(Expr.Gte(Expr.Col("n"), Lit(PInt(0))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -480,10 +480,10 @@ end
 
 test "compile_inline with arithmetic" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Eq(Add(Col("a"), Col("b")), Lit(PInt(10)))),
-              Where(Eq(Sub(Col("x"), Lit(PInt(1))), Lit(PInt(0)))),
-              Where(Eq(Mul(Col("p"), Lit(PInt(2))), Lit(PInt(8)))),
-              Where(Eq(Div(Col("total"), Lit(PInt(4))), Lit(PInt(5))))],
+    wheres: [Where(Expr.Eq(Expr.Add(Expr.Col("a"), Expr.Col("b")), Lit(PInt(10)))),
+              Where(Expr.Eq(Expr.Sub(Expr.Col("x"), Lit(PInt(1))), Lit(PInt(0)))),
+              Where(Expr.Eq(Expr.Mul(Expr.Col("p"), Lit(PInt(2))), Lit(PInt(8)))),
+              Where(Expr.Eq(Expr.Div(Expr.Col("total"), Lit(PInt(4))), Lit(PInt(5))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -492,9 +492,9 @@ end
 
 test "compile_inline with aggregates in SELECT" do
   let q = Query({ from_: FromTable("sales"),
-    selects: [SelectField(Sum(Col("amount"))), SelectField(Avg(Col("score"))),
-               SelectField(Min(Col("price"))), SelectField(Max(Col("price"))),
-               SelectField(Count(Col("id"))), SelectField(CountAll)],
+    selects: [SelectField(Expr.Sum(Expr.Col("amount"))), SelectField(Avg(Expr.Col("score"))),
+               SelectField(Expr.Min(Expr.Col("price"))), SelectField(Expr.Max(Expr.Col("price"))),
+               SelectField(Expr.Count(Expr.Col("id"))), SelectField(CountAll)],
     wheres: Nil, joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -503,7 +503,7 @@ end
 
 test "compile_inline ExprParam and Raw" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Gte(Col("n"), ExprParam(3))),
+    wheres: [Where(Expr.Gte(Expr.Col("n"), ExprParam(3))),
               Where(Raw("x IS DISTINCT FROM NULL"))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
@@ -513,7 +513,7 @@ end
 
 test "compile_inline Exists" do
   let sub = Query({ from_: FromTable("orders"), selects: Nil,
-    wheres: [Where(Eq(Col("user_id"), Col("id")))],
+    wheres: [Where(Expr.Eq(Expr.Col("user_id"), Expr.Col("id")))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let q = Query({ from_: FromTable("users"), selects: Nil,
@@ -546,14 +546,14 @@ end
 
 test "compile_inline RIGHT JOIN and FULL OUTER JOIN" do
   let rj_q = Query({ from_: FromTable("a"), selects: Nil,
-    joins: [JoinClause(Right, "b", Eq(Col("a_id"), Col("id")))],
+    joins: [JoinClause(Right, "b", Expr.Eq(Expr.Col("a_id"), Expr.Col("id")))],
     wheres: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let rj = compile_inline(rj_q)
   assert rj.sql == "SELECT * FROM \"a\" RIGHT JOIN \"b\" ON \"a_id\" = \"id\""
 
   let fj_q = Query({ from_: FromTable("a"), selects: Nil,
-    joins: [JoinClause(FullOuter, "b", Eq(Col("a_id"), Col("id")))],
+    joins: [JoinClause(FullOuter, "b", Expr.Eq(Expr.Col("a_id"), Expr.Col("id")))],
     wheres: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let fj = compile_inline(fj_q)
@@ -571,7 +571,7 @@ end
 
 test "compile_inline NOT expr" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Not(Eq(Col("active"), Lit(PBool(false)))))],
+    wheres: [Where(Expr.Not(Expr.Eq(Expr.Col("active"), Lit(PBool(false)))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -580,7 +580,7 @@ end
 
 test "compile_inline FnCall" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Eq(FnCall("LOWER", [Col("email")]), Lit(PString("a@b.com"))))],
+    wheres: [Where(Expr.Eq(FnCall("LOWER", [Expr.Col("email")]), Lit(PString("a@b.com"))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -589,7 +589,7 @@ end
 
 test "compile_inline IsNull IsNotNull" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(IsNull(Col("deleted_at"))), Where(IsNotNull(Col("created_at")))],
+    wheres: [Where(Expr.IsNull(Expr.Col("deleted_at"))), Where(Expr.IsNotNull(Expr.Col("created_at")))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -598,21 +598,21 @@ end
 
 test "compile_inline In NotIn Between" do
   let in_q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(In(Col("id"), [Lit(PInt(1)), Lit(PInt(2))]))],
+    wheres: [Where(In(Expr.Col("id"), [Lit(PInt(1)), Lit(PInt(2))]))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r_in = compile_inline(in_q)
   assert r_in.sql == "SELECT * FROM \"t\" WHERE \"id\" IN (1, 2)"
 
   let nin_q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(NotIn(Col("id"), [Lit(PInt(3))]))],
+    wheres: [Where(NotIn(Expr.Col("id"), [Lit(PInt(3))]))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r_nin = compile_inline(nin_q)
   assert r_nin.sql == "SELECT * FROM \"t\" WHERE \"id\" NOT IN (3)"
 
   let btw_q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Between(Col("age"), Lit(PInt(18)), Lit(PInt(65))))],
+    wheres: [Where(Between(Expr.Col("age"), Lit(PInt(18)), Lit(PInt(65))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r_btw = compile_inline(btw_q)
@@ -621,8 +621,8 @@ end
 
 test "compile_inline LIKE and ILike" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Like(Col("name"), "%alice%")),
-              Where(ILike(Col("email"), "%@test.com"))],
+    wheres: [Where(Like(Expr.Col("name"), "%alice%")),
+              Where(ILike(Expr.Col("email"), "%@test.com"))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -631,7 +631,7 @@ end
 
 test "compile_inline QCol" do
   let q = Query({ from_: FromTable("orders"), selects: Nil,
-    wheres: [Where(Eq(QCol("orders", "user_id"), QCol("users", "id")))],
+    wheres: [Where(Expr.Eq(QCol("orders", "user_id"), QCol("users", "id")))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -640,8 +640,8 @@ end
 
 test "compile_inline Or And" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Or(Eq(Col("a"), Lit(PInt(1))), Eq(Col("b"), Lit(PInt(2))))),
-              Where(And(Gt(Col("x"), Lit(PInt(0))), Lt(Col("x"), Lit(PInt(10)))))],
+    wheres: [Where(Expr.Or(Expr.Eq(Expr.Col("a"), Lit(PInt(1))), Expr.Eq(Expr.Col("b"), Lit(PInt(2))))),
+              Where(Expr.And(Expr.Gt(Expr.Col("x"), Lit(PInt(0))), Expr.Lt(Expr.Col("x"), Lit(PInt(10)))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -651,7 +651,7 @@ end
 
 test "compile PFloat param" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Eq(Col("rate"), Lit(PFloat(1.5))))],
+    wheres: [Where(Expr.Eq(Expr.Col("rate"), Lit(PFloat(1.5))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -669,7 +669,7 @@ end
 
 test "compile_inline ORDER BY ASC and DESC" do
   let q = Query({ from_: FromTable("t"), selects: Nil, wheres: Nil, joins: Nil,
-    orders: [OrderExpr(Col("name"), Asc), OrderExpr(Col("score"), Desc)],
+    orders: [OrderExpr(Expr.Col("name"), Asc), OrderExpr(Expr.Col("score"), Desc)],
     group_bys: Nil, havings: Nil, limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
   assert r.sql == "SELECT * FROM \"t\" ORDER BY \"name\" ASC, \"score\" DESC"
@@ -677,8 +677,8 @@ end
 
 test "compile_inline ORDER BY NULLS variants" do
   let q = Query({ from_: FromTable("t"), selects: Nil, wheres: Nil, joins: Nil,
-    orders: [OrderExpr(Col("a"), AscNullsFirst), OrderExpr(Col("b"), AscNullsLast),
-              OrderExpr(Col("c"), DescNullsFirst), OrderExpr(Col("d"), DescNullsLast)],
+    orders: [OrderExpr(Expr.Col("a"), AscNullsFirst), OrderExpr(Expr.Col("b"), AscNullsLast),
+              OrderExpr(Expr.Col("c"), DescNullsFirst), OrderExpr(Expr.Col("d"), DescNullsLast)],
     group_bys: Nil, havings: Nil, limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
   assert r.sql == "SELECT * FROM \"t\" ORDER BY \"a\" ASC NULLS FIRST, \"b\" ASC NULLS LAST, \"c\" DESC NULLS FIRST, \"d\" DESC NULLS LAST"
@@ -686,9 +686,9 @@ end
 
 test "compile_inline GROUP BY" do
   let q = Query({ from_: FromTable("sales"),
-    selects: [SelectField(Col("region")), SelectField(CountAll)],
+    selects: [SelectField(Expr.Col("region")), SelectField(CountAll)],
     wheres: Nil, joins: Nil, orders: Nil,
-    group_bys: [Col("region")],
+    group_bys: [Expr.Col("region")],
     havings: Nil, limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
   assert r.sql == "SELECT \"region\", COUNT(*) FROM \"sales\" GROUP BY \"region\""
@@ -696,10 +696,10 @@ end
 
 test "compile_inline HAVING" do
   let q = Query({ from_: FromTable("orders"),
-    selects: [SelectField(Col("status")), SelectAs(CountAll, "n")],
+    selects: [SelectField(Expr.Col("status")), SelectAs(CountAll, "n")],
     wheres: Nil, joins: Nil, orders: Nil,
-    group_bys: [Col("status")],
-    havings: [Where(Gt(CountAll, Lit(PInt(5))))],
+    group_bys: [Expr.Col("status")],
+    havings: [Where(Expr.Gt(CountAll, Lit(PInt(5))))],
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
   assert String.contains(r.sql, "HAVING") == true
@@ -716,7 +716,7 @@ end
 
 test "compile_inline OrWhere" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Eq(Col("a"), Lit(PInt(1)))), OrWhere(Eq(Col("b"), Lit(PInt(2))))],
+    wheres: [Where(Expr.Eq(Expr.Col("a"), Lit(PInt(1)))), OrWhere(Expr.Eq(Expr.Col("b"), Lit(PInt(2))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -733,12 +733,12 @@ end
 
 test "compile_inline full query: WHERE + GROUP BY + HAVING + ORDER + LIMIT" do
   let q = Query({ from_: FromTable("logs"),
-    selects: [SelectField(Col("level")), SelectAs(CountAll, "cnt")],
-    wheres: [Where(Gte(Col("severity"), Lit(PInt(3))))],
+    selects: [SelectField(Expr.Col("level")), SelectAs(CountAll, "cnt")],
+    wheres: [Where(Expr.Gte(Expr.Col("severity"), Lit(PInt(3))))],
     joins: Nil,
-    orders: [OrderExpr(Col("cnt"), Desc)],
-    group_bys: [Col("level")],
-    havings: [Where(Gt(CountAll, Lit(PInt(10))))],
+    orders: [OrderExpr(Expr.Col("cnt"), Desc)],
+    group_bys: [Expr.Col("level")],
+    havings: [Where(Expr.Gt(CountAll, Lit(PInt(10))))],
     limit_: Some(5), offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
   assert String.contains(r.sql, "SELECT") == true
@@ -752,7 +752,7 @@ end
 
 test "compile RIGHT JOIN parameterized" do
   let q = Query({ from_: FromTable("a"), selects: Nil,
-    joins: [JoinClause(Right, "b", Eq(Col("a_id"), Col("id")))],
+    joins: [JoinClause(Right, "b", Expr.Eq(Expr.Col("a_id"), Expr.Col("id")))],
     wheres: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -761,7 +761,7 @@ end
 
 test "compile FULL OUTER JOIN parameterized" do
   let q = Query({ from_: FromTable("a"), selects: Nil,
-    joins: [JoinClause(FullOuter, "b", Eq(Col("a_id"), Col("id")))],
+    joins: [JoinClause(FullOuter, "b", Expr.Eq(Expr.Col("a_id"), Expr.Col("id")))],
     wheres: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -779,11 +779,11 @@ end
 
 test "compile HAVING parameterized" do
   let q = Query({ from_: FromTable("orders"),
-    selects: [SelectField(Col("status")), SelectAs(CountAll, "n")],
+    selects: [SelectField(Expr.Col("status")), SelectAs(CountAll, "n")],
     wheres: Nil, joins: Nil,
     orders: Nil,
-    group_bys: [Col("status")],
-    havings: [Where(Gt(CountAll, Lit(PInt(5))))],
+    group_bys: [Expr.Col("status")],
+    havings: [Where(Expr.Gt(CountAll, Lit(PInt(5))))],
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
   assert String.contains(r.sql, "HAVING") == true
@@ -792,7 +792,7 @@ end
 
 test "compile PBool true parameterized" do
   let q = Query({ from_: FromTable("users"), selects: Nil,
-    wheres: [Where(Eq(Col("active"), Lit(PBool(true))))],
+    wheres: [Where(Expr.Eq(Expr.Col("active"), Lit(PBool(true))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -804,7 +804,7 @@ end
 
 test "compile PBool false parameterized" do
   let q = Query({ from_: FromTable("users"), selects: Nil,
-    wheres: [Where(Eq(Col("deleted"), Lit(PBool(false))))],
+    wheres: [Where(Expr.Eq(Expr.Col("deleted"), Lit(PBool(false))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -815,7 +815,7 @@ end
 
 test "compile ILike parameterized" do
   let q = Query({ from_: FromTable("posts"), selects: Nil,
-    wheres: [Where(ILike(Col("title"), "%hello%"))],
+    wheres: [Where(ILike(Expr.Col("title"), "%hello%"))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -829,7 +829,7 @@ end
 
 test "compile_inline PFloat literal" do
   let q = Query({ from_: FromTable("metrics"), selects: Nil,
-    wheres: [Where(Gt(Col("score"), Lit(PFloat(3.14))))],
+    wheres: [Where(Expr.Gt(Expr.Col("score"), Lit(PFloat(3.14))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -838,7 +838,7 @@ end
 
 test "compile_inline PBool true literal" do
   let q = Query({ from_: FromTable("flags"), selects: Nil,
-    wheres: [Where(Eq(Col("on"), Lit(PBool(true))))],
+    wheres: [Where(Expr.Eq(Expr.Col("on"), Lit(PBool(true))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -847,7 +847,7 @@ end
 
 test "compile_inline PNull literal" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Eq(Col("x"), Lit(PNull)))],
+    wheres: [Where(Expr.Eq(Expr.Col("x"), Lit(PNull)))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -859,7 +859,7 @@ end
 test "quote_ident escapes embedded double quote" do
   -- Col with a double-quote in name triggers the b==34 branch in escape_ident
   let q = Query({ from_: FromTable("t"),
-    selects: [SelectField(Col("weird\"col"))],
+    selects: [SelectField(Expr.Col("weird\"col"))],
     wheres: Nil, joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -871,12 +871,12 @@ end
 
 test "compile HAVING OrWhere parameterized" do
   let q = Query({ from_: FromTable("sales"),
-    selects: [SelectField(Col("region")), SelectAs(CountAll, "n")],
+    selects: [SelectField(Expr.Col("region")), SelectAs(CountAll, "n")],
     wheres: Nil, joins: Nil,
     orders: Nil,
-    group_bys: [Col("region")],
-    havings: [Where(Gt(CountAll, Lit(PInt(1)))),
-               OrWhere(Gt(CountAll, Lit(PInt(10))))],
+    group_bys: [Expr.Col("region")],
+    havings: [Where(Expr.Gt(CountAll, Lit(PInt(1)))),
+               OrWhere(Expr.Gt(CountAll, Lit(PInt(10))))],
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
   assert String.contains(r.sql, "HAVING") == true
@@ -888,7 +888,7 @@ end
 test "compile_inline INNER JOIN" do
   let q = Query({ from_: FromTable("orders"),
     selects: Nil,
-    joins: [JoinClause(Inner, "users", Eq(QCol("orders","user_id"), QCol("users","id")))],
+    joins: [JoinClause(Inner, "users", Expr.Eq(QCol("orders","user_id"), QCol("users","id")))],
     wheres: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -898,7 +898,7 @@ end
 test "compile_inline LEFT JOIN" do
   let q = Query({ from_: FromTable("orders"),
     selects: Nil,
-    joins: [JoinClause(Left, "users", Eq(QCol("orders","user_id"), QCol("users","id")))],
+    joins: [JoinClause(Left, "users", Expr.Eq(QCol("orders","user_id"), QCol("users","id")))],
     wheres: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -908,7 +908,7 @@ end
 test "compile_inline RIGHT JOIN" do
   let q = Query({ from_: FromTable("a"),
     selects: Nil,
-    joins: [JoinClause(Right, "b", Eq(Col("a_id"), Col("id")))],
+    joins: [JoinClause(Right, "b", Expr.Eq(Expr.Col("a_id"), Expr.Col("id")))],
     wheres: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -918,7 +918,7 @@ end
 test "compile_inline FULL OUTER JOIN" do
   let q = Query({ from_: FromTable("a"),
     selects: Nil,
-    joins: [JoinClause(FullOuter, "b", Eq(Col("a_id"), Col("id")))],
+    joins: [JoinClause(FullOuter, "b", Expr.Eq(Expr.Col("a_id"), Expr.Col("id")))],
     wheres: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -948,7 +948,7 @@ end
 
 test "compile_inline SelectAs in selects list" do
   let q = Query({ from_: FromTable("t"),
-    selects: [SelectAs(Col("id"), "my_id"), SelectField(Col("name"))],
+    selects: [SelectAs(Expr.Col("id"), "my_id"), SelectField(Expr.Col("name"))],
     wheres: Nil, joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -961,7 +961,7 @@ end
 test "compile_inline GROUP BY" do
   let q = Query({ from_: FromTable("sales"),
     selects: Nil,
-    group_bys: [Col("region"), Col("year")],
+    group_bys: [Expr.Col("region"), Expr.Col("year")],
     wheres: Nil, joins: Nil, orders: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -971,8 +971,8 @@ end
 test "compile_inline HAVING" do
   let q = Query({ from_: FromTable("orders"),
     selects: Nil,
-    group_bys: [Col("status")],
-    havings: [Where(Gt(CountAll, Lit(PInt(5))))],
+    group_bys: [Expr.Col("status")],
+    havings: [Where(Expr.Gt(CountAll, Lit(PInt(5))))],
     wheres: Nil, joins: Nil, orders: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -983,9 +983,9 @@ end
 test "compile_inline HAVING OrWhere" do
   let q = Query({ from_: FromTable("t"),
     selects: Nil,
-    group_bys: [Col("x")],
-    havings: [Where(Gt(CountAll, Lit(PInt(1)))),
-               OrWhere(Gt(CountAll, Lit(PInt(10))))],
+    group_bys: [Expr.Col("x")],
+    havings: [Where(Expr.Gt(CountAll, Lit(PInt(1)))),
+               OrWhere(Expr.Gt(CountAll, Lit(PInt(10))))],
     wheres: Nil, joins: Nil, orders: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -996,7 +996,7 @@ end
 test "compile_inline ORDER BY ASC" do
   let q = Query({ from_: FromTable("users"),
     selects: Nil,
-    orders: [OrderExpr(Col("name"), Asc)],
+    orders: [OrderExpr(Expr.Col("name"), Asc)],
     wheres: Nil, joins: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1006,7 +1006,7 @@ end
 test "compile_inline ORDER BY AscNullsFirst" do
   let q = Query({ from_: FromTable("t"),
     selects: Nil,
-    orders: [OrderExpr(Col("x"), AscNullsFirst)],
+    orders: [OrderExpr(Expr.Col("x"), AscNullsFirst)],
     wheres: Nil, joins: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1016,7 +1016,7 @@ end
 test "compile_inline ORDER BY AscNullsLast" do
   let q = Query({ from_: FromTable("t"),
     selects: Nil,
-    orders: [OrderExpr(Col("x"), AscNullsLast)],
+    orders: [OrderExpr(Expr.Col("x"), AscNullsLast)],
     wheres: Nil, joins: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1026,7 +1026,7 @@ end
 test "compile_inline ORDER BY DescNullsFirst" do
   let q = Query({ from_: FromTable("t"),
     selects: Nil,
-    orders: [OrderExpr(Col("x"), DescNullsFirst)],
+    orders: [OrderExpr(Expr.Col("x"), DescNullsFirst)],
     wheres: Nil, joins: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1036,7 +1036,7 @@ end
 test "compile_inline ORDER BY DescNullsLast" do
   let q = Query({ from_: FromTable("t"),
     selects: Nil,
-    orders: [OrderExpr(Col("x"), DescNullsLast)],
+    orders: [OrderExpr(Expr.Col("x"), DescNullsLast)],
     wheres: Nil, joins: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1045,8 +1045,8 @@ end
 
 test "compile_inline OrWhere" do
   let q = Query({ from_: FromTable("users"), selects: Nil,
-    wheres: [Where(Eq(Col("role"), Lit(PString("admin")))),
-              OrWhere(Eq(Col("role"), Lit(PString("mod"))))],
+    wheres: [Where(Expr.Eq(Expr.Col("role"), Lit(PString("admin")))),
+              OrWhere(Expr.Eq(Expr.Col("role"), Lit(PString("mod"))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1057,7 +1057,7 @@ end
 
 test "compile_inline WHERE Add" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Gt(Add(Col("a"), Col("b")), Lit(PInt(0))))],
+    wheres: [Where(Expr.Gt(Expr.Add(Expr.Col("a"), Expr.Col("b")), Lit(PInt(0))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1066,7 +1066,7 @@ end
 
 test "compile_inline WHERE Sub" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Gt(Sub(Col("a"), Col("b")), Lit(PInt(0))))],
+    wheres: [Where(Expr.Gt(Expr.Sub(Expr.Col("a"), Expr.Col("b")), Lit(PInt(0))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1075,7 +1075,7 @@ end
 
 test "compile_inline WHERE Mul" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Gt(Mul(Col("a"), Col("b")), Lit(PInt(0))))],
+    wheres: [Where(Expr.Gt(Expr.Mul(Expr.Col("a"), Expr.Col("b")), Lit(PInt(0))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1084,7 +1084,7 @@ end
 
 test "compile_inline WHERE Div" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Gt(Div(Col("a"), Col("b")), Lit(PInt(0))))],
+    wheres: [Where(Expr.Gt(Expr.Div(Expr.Col("a"), Expr.Col("b")), Lit(PInt(0))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1093,7 +1093,7 @@ end
 
 test "compile_inline WHERE Neq" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Neq(Col("x"), Lit(PInt(0))))],
+    wheres: [Where(Expr.Neq(Expr.Col("x"), Lit(PInt(0))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1102,7 +1102,7 @@ end
 
 test "compile_inline WHERE Lt" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Lt(Col("x"), Lit(PInt(5))))],
+    wheres: [Where(Expr.Lt(Expr.Col("x"), Lit(PInt(5))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1111,7 +1111,7 @@ end
 
 test "compile_inline WHERE Lte" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Lte(Col("x"), Lit(PInt(5))))],
+    wheres: [Where(Expr.Lte(Expr.Col("x"), Lit(PInt(5))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1120,7 +1120,7 @@ end
 
 test "compile_inline WHERE Gte" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Gte(Col("x"), Lit(PInt(5))))],
+    wheres: [Where(Expr.Gte(Expr.Col("x"), Lit(PInt(5))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1129,7 +1129,7 @@ end
 
 test "compile_inline WHERE And" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(And(Gt(Col("x"), Lit(PInt(0))), Lt(Col("x"), Lit(PInt(10)))))],
+    wheres: [Where(Expr.And(Expr.Gt(Expr.Col("x"), Lit(PInt(0))), Expr.Lt(Expr.Col("x"), Lit(PInt(10)))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1138,7 +1138,7 @@ end
 
 test "compile_inline WHERE Or" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Or(Eq(Col("x"), Lit(PInt(1))), Eq(Col("x"), Lit(PInt(2)))))],
+    wheres: [Where(Expr.Or(Expr.Eq(Expr.Col("x"), Lit(PInt(1))), Expr.Eq(Expr.Col("x"), Lit(PInt(2)))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1147,7 +1147,7 @@ end
 
 test "compile_inline WHERE Not" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Not(Eq(Col("x"), Lit(PInt(0)))))],
+    wheres: [Where(Expr.Not(Expr.Eq(Expr.Col("x"), Lit(PInt(0)))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1156,7 +1156,7 @@ end
 
 test "compile_inline WHERE IsNull" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(IsNull(Col("deleted_at")))],
+    wheres: [Where(Expr.IsNull(Expr.Col("deleted_at")))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1165,7 +1165,7 @@ end
 
 test "compile_inline WHERE IsNotNull" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(IsNotNull(Col("published_at")))],
+    wheres: [Where(Expr.IsNotNull(Expr.Col("published_at")))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1174,7 +1174,7 @@ end
 
 test "compile_inline WHERE In" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(In(Col("id"), [Lit(PInt(1)), Lit(PInt(2))]))],
+    wheres: [Where(In(Expr.Col("id"), [Lit(PInt(1)), Lit(PInt(2))]))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1183,7 +1183,7 @@ end
 
 test "compile_inline WHERE NotIn" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(NotIn(Col("status"), [Lit(PString("x")), Lit(PString("y"))]))],
+    wheres: [Where(NotIn(Expr.Col("status"), [Lit(PString("x")), Lit(PString("y"))]))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1192,7 +1192,7 @@ end
 
 test "compile_inline WHERE Between" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Between(Col("x"), Lit(PInt(1)), Lit(PInt(10))))],
+    wheres: [Where(Between(Expr.Col("x"), Lit(PInt(1)), Lit(PInt(10))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1201,7 +1201,7 @@ end
 
 test "compile_inline WHERE FnCall" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Eq(FnCall("LOWER", [Col("email")]), Lit(PString("test"))))],
+    wheres: [Where(Expr.Eq(FnCall("LOWER", [Expr.Col("email")]), Lit(PString("test"))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1210,7 +1210,7 @@ end
 
 test "compile_inline WHERE Like" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Like(Col("name"), "%alice%"))],
+    wheres: [Where(Like(Expr.Col("name"), "%alice%"))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1219,7 +1219,7 @@ end
 
 test "compile_inline WHERE ILike" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(ILike(Col("name"), "%alice%"))],
+    wheres: [Where(ILike(Expr.Col("name"), "%alice%"))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1228,8 +1228,8 @@ end
 
 test "compile_inline HAVING Count" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    group_bys: [Col("x")],
-    havings: [Where(Gt(Count(Col("id")), Lit(PInt(0))))],
+    group_bys: [Expr.Col("x")],
+    havings: [Where(Expr.Gt(Expr.Count(Expr.Col("id")), Lit(PInt(0))))],
     wheres: Nil, joins: Nil, orders: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1238,8 +1238,8 @@ end
 
 test "compile_inline HAVING Sum" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    group_bys: [Col("x")],
-    havings: [Where(Gt(Sum(Col("amount")), Lit(PInt(100))))],
+    group_bys: [Expr.Col("x")],
+    havings: [Where(Expr.Gt(Expr.Sum(Expr.Col("amount")), Lit(PInt(100))))],
     wheres: Nil, joins: Nil, orders: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1248,8 +1248,8 @@ end
 
 test "compile_inline HAVING Avg" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    group_bys: [Col("x")],
-    havings: [Where(Gt(Avg(Col("score")), Lit(PFloat(5.0))))],
+    group_bys: [Expr.Col("x")],
+    havings: [Where(Expr.Gt(Avg(Expr.Col("score")), Lit(PFloat(5.0))))],
     wheres: Nil, joins: Nil, orders: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1258,8 +1258,8 @@ end
 
 test "compile_inline HAVING Min" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    group_bys: [Col("x")],
-    havings: [Where(Gt(Min(Col("val")), Lit(PInt(0))))],
+    group_bys: [Expr.Col("x")],
+    havings: [Where(Expr.Gt(Expr.Min(Expr.Col("val")), Lit(PInt(0))))],
     wheres: Nil, joins: Nil, orders: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1268,8 +1268,8 @@ end
 
 test "compile_inline HAVING Max" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    group_bys: [Col("x")],
-    havings: [Where(Lt(Max(Col("val")), Lit(PInt(1000))))],
+    group_bys: [Expr.Col("x")],
+    havings: [Where(Expr.Lt(Expr.Max(Expr.Col("val")), Lit(PInt(1000))))],
     wheres: Nil, joins: Nil, orders: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1278,8 +1278,8 @@ end
 
 test "compile_inline HAVING CountAll" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    group_bys: [Col("x")],
-    havings: [Where(Gt(CountAll, Lit(PInt(5))))],
+    group_bys: [Expr.Col("x")],
+    havings: [Where(Expr.Gt(CountAll, Lit(PInt(5))))],
     wheres: Nil, joins: Nil, orders: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1321,7 +1321,7 @@ test "compile_inline WHERE SubqueryExpr" do
     selects: Nil, wheres: Nil, joins: Nil, orders: Nil,
     group_bys: Nil, havings: Nil, limit_: None, offset_: None, distinct_: NoDistinct })
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Gt(Col("score"), SubqueryExpr(sub)))],
+    wheres: [Where(Expr.Gt(Expr.Col("score"), SubqueryExpr(sub)))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1331,7 +1331,7 @@ end
 test "compile_inline WHERE unsupported expr wildcard" do
   -- QCol with an unusual name to trigger quote path
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Eq(QCol("tbl","col"), Lit(PInt(1))))],
+    wheres: [Where(Expr.Eq(QCol("tbl","col"), Lit(PInt(1))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1342,7 +1342,7 @@ end
 
 test "compile WHERE Add" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Gt(Add(Col("a"), Col("b")), Lit(PInt(0))))],
+    wheres: [Where(Expr.Gt(Expr.Add(Expr.Col("a"), Expr.Col("b")), Lit(PInt(0))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1351,7 +1351,7 @@ end
 
 test "compile WHERE Sub" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Gt(Sub(Col("a"), Col("b")), Lit(PInt(0))))],
+    wheres: [Where(Expr.Gt(Expr.Sub(Expr.Col("a"), Expr.Col("b")), Lit(PInt(0))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1360,7 +1360,7 @@ end
 
 test "compile WHERE Mul" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Gt(Mul(Col("a"), Col("b")), Lit(PInt(0))))],
+    wheres: [Where(Expr.Gt(Expr.Mul(Expr.Col("a"), Expr.Col("b")), Lit(PInt(0))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1369,7 +1369,7 @@ end
 
 test "compile WHERE Div" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Gt(Div(Col("a"), Col("b")), Lit(PInt(0))))],
+    wheres: [Where(Expr.Gt(Expr.Div(Expr.Col("a"), Expr.Col("b")), Lit(PInt(0))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1378,9 +1378,9 @@ end
 
 test "compile HAVING Sum" do
   let q = Query({ from_: FromTable("t"),
-    selects: [SelectAs(Sum(Col("amount")), "total")],
-    group_bys: [Col("category")],
-    havings: [Where(Gt(Sum(Col("amount")), Lit(PInt(100))))],
+    selects: [SelectAs(Expr.Sum(Expr.Col("amount")), "total")],
+    group_bys: [Expr.Col("category")],
+    havings: [Where(Expr.Gt(Expr.Sum(Expr.Col("amount")), Lit(PInt(100))))],
     wheres: Nil, joins: Nil, orders: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1389,8 +1389,8 @@ end
 
 test "compile HAVING Avg" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    group_bys: [Col("category")],
-    havings: [Where(Gt(Avg(Col("score")), Lit(PFloat(5.0))))],
+    group_bys: [Expr.Col("category")],
+    havings: [Where(Expr.Gt(Avg(Expr.Col("score")), Lit(PFloat(5.0))))],
     wheres: Nil, joins: Nil, orders: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1399,8 +1399,8 @@ end
 
 test "compile HAVING Min" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    group_bys: [Col("x")],
-    havings: [Where(Gt(Min(Col("val")), Lit(PInt(0))))],
+    group_bys: [Expr.Col("x")],
+    havings: [Where(Expr.Gt(Expr.Min(Expr.Col("val")), Lit(PInt(0))))],
     wheres: Nil, joins: Nil, orders: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1409,8 +1409,8 @@ end
 
 test "compile HAVING Max" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    group_bys: [Col("x")],
-    havings: [Where(Lt(Max(Col("val")), Lit(PInt(1000))))],
+    group_bys: [Expr.Col("x")],
+    havings: [Where(Expr.Lt(Expr.Max(Expr.Col("val")), Lit(PInt(1000))))],
     wheres: Nil, joins: Nil, orders: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1434,7 +1434,7 @@ test "compile SubqueryExpr" do
     selects: Nil, wheres: Nil, joins: Nil, orders: Nil,
     group_bys: Nil, havings: Nil, limit_: None, offset_: None, distinct_: NoDistinct })
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Gt(Col("score"), SubqueryExpr(sub)))],
+    wheres: [Where(Expr.Gt(Expr.Col("score"), SubqueryExpr(sub)))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1443,7 +1443,7 @@ end
 
 test "compile ORDER BY AscNullsFirst" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    orders: [OrderExpr(Col("x"), AscNullsFirst)],
+    orders: [OrderExpr(Expr.Col("x"), AscNullsFirst)],
     wheres: Nil, joins: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1452,7 +1452,7 @@ end
 
 test "compile ORDER BY AscNullsLast" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    orders: [OrderExpr(Col("x"), AscNullsLast)],
+    orders: [OrderExpr(Expr.Col("x"), AscNullsLast)],
     wheres: Nil, joins: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1461,7 +1461,7 @@ end
 
 test "compile ORDER BY DescNullsFirst" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    orders: [OrderExpr(Col("x"), DescNullsFirst)],
+    orders: [OrderExpr(Expr.Col("x"), DescNullsFirst)],
     wheres: Nil, joins: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1470,7 +1470,7 @@ end
 
 test "compile ORDER BY DescNullsLast" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    orders: [OrderExpr(Col("x"), DescNullsLast)],
+    orders: [OrderExpr(Expr.Col("x"), DescNullsLast)],
     wheres: Nil, joins: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1490,7 +1490,7 @@ end
 
 test "compile_inline PBool false literal" do
   let q = Query({ from_: FromTable("flags"), selects: Nil,
-    wheres: [Where(Eq(Col("active"), Lit(PBool(false))))],
+    wheres: [Where(Expr.Eq(Expr.Col("active"), Lit(PBool(false))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1500,7 +1500,7 @@ end
 -- ---- Additional SELECT expressions ----
 
 test "compile SelectField Col" do
-  let q = Query({ from_: FromTable("users"), selects: [SelectField(Col("name"))],
+  let q = Query({ from_: FromTable("users"), selects: [SelectField(Expr.Col("name"))],
     wheres: Nil, joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1517,7 +1517,7 @@ test "compile SelectField QCol" do
 end
 
 test "compile SelectAs Col alias" do
-  let q = Query({ from_: FromTable("products"), selects: [SelectAs(Col("price"), "cost")],
+  let q = Query({ from_: FromTable("products"), selects: [SelectAs(Expr.Col("price"), "cost")],
     wheres: Nil, joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1526,7 +1526,7 @@ test "compile SelectAs Col alias" do
 end
 
 test "compile SelectAs Sum alias" do
-  let q = Query({ from_: FromTable("sales"), selects: [SelectAs(Sum(Col("amount")), "total")],
+  let q = Query({ from_: FromTable("sales"), selects: [SelectAs(Expr.Sum(Expr.Col("amount")), "total")],
     wheres: Nil, joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1536,7 +1536,7 @@ end
 
 test "compile multiple SELECT columns" do
   let q = Query({ from_: FromTable("t"),
-    selects: [SelectField(Col("a")), SelectField(Col("b")), SelectField(Col("c"))],
+    selects: [SelectField(Expr.Col("a")), SelectField(Expr.Col("b")), SelectField(Expr.Col("c"))],
     wheres: Nil, joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1546,7 +1546,7 @@ test "compile multiple SELECT columns" do
 end
 
 test "compile DISTINCT" do
-  let q = Query({ from_: FromTable("users"), selects: [SelectField(Col("name"))],
+  let q = Query({ from_: FromTable("users"), selects: [SelectField(Expr.Col("name"))],
     wheres: Nil, joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: Distinct })
   let r = compile(q)
@@ -1584,7 +1584,7 @@ end
 
 test "compile WHERE Neq" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Neq(Col("status"), Lit(PString("deleted"))))],
+    wheres: [Where(Expr.Neq(Expr.Col("status"), Lit(PString("deleted"))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1594,7 +1594,7 @@ end
 
 test "compile WHERE Lt" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Lt(Col("age"), Lit(PInt(18))))],
+    wheres: [Where(Expr.Lt(Expr.Col("age"), Lit(PInt(18))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1603,7 +1603,7 @@ end
 
 test "compile WHERE Lte" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Lte(Col("score"), Lit(PInt(100))))],
+    wheres: [Where(Expr.Lte(Expr.Col("score"), Lit(PInt(100))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1612,7 +1612,7 @@ end
 
 test "compile WHERE Gte" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Gte(Col("rating"), Lit(PInt(4))))],
+    wheres: [Where(Expr.Gte(Expr.Col("rating"), Lit(PInt(4))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1621,7 +1621,7 @@ end
 
 test "compile WHERE And two conditions" do
   let q = Query({ from_: FromTable("users"), selects: Nil,
-    wheres: [Where(And(Eq(Col("active"), Lit(PBool(true))), Gt(Col("age"), Lit(PInt(18)))))],
+    wheres: [Where(Expr.And(Expr.Eq(Expr.Col("active"), Lit(PBool(true))), Expr.Gt(Expr.Col("age"), Lit(PInt(18)))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1630,7 +1630,7 @@ end
 
 test "compile WHERE Or two conditions" do
   let q = Query({ from_: FromTable("items"), selects: Nil,
-    wheres: [Where(Or(Eq(Col("type"), Lit(PString("a"))), Eq(Col("type"), Lit(PString("b")))))],
+    wheres: [Where(Expr.Or(Expr.Eq(Expr.Col("type"), Lit(PString("a"))), Expr.Eq(Expr.Col("type"), Lit(PString("b")))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1639,7 +1639,7 @@ end
 
 test "compile WHERE Not" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Not(Eq(Col("deleted"), Lit(PBool(true)))))],
+    wheres: [Where(Expr.Not(Expr.Eq(Expr.Col("deleted"), Lit(PBool(true)))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1648,7 +1648,7 @@ end
 
 test "compile WHERE IsNull" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(IsNull(Col("deleted_at")))],
+    wheres: [Where(Expr.IsNull(Expr.Col("deleted_at")))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1657,7 +1657,7 @@ end
 
 test "compile WHERE IsNotNull" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(IsNotNull(Col("email")))],
+    wheres: [Where(Expr.IsNotNull(Expr.Col("email")))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1666,7 +1666,7 @@ end
 
 test "compile WHERE Like" do
   let q = Query({ from_: FromTable("users"), selects: Nil,
-    wheres: [Where(Like(Col("name"), "Al%"))],
+    wheres: [Where(Like(Expr.Col("name"), "Al%"))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1675,7 +1675,7 @@ end
 
 test "compile WHERE ILike" do
   let q = Query({ from_: FromTable("users"), selects: Nil,
-    wheres: [Where(ILike(Col("name"), "al%"))],
+    wheres: [Where(ILike(Expr.Col("name"), "al%"))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1684,7 +1684,7 @@ end
 
 test "compile WHERE Between" do
   let q = Query({ from_: FromTable("events"), selects: Nil,
-    wheres: [Where(Between(Col("date"), Lit(PString("2024-01-01")), Lit(PString("2024-12-31"))))],
+    wheres: [Where(Between(Expr.Col("date"), Lit(PString("2024-01-01")), Lit(PString("2024-12-31"))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1693,7 +1693,7 @@ end
 
 test "compile WHERE In list" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(In(Col("status"), [Lit(PString("a")), Lit(PString("b"))]))],
+    wheres: [Where(In(Expr.Col("status"), [Lit(PString("a")), Lit(PString("b"))]))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1702,7 +1702,7 @@ end
 
 test "compile WHERE NotIn list" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(NotIn(Col("role"), [Lit(PString("banned"))]))],
+    wheres: [Where(NotIn(Expr.Col("role"), [Lit(PString("banned"))]))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1711,7 +1711,7 @@ end
 
 test "compile multiple WHERE conditions" do
   let q = Query({ from_: FromTable("orders"), selects: Nil,
-    wheres: [Where(Eq(Col("status"), Lit(PString("active")))), Where(Gt(Col("total"), Lit(PInt(0))))],
+    wheres: [Where(Expr.Eq(Expr.Col("status"), Lit(PString("active")))), Where(Expr.Gt(Expr.Col("total"), Lit(PInt(0))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1721,7 +1721,7 @@ end
 
 test "compile WHERE arithmetic Add" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Gt(Add(Col("x"), Col("y")), Lit(PInt(10))))],
+    wheres: [Where(Expr.Gt(Expr.Add(Expr.Col("x"), Expr.Col("y")), Lit(PInt(10))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1730,7 +1730,7 @@ end
 
 test "compile WHERE arithmetic Sub" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Gt(Sub(Col("x"), Col("y")), Lit(PInt(0))))],
+    wheres: [Where(Expr.Gt(Expr.Sub(Expr.Col("x"), Expr.Col("y")), Lit(PInt(0))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1739,7 +1739,7 @@ end
 
 test "compile WHERE arithmetic Mul" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Gt(Mul(Col("qty"), Col("price")), Lit(PInt(100))))],
+    wheres: [Where(Expr.Gt(Expr.Mul(Expr.Col("qty"), Expr.Col("price")), Lit(PInt(100))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1748,7 +1748,7 @@ end
 
 test "compile WHERE arithmetic Div" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Gt(Div(Col("total"), Col("count")), Lit(PInt(5))))],
+    wheres: [Where(Expr.Gt(Expr.Div(Expr.Col("total"), Expr.Col("count")), Lit(PInt(5))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1759,7 +1759,7 @@ end
 
 test "compile INNER JOIN" do
   let q = Query({ from_: FromTable("orders"), selects: Nil,
-    joins: [JoinClause(Inner, "users", Eq(QCol("orders", "user_id"), QCol("users", "id")))],
+    joins: [JoinClause(Inner, "users", Expr.Eq(QCol("orders", "user_id"), QCol("users", "id")))],
     wheres: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1769,7 +1769,7 @@ end
 
 test "compile LEFT JOIN" do
   let q = Query({ from_: FromTable("posts"), selects: Nil,
-    joins: [JoinClause(Left, "comments", Eq(QCol("posts", "id"), QCol("comments", "post_id")))],
+    joins: [JoinClause(Left, "comments", Expr.Eq(QCol("posts", "id"), QCol("comments", "post_id")))],
     wheres: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1778,8 +1778,8 @@ end
 
 test "compile multiple JOINs" do
   let q = Query({ from_: FromTable("a"), selects: Nil,
-    joins: [JoinClause(Inner, "b", Eq(Col("a_id"), Col("id"))),
-             JoinClause(Left, "c", Eq(Col("b_id"), Col("id")))],
+    joins: [JoinClause(Inner, "b", Expr.Eq(Expr.Col("a_id"), Expr.Col("id"))),
+             JoinClause(Left, "c", Expr.Eq(Expr.Col("b_id"), Expr.Col("id")))],
     wheres: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1791,7 +1791,7 @@ end
 
 test "compile ORDER BY ASC" do
   let q = Query({ from_: FromTable("products"), selects: Nil,
-    orders: [OrderExpr(Col("price"), Asc)],
+    orders: [OrderExpr(Expr.Col("price"), Asc)],
     wheres: Nil, joins: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1801,7 +1801,7 @@ end
 
 test "compile ORDER BY DESC" do
   let q = Query({ from_: FromTable("products"), selects: Nil,
-    orders: [OrderExpr(Col("price"), Desc)],
+    orders: [OrderExpr(Expr.Col("price"), Desc)],
     wheres: Nil, joins: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1811,7 +1811,7 @@ end
 
 test "compile multiple ORDER BY columns" do
   let q = Query({ from_: FromTable("users"), selects: Nil,
-    orders: [OrderExpr(Col("last_name"), Asc), OrderExpr(Col("first_name"), Asc)],
+    orders: [OrderExpr(Expr.Col("last_name"), Asc), OrderExpr(Expr.Col("first_name"), Asc)],
     wheres: Nil, joins: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1823,7 +1823,7 @@ end
 
 test "compile GROUP BY single column" do
   let q = Query({ from_: FromTable("orders"), selects: Nil,
-    group_bys: [Col("status")],
+    group_bys: [Expr.Col("status")],
     wheres: Nil, joins: Nil, orders: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1833,7 +1833,7 @@ end
 
 test "compile GROUP BY multiple columns" do
   let q = Query({ from_: FromTable("sales"), selects: Nil,
-    group_bys: [Col("region"), Col("product")],
+    group_bys: [Expr.Col("region"), Expr.Col("product")],
     wheres: Nil, joins: Nil, orders: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1844,8 +1844,8 @@ end
 
 test "compile HAVING Eq Count" do
   let q = Query({ from_: FromTable("orders"), selects: Nil,
-    group_bys: [Col("user_id")],
-    havings: [Where(Gt(Count(Col("id")), Lit(PInt(3))))],
+    group_bys: [Expr.Col("user_id")],
+    havings: [Where(Expr.Gt(Expr.Count(Expr.Col("id")), Lit(PInt(3))))],
     wheres: Nil, joins: Nil, orders: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1856,7 +1856,7 @@ end
 -- ---- Aggregate SELECT expressions ----
 
 test "compile SELECT Count" do
-  let q = Query({ from_: FromTable("orders"), selects: [SelectAs(Count(Col("id")), "n")],
+  let q = Query({ from_: FromTable("orders"), selects: [SelectAs(Expr.Count(Expr.Col("id")), "n")],
     wheres: Nil, joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1864,7 +1864,7 @@ test "compile SELECT Count" do
 end
 
 test "compile SELECT Sum" do
-  let q = Query({ from_: FromTable("sales"), selects: [SelectAs(Sum(Col("amount")), "total")],
+  let q = Query({ from_: FromTable("sales"), selects: [SelectAs(Expr.Sum(Expr.Col("amount")), "total")],
     wheres: Nil, joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1872,7 +1872,7 @@ test "compile SELECT Sum" do
 end
 
 test "compile SELECT Avg" do
-  let q = Query({ from_: FromTable("metrics"), selects: [SelectAs(Avg(Col("val")), "mean")],
+  let q = Query({ from_: FromTable("metrics"), selects: [SelectAs(Avg(Expr.Col("val")), "mean")],
     wheres: Nil, joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1880,7 +1880,7 @@ test "compile SELECT Avg" do
 end
 
 test "compile SELECT Min" do
-  let q = Query({ from_: FromTable("t"), selects: [SelectAs(Min(Col("price")), "min_price")],
+  let q = Query({ from_: FromTable("t"), selects: [SelectAs(Expr.Min(Expr.Col("price")), "min_price")],
     wheres: Nil, joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1888,7 +1888,7 @@ test "compile SELECT Min" do
 end
 
 test "compile SELECT Max" do
-  let q = Query({ from_: FromTable("t"), selects: [SelectAs(Max(Col("price")), "max_price")],
+  let q = Query({ from_: FromTable("t"), selects: [SelectAs(Expr.Max(Expr.Col("price")), "max_price")],
     wheres: Nil, joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1907,7 +1907,7 @@ end
 
 test "compile_inline simple WHERE Eq" do
   let q = Query({ from_: FromTable("users"), selects: Nil,
-    wheres: [Where(Eq(Col("id"), Lit(PString("abc-123"))))],
+    wheres: [Where(Expr.Eq(Expr.Col("id"), Lit(PString("abc-123"))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1917,8 +1917,8 @@ end
 
 test "compile_inline multiple WHERE conditions" do
   let q = Query({ from_: FromTable("products"), selects: Nil,
-    wheres: [Where(Eq(Col("active"), Lit(PBool(true)))),
-              Where(Gt(Col("stock"), Lit(PInt(0))))],
+    wheres: [Where(Expr.Eq(Expr.Col("active"), Lit(PBool(true)))),
+              Where(Expr.Gt(Expr.Col("stock"), Lit(PInt(0))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1928,8 +1928,8 @@ end
 
 test "compile_inline WITH JOIN" do
   let q = Query({ from_: FromTable("orders"), selects: Nil,
-    joins: [JoinClause(Left, "users", Eq(QCol("orders", "user_id"), QCol("users", "id")))],
-    wheres: [Where(Eq(Col("status"), Lit(PString("open"))))],
+    joins: [JoinClause(Left, "users", Expr.Eq(QCol("orders", "user_id"), QCol("users", "id")))],
+    wheres: [Where(Expr.Eq(Expr.Col("status"), Lit(PString("open"))))],
     orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1939,7 +1939,7 @@ end
 
 test "compile_inline ORDER BY" do
   let q = Query({ from_: FromTable("products"), selects: Nil,
-    orders: [OrderExpr(Col("name"), Asc)],
+    orders: [OrderExpr(Expr.Col("name"), Asc)],
     wheres: Nil, joins: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1948,8 +1948,8 @@ end
 
 test "compile_inline GROUP BY HAVING" do
   let q = Query({ from_: FromTable("orders"), selects: Nil,
-    group_bys: [Col("user_id")],
-    havings: [Where(Gte(CountAll, Lit(PInt(2))))],
+    group_bys: [Expr.Col("user_id")],
+    havings: [Where(Expr.Gte(CountAll, Lit(PInt(2))))],
     wheres: Nil, joins: Nil, orders: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1958,7 +1958,7 @@ test "compile_inline GROUP BY HAVING" do
 end
 
 test "compile_inline DISTINCT" do
-  let q = Query({ from_: FromTable("categories"), selects: [SelectField(Col("name"))],
+  let q = Query({ from_: FromTable("categories"), selects: [SelectField(Expr.Col("name"))],
     wheres: Nil, joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: Distinct })
   let r = compile_inline(q)
@@ -1983,7 +1983,7 @@ end
 
 test "compile_inline IsNull" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(IsNull(Col("archived_at")))],
+    wheres: [Where(Expr.IsNull(Expr.Col("archived_at")))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1992,7 +1992,7 @@ end
 
 test "compile_inline IsNotNull" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(IsNotNull(Col("confirmed_at")))],
+    wheres: [Where(Expr.IsNotNull(Expr.Col("confirmed_at")))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -2001,7 +2001,7 @@ end
 
 test "compile_inline Like" do
   let q = Query({ from_: FromTable("users"), selects: Nil,
-    wheres: [Where(Like(Col("email"), "%@example.com"))],
+    wheres: [Where(Like(Expr.Col("email"), "%@example.com"))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -2010,7 +2010,7 @@ end
 
 test "compile_inline ILike" do
   let q = Query({ from_: FromTable("users"), selects: Nil,
-    wheres: [Where(ILike(Col("name"), "alice%"))],
+    wheres: [Where(ILike(Expr.Col("name"), "alice%"))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -2019,7 +2019,7 @@ end
 
 test "compile_inline Between" do
   let q = Query({ from_: FromTable("events"), selects: Nil,
-    wheres: [Where(Between(Col("score"), Lit(PInt(50)), Lit(PInt(100))))],
+    wheres: [Where(Between(Expr.Col("score"), Lit(PInt(50)), Lit(PInt(100))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -2028,7 +2028,7 @@ end
 
 test "compile_inline In" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(In(Col("type"), [Lit(PString("x")), Lit(PString("y"))]))],
+    wheres: [Where(In(Expr.Col("type"), [Lit(PString("x")), Lit(PString("y"))]))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -2037,7 +2037,7 @@ end
 
 test "compile_inline NotIn" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(NotIn(Col("status"), [Lit(PString("spam"))]))],
+    wheres: [Where(NotIn(Expr.Col("status"), [Lit(PString("spam"))]))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -2046,7 +2046,7 @@ end
 
 test "compile_inline Not" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Not(Eq(Col("active"), Lit(PBool(false)))))],
+    wheres: [Where(Expr.Not(Expr.Eq(Expr.Col("active"), Lit(PBool(false)))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -2055,7 +2055,7 @@ end
 
 test "compile_inline And" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(And(Gte(Col("age"), Lit(PInt(18))), Lt(Col("age"), Lit(PInt(65)))))],
+    wheres: [Where(Expr.And(Expr.Gte(Expr.Col("age"), Lit(PInt(18))), Expr.Lt(Expr.Col("age"), Lit(PInt(65)))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -2064,7 +2064,7 @@ end
 
 test "compile_inline Or" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Or(Eq(Col("role"), Lit(PString("admin"))), Eq(Col("role"), Lit(PString("mod")))))],
+    wheres: [Where(Expr.Or(Expr.Eq(Expr.Col("role"), Lit(PString("admin"))), Expr.Eq(Expr.Col("role"), Lit(PString("mod")))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -2073,7 +2073,7 @@ end
 
 test "compile_inline arithmetic Add" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Gt(Add(Col("a"), Lit(PInt(5))), Lit(PInt(10))))],
+    wheres: [Where(Expr.Gt(Expr.Add(Expr.Col("a"), Lit(PInt(5))), Lit(PInt(10))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -2082,7 +2082,7 @@ end
 
 test "compile_inline arithmetic Sub" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Gt(Sub(Col("total"), Col("discount")), Lit(PInt(0))))],
+    wheres: [Where(Expr.Gt(Expr.Sub(Expr.Col("total"), Expr.Col("discount")), Lit(PInt(0))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -2091,7 +2091,7 @@ end
 
 test "compile_inline arithmetic Mul" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Gt(Mul(Col("qty"), Lit(PInt(3))), Lit(PInt(0))))],
+    wheres: [Where(Expr.Gt(Expr.Mul(Expr.Col("qty"), Lit(PInt(3))), Lit(PInt(0))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -2100,7 +2100,7 @@ end
 
 test "compile_inline arithmetic Div" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Gt(Div(Col("revenue"), Col("count")), Lit(PInt(1000))))],
+    wheres: [Where(Expr.Gt(Expr.Div(Expr.Col("revenue"), Expr.Col("count")), Lit(PInt(1000))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -2109,7 +2109,7 @@ end
 
 test "compile_inline FnCall" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Eq(FnCall("lower", [Col("email")]), Lit(PString("test@test.com"))))],
+    wheres: [Where(Expr.Eq(FnCall("lower", [Expr.Col("email")]), Lit(PString("test@test.com"))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -2118,7 +2118,7 @@ end
 
 test "compile_inline Neq" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Neq(Col("type"), Lit(PString("guest"))))],
+    wheres: [Where(Expr.Neq(Expr.Col("type"), Lit(PString("guest"))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -2127,7 +2127,7 @@ end
 
 test "compile_inline Lt" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Lt(Col("created_at"), Lit(PString("2024-01-01"))))],
+    wheres: [Where(Expr.Lt(Expr.Col("created_at"), Lit(PString("2024-01-01"))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -2136,7 +2136,7 @@ end
 
 test "compile_inline Lte" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Lte(Col("priority"), Lit(PInt(5))))],
+    wheres: [Where(Expr.Lte(Expr.Col("priority"), Lit(PInt(5))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -2145,7 +2145,7 @@ end
 
 test "compile_inline Gte" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Gte(Col("version"), Lit(PInt(2))))],
+    wheres: [Where(Expr.Gte(Expr.Col("version"), Lit(PInt(2))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -2154,7 +2154,7 @@ end
 
 test "compile_inline Gt" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Gt(Col("balance"), Lit(PInt(0))))],
+    wheres: [Where(Expr.Gt(Expr.Col("balance"), Lit(PInt(0))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -2162,7 +2162,7 @@ test "compile_inline Gt" do
 end
 
 test "compile_inline SelectField" do
-  let q = Query({ from_: FromTable("users"), selects: [SelectField(Col("email"))],
+  let q = Query({ from_: FromTable("users"), selects: [SelectField(Expr.Col("email"))],
     wheres: Nil, joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -2170,7 +2170,7 @@ test "compile_inline SelectField" do
 end
 
 test "compile_inline SelectAs alias" do
-  let q = Query({ from_: FromTable("t"), selects: [SelectAs(Col("full_name"), "name")],
+  let q = Query({ from_: FromTable("t"), selects: [SelectAs(Expr.Col("full_name"), "name")],
     wheres: Nil, joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -2179,7 +2179,7 @@ end
 
 test "compile_inline multiple selects" do
   let q = Query({ from_: FromTable("t"),
-    selects: [SelectField(Col("id")), SelectField(Col("name")), SelectField(Col("email"))],
+    selects: [SelectField(Expr.Col("id")), SelectField(Expr.Col("name")), SelectField(Expr.Col("email"))],
     wheres: Nil, joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -2198,7 +2198,7 @@ test "compile_inline QCol" do
 end
 
 test "compile_inline Count SELECT" do
-  let q = Query({ from_: FromTable("t"), selects: [SelectAs(Count(Col("id")), "c")],
+  let q = Query({ from_: FromTable("t"), selects: [SelectAs(Expr.Count(Expr.Col("id")), "c")],
     wheres: Nil, joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -2214,7 +2214,7 @@ test "compile_inline CountAll SELECT" do
 end
 
 test "compile_inline Sum SELECT" do
-  let q = Query({ from_: FromTable("t"), selects: [SelectAs(Sum(Col("amount")), "s")],
+  let q = Query({ from_: FromTable("t"), selects: [SelectAs(Expr.Sum(Expr.Col("amount")), "s")],
     wheres: Nil, joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -2222,7 +2222,7 @@ test "compile_inline Sum SELECT" do
 end
 
 test "compile_inline Avg SELECT" do
-  let q = Query({ from_: FromTable("t"), selects: [SelectAs(Avg(Col("val")), "avg")],
+  let q = Query({ from_: FromTable("t"), selects: [SelectAs(Avg(Expr.Col("val")), "avg")],
     wheres: Nil, joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -2230,7 +2230,7 @@ test "compile_inline Avg SELECT" do
 end
 
 test "compile_inline Min SELECT" do
-  let q = Query({ from_: FromTable("t"), selects: [SelectAs(Min(Col("price")), "lo")],
+  let q = Query({ from_: FromTable("t"), selects: [SelectAs(Expr.Min(Expr.Col("price")), "lo")],
     wheres: Nil, joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -2238,7 +2238,7 @@ test "compile_inline Min SELECT" do
 end
 
 test "compile_inline Max SELECT" do
-  let q = Query({ from_: FromTable("t"), selects: [SelectAs(Max(Col("price")), "hi")],
+  let q = Query({ from_: FromTable("t"), selects: [SelectAs(Expr.Max(Expr.Col("price")), "hi")],
     wheres: Nil, joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -2247,7 +2247,7 @@ end
 
 test "compile_inline INNER JOIN" do
   let q = Query({ from_: FromTable("a"), selects: Nil,
-    joins: [JoinClause(Inner, "b", Eq(QCol("a", "b_id"), QCol("b", "id")))],
+    joins: [JoinClause(Inner, "b", Expr.Eq(QCol("a", "b_id"), QCol("b", "id")))],
     wheres: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -2256,7 +2256,7 @@ end
 
 test "compile_inline LEFT JOIN" do
   let q = Query({ from_: FromTable("a"), selects: Nil,
-    joins: [JoinClause(Left, "b", Eq(QCol("a", "b_id"), QCol("b", "id")))],
+    joins: [JoinClause(Left, "b", Expr.Eq(QCol("a", "b_id"), QCol("b", "id")))],
     wheres: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -2265,7 +2265,7 @@ end
 
 test "compile_inline GROUP BY" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    group_bys: [Col("category")],
+    group_bys: [Expr.Col("category")],
     wheres: Nil, joins: Nil, orders: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -2275,12 +2275,12 @@ end
 
 test "compile_inline full complex query" do
   let q = Query({ from_: FromTable("orders"),
-    selects: [SelectField(Col("user_id")), SelectAs(Sum(Col("amount")), "total")],
-    joins: [JoinClause(Inner, "users", Eq(QCol("orders", "user_id"), QCol("users", "id")))],
-    wheres: [Where(Eq(Col("status"), Lit(PString("completed"))))],
-    group_bys: [Col("user_id")],
-    havings: [Where(Gt(Sum(Col("amount")), Lit(PInt(100))))],
-    orders: [OrderExpr(Col("total"), Desc)],
+    selects: [SelectField(Expr.Col("user_id")), SelectAs(Expr.Sum(Expr.Col("amount")), "total")],
+    joins: [JoinClause(Inner, "users", Expr.Eq(QCol("orders", "user_id"), QCol("users", "id")))],
+    wheres: [Where(Expr.Eq(Expr.Col("status"), Lit(PString("completed"))))],
+    group_bys: [Expr.Col("user_id")],
+    havings: [Where(Expr.Gt(Expr.Sum(Expr.Col("amount")), Lit(PInt(100))))],
+    orders: [OrderExpr(Expr.Col("total"), Desc)],
     limit_: Some(10), offset_: Some(0), distinct_: NoDistinct })
   let r = compile_inline(q)
   assert String.contains(r.sql, "GROUP BY") == true
@@ -2293,8 +2293,8 @@ end
 
 test "compile params list grows with Lit values" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Eq(Col("a"), Lit(PString("x")))),
-              Where(Eq(Col("b"), Lit(PInt(42))))],
+    wheres: [Where(Expr.Eq(Expr.Col("a"), Lit(PString("x")))),
+              Where(Expr.Eq(Expr.Col("b"), Lit(PInt(42))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -2303,7 +2303,7 @@ end
 
 test "compile inline has no params" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Eq(Col("a"), Lit(PString("x"))))],
+    wheres: [Where(Expr.Eq(Expr.Col("a"), Lit(PString("x"))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -2314,7 +2314,7 @@ end
 
 test "compile parameterized RIGHT JOIN" do
   let q = Query({ from_: FromTable("a"), selects: Nil, wheres: Nil,
-    joins: [JoinClause(Right, "b", Eq(QCol("a", "id"), QCol("b", "a_id")))],
+    joins: [JoinClause(Right, "b", Expr.Eq(QCol("a", "id"), QCol("b", "a_id")))],
     orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile(q)).sql, "RIGHT JOIN") == true
@@ -2322,7 +2322,7 @@ end
 
 test "compile parameterized FULL OUTER JOIN" do
   let q = Query({ from_: FromTable("a"), selects: Nil, wheres: Nil,
-    joins: [JoinClause(FullOuter, "b", Eq(QCol("a", "id"), QCol("b", "a_id")))],
+    joins: [JoinClause(FullOuter, "b", Expr.Eq(QCol("a", "id"), QCol("b", "a_id")))],
     orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile(q)).sql, "FULL OUTER JOIN") == true
@@ -2340,7 +2340,7 @@ end
 
 test "compile parameterized Asc" do
   let q = Query({ from_: FromTable("t"), selects: Nil, wheres: Nil,
-    joins: Nil, orders: [OrderExpr(Col("a"), Asc)],
+    joins: Nil, orders: [OrderExpr(Expr.Col("a"), Asc)],
     group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile(q)).sql, "ASC") == true
@@ -2348,7 +2348,7 @@ end
 
 test "compile parameterized Desc" do
   let q = Query({ from_: FromTable("t"), selects: Nil, wheres: Nil,
-    joins: Nil, orders: [OrderExpr(Col("a"), Desc)],
+    joins: Nil, orders: [OrderExpr(Expr.Col("a"), Desc)],
     group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile(q)).sql, "DESC") == true
@@ -2356,7 +2356,7 @@ end
 
 test "compile inline AscNullsFirst" do
   let q = Query({ from_: FromTable("t"), selects: Nil, wheres: Nil,
-    joins: Nil, orders: [OrderExpr(Col("a"), AscNullsFirst)],
+    joins: Nil, orders: [OrderExpr(Expr.Col("a"), AscNullsFirst)],
     group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q)).sql, "NULLS FIRST") == true
@@ -2364,7 +2364,7 @@ end
 
 test "compile inline AscNullsLast" do
   let q = Query({ from_: FromTable("t"), selects: Nil, wheres: Nil,
-    joins: Nil, orders: [OrderExpr(Col("a"), AscNullsLast)],
+    joins: Nil, orders: [OrderExpr(Expr.Col("a"), AscNullsLast)],
     group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q)).sql, "NULLS LAST") == true
@@ -2372,7 +2372,7 @@ end
 
 test "compile inline DescNullsFirst" do
   let q = Query({ from_: FromTable("t"), selects: Nil, wheres: Nil,
-    joins: Nil, orders: [OrderExpr(Col("a"), DescNullsFirst)],
+    joins: Nil, orders: [OrderExpr(Expr.Col("a"), DescNullsFirst)],
     group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q)).sql, "DESC NULLS FIRST") == true
@@ -2380,7 +2380,7 @@ end
 
 test "compile inline DescNullsLast" do
   let q = Query({ from_: FromTable("t"), selects: Nil, wheres: Nil,
-    joins: Nil, orders: [OrderExpr(Col("a"), DescNullsLast)],
+    joins: Nil, orders: [OrderExpr(Expr.Col("a"), DescNullsLast)],
     group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile_inline(q)).sql, "DESC NULLS LAST") == true
@@ -2390,7 +2390,7 @@ end
 
 test "subquery order AscNullsFirst" do
   let sub = Query({ from_: FromTable("t"), selects: Nil, wheres: Nil,
-    joins: Nil, orders: [OrderExpr(Col("x"), AscNullsFirst)],
+    joins: Nil, orders: [OrderExpr(Expr.Col("x"), AscNullsFirst)],
     group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let q = Query({ from_: FromTable("u"), selects: [SelectAs(SubqueryExpr(sub), "s")],
@@ -2401,7 +2401,7 @@ end
 
 test "subquery order DescNullsLast" do
   let sub = Query({ from_: FromTable("t"), selects: Nil, wheres: Nil,
-    joins: Nil, orders: [OrderExpr(Col("x"), DescNullsLast)],
+    joins: Nil, orders: [OrderExpr(Expr.Col("x"), DescNullsLast)],
     group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let q = Query({ from_: FromTable("u"), selects: [SelectAs(SubqueryExpr(sub), "s")],
@@ -2412,7 +2412,7 @@ end
 
 test "subquery Desc direction" do
   let sub = Query({ from_: FromTable("t"), selects: Nil, wheres: Nil,
-    joins: Nil, orders: [OrderExpr(Col("x"), Desc)],
+    joins: Nil, orders: [OrderExpr(Expr.Col("x"), Desc)],
     group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let q = Query({ from_: FromTable("u"), selects: [SelectAs(SubqueryExpr(sub), "s")],
@@ -2425,8 +2425,8 @@ end
 
 test "subquery with all comparison operators" do
   let sub = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(And(Or(Lt(Col("a"), Lit(PInt(1))), Gt(Col("b"), Lit(PInt(2)))),
-                       Not(Eq(Col("c"), Lit(PInt(3))))))],
+    wheres: [Where(Expr.And(Expr.Or(Expr.Lt(Expr.Col("a"), Lit(PInt(1))), Expr.Gt(Expr.Col("b"), Lit(PInt(2)))),
+                       Expr.Not(Expr.Eq(Expr.Col("c"), Lit(PInt(3))))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let q = Query({ from_: FromTable("u"), selects: Nil,
@@ -2442,7 +2442,7 @@ end
 
 test "subquery with arithmetic" do
   let sub = Query({ from_: FromTable("t"),
-    selects: [SelectField(Add(Col("a"), Sub(Col("b"), Mul(Col("c"), Div(Col("d"), Lit(PInt(2)))))))],
+    selects: [SelectField(Expr.Add(Expr.Col("a"), Expr.Sub(Expr.Col("b"), Expr.Mul(Expr.Col("c"), Expr.Div(Expr.Col("d"), Lit(PInt(2)))))))],
     wheres: Nil, joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let q = Query({ from_: FromTable("u"), selects: [SelectAs(SubqueryExpr(sub), "x")],
@@ -2457,10 +2457,10 @@ end
 
 test "subquery with IsNull/IsNotNull/Neq/Lte/Gte" do
   let sub = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(And(IsNull(Col("a")),
-                   And(IsNotNull(Col("b")),
-                   And(Neq(Col("c"), Lit(PInt(1))),
-                   And(Lte(Col("d"), Lit(PInt(2))), Gte(Col("e"), Lit(PInt(3)))))))) ],
+    wheres: [Where(Expr.And(Expr.IsNull(Expr.Col("a")),
+                   Expr.And(Expr.IsNotNull(Expr.Col("b")),
+                   Expr.And(Expr.Neq(Expr.Col("c"), Lit(PInt(1))),
+                   Expr.And(Expr.Lte(Expr.Col("d"), Lit(PInt(2))), Expr.Gte(Expr.Col("e"), Lit(PInt(3)))))))) ],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let q = Query({ from_: FromTable("u"), selects: Nil,
@@ -2477,9 +2477,9 @@ end
 
 test "subquery with In/NotIn/Between" do
   let sub = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(And(In(Col("a"), [Lit(PInt(1)), Lit(PInt(2))]),
-                   And(NotIn(Col("b"), [Lit(PInt(3))]),
-                       Between(Col("c"), Lit(PInt(0)), Lit(PInt(10))))))],
+    wheres: [Where(Expr.And(In(Expr.Col("a"), [Lit(PInt(1)), Lit(PInt(2))]),
+                   Expr.And(NotIn(Expr.Col("b"), [Lit(PInt(3))]),
+                       Between(Expr.Col("c"), Lit(PInt(0)), Lit(PInt(10))))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let q = Query({ from_: FromTable("u"), selects: Nil,
@@ -2494,12 +2494,12 @@ end
 
 test "subquery with Like/ILike/FnCall/aggregates" do
   let sub = Query({ from_: FromTable("t"),
-    selects: [SelectField(Count(Col("a"))), SelectField(Sum(Col("b"))),
-               SelectField(Avg(Col("c"))), SelectField(Min(Col("d"))),
-               SelectField(Max(Col("e"))), SelectAll],
-    wheres: [Where(And(Like(Col("n"), "x%"), ILike(Col("m"), "y%")))],
-    joins: Nil, orders: Nil, group_bys: [Col("g")],
-    havings: [Where(Gt(Count(Col("a")), Lit(PInt(0))))],
+    selects: [SelectField(Expr.Count(Expr.Col("a"))), SelectField(Expr.Sum(Expr.Col("b"))),
+               SelectField(Avg(Expr.Col("c"))), SelectField(Expr.Min(Expr.Col("d"))),
+               SelectField(Expr.Max(Expr.Col("e"))), SelectAll],
+    wheres: [Where(Expr.And(Like(Expr.Col("n"), "x%"), ILike(Expr.Col("m"), "y%")))],
+    joins: Nil, orders: Nil, group_bys: [Expr.Col("g")],
+    havings: [Where(Expr.Gt(Expr.Count(Expr.Col("a")), Lit(PInt(0))))],
     limit_: Some(5), offset_: Some(1), distinct_: Distinct })
   let q = Query({ from_: FromTable("u"), selects: [SelectAs(SubqueryExpr(sub), "x")],
     wheres: Nil, joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
@@ -2521,8 +2521,8 @@ end
 
 test "subquery with FnCall and QCol" do
   let sub = Query({ from_: FromTable("t"),
-    selects: [SelectField(FnCall("COALESCE", [Col("a"), Col("b"), Lit(PInt(0))]))],
-    wheres: [Where(Eq(QCol("t", "id"), Lit(PInt(1))))],
+    selects: [SelectField(FnCall("COALESCE", [Expr.Col("a"), Expr.Col("b"), Lit(PInt(0))]))],
+    wheres: [Where(Expr.Eq(QCol("t", "id"), Lit(PInt(1))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let q = Query({ from_: FromTable("u"), selects: [SelectAs(SubqueryExpr(sub), "x")],
@@ -2536,7 +2536,7 @@ end
 test "subquery with CountAll/ExprParam/Raw/OrWhere" do
   let sub = Query({ from_: FromTable("t"),
     selects: [SelectField(CountAll), SelectField(ExprParam(7)), SelectField(Raw("CAST(x AS INT)"))],
-    wheres: [Where(Eq(Col("a"), Lit(PInt(1)))), OrWhere(Eq(Col("b"), Lit(PInt(2))))],
+    wheres: [Where(Expr.Eq(Expr.Col("a"), Lit(PInt(1)))), OrWhere(Expr.Eq(Expr.Col("b"), Lit(PInt(2))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let q = Query({ from_: FromTable("u"), selects: [SelectAs(SubqueryExpr(sub), "x")],
@@ -2553,7 +2553,7 @@ end
 
 test "parameterized PFloat literal" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Gt(Col("x"), Lit(PFloat(3.14))))],
+    wheres: [Where(Expr.Gt(Expr.Col("x"), Lit(PFloat(3.14))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert list_len((compile(q)).params) == 1
@@ -2561,7 +2561,7 @@ end
 
 test "parameterized PBool true literal" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Eq(Col("active"), Lit(PBool(true))))],
+    wheres: [Where(Expr.Eq(Expr.Col("active"), Lit(PBool(true))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert list_len((compile(q)).params) == 1
@@ -2569,7 +2569,7 @@ end
 
 test "parameterized PBool false literal" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Eq(Col("active"), Lit(PBool(false))))],
+    wheres: [Where(Expr.Eq(Expr.Col("active"), Lit(PBool(false))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert list_len((compile(q)).params) == 1
@@ -2577,7 +2577,7 @@ end
 
 test "parameterized PNull literal" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Eq(Col("deleted_at"), Lit(PNull)))],
+    wheres: [Where(Expr.Eq(Expr.Col("deleted_at"), Lit(PNull)))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert list_len((compile(q)).params) == 1
@@ -2587,7 +2587,7 @@ end
 
 test "multi-arg FnCall in parameterized select" do
   let q = Query({ from_: FromTable("t"),
-    selects: [SelectField(FnCall("COALESCE", [Col("a"), Col("b"), Lit(PInt(0))]))],
+    selects: [SelectField(FnCall("COALESCE", [Expr.Col("a"), Expr.Col("b"), Lit(PInt(0))]))],
     wheres: Nil, joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile(q)).sql, "COALESCE(") == true
@@ -2595,8 +2595,8 @@ end
 
 test "nested arithmetic in parameterized SELECT" do
   let q = Query({ from_: FromTable("t"),
-    selects: [SelectAs(Add(Mul(Col("a"), Col("b")),
-                            Div(Col("c"), Lit(PInt(2)))), "computed")],
+    selects: [SelectAs(Expr.Add(Expr.Mul(Expr.Col("a"), Expr.Col("b")),
+                            Expr.Div(Expr.Col("c"), Lit(PInt(2)))), "computed")],
     wheres: Nil, joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let s = (compile(q)).sql
@@ -2608,11 +2608,11 @@ end
 
 test "aggregate in SelectAs parameterized" do
   let q = Query({ from_: FromTable("t"),
-    selects: [SelectAs(Sum(Col("x")), "total"),
-               SelectAs(Count(Col("id")), "n"),
-               SelectAs(Avg(Col("score")), "avg_score"),
-               SelectAs(Min(Col("v")), "mn"),
-               SelectAs(Max(Col("v")), "mx"),
+    selects: [SelectAs(Expr.Sum(Expr.Col("x")), "total"),
+               SelectAs(Expr.Count(Expr.Col("id")), "n"),
+               SelectAs(Avg(Expr.Col("score")), "avg_score"),
+               SelectAs(Expr.Min(Expr.Col("v")), "mn"),
+               SelectAs(Expr.Max(Expr.Col("v")), "mx"),
                SelectAs(CountAll, "total_rows")],
     wheres: Nil, joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
@@ -2634,7 +2634,7 @@ end
 
 test "parameterized OrWhere in wheres" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Eq(Col("a"), Lit(PInt(1)))), OrWhere(Eq(Col("b"), Lit(PInt(2))))],
+    wheres: [Where(Expr.Eq(Expr.Col("a"), Lit(PInt(1)))), OrWhere(Expr.Eq(Expr.Col("b"), Lit(PInt(2))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile(q)).sql, "OR") == true
@@ -2642,9 +2642,9 @@ end
 
 test "parameterized OrWhere in havings" do
   let q = Query({ from_: FromTable("t"), selects: Nil, wheres: Nil, joins: Nil,
-    orders: Nil, group_bys: [Col("g")],
-    havings: [Where(Gt(Count(Col("a")), Lit(PInt(1)))),
-               OrWhere(Lt(Sum(Col("b")), Lit(PInt(100))))],
+    orders: Nil, group_bys: [Expr.Col("g")],
+    havings: [Where(Expr.Gt(Expr.Count(Expr.Col("a")), Lit(PInt(1)))),
+               OrWhere(Expr.Lt(Expr.Sum(Expr.Col("b")), Lit(PInt(100))))],
     limit_: None, offset_: None, distinct_: NoDistinct })
   let s = (compile(q)).sql
   assert String.contains(s, "HAVING") == true
@@ -2655,7 +2655,7 @@ end
 
 test "parameterized Like" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Like(Col("n"), "al%"))],
+    wheres: [Where(Like(Expr.Col("n"), "al%"))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -2665,7 +2665,7 @@ end
 
 test "parameterized ILike" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(ILike(Col("n"), "al%"))],
+    wheres: [Where(ILike(Expr.Col("n"), "al%"))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -2675,7 +2675,7 @@ end
 
 test "parameterized Between" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    wheres: [Where(Between(Col("age"), Lit(PInt(18)), Lit(PInt(65))))],
+    wheres: [Where(Between(Expr.Col("age"), Lit(PInt(18)), Lit(PInt(65))))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -2699,7 +2699,7 @@ end
 
 test "parameterized ExprParam and Raw" do
   let q = Query({ from_: FromTable("t"), selects: [SelectField(Raw("CAST(x AS INT)"))],
-    wheres: [Where(Eq(Col("id"), ExprParam(3)))],
+    wheres: [Where(Expr.Eq(Expr.Col("id"), ExprParam(3)))],
     joins: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let s = (compile(q)).sql
