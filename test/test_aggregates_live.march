@@ -70,7 +70,7 @@ test "GROUP BY grp with SUM(n) returns one row per group" do
     let q = from("agg_test")
            |> select([Expr.Col("grp"), Expr.Sum(Expr.Col("n"))])
            |> group_by([Expr.Col("grp")])
-           |> order_by(Expr.Col("grp"), Asc)
+           |> order_by(Expr.Col("grp"), Ast.Asc)
     match run_rows(conn, q) do
       Err(e) -> do
         let _ = println("sum: " ++ e)
@@ -95,7 +95,7 @@ test "GROUP BY with HAVING filters on aggregate" do
            |> select([Expr.Col("grp")])
            |> group_by([Expr.Col("grp")])
            |> having(Expr.Gt(Expr.CountAll, Lit(PInt(1))))
-           |> order_by(Expr.Col("grp"), Asc)
+           |> order_by(Expr.Col("grp"), Ast.Asc)
     match run_rows(conn, q) do
       Err(e) -> do
         let _ = println("having: " ++ e)
