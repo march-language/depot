@@ -166,31 +166,31 @@ end
 
 --- Appends an INNER JOIN clause.
 ---
---- march> match join(from("t"), "u", Eq(Col("t.id"), Col("u.id"))) do | Query(f) -> match f.joins do | Cons(JoinClause(Inner, name, _), Nil) -> name | _ -> "" end end
+--- march> match join(from("t"), "u", Eq(Col("t.id"), Col("u.id"))) do | Query(f) -> match f.joins do | Cons(JoinClause(Ast.Inner, name, _), Nil) -> name | _ -> "" end end
 --- "u"
 fn join(q, table, on_expr) do
   match q do
-  Query(f) -> Query({ f with joins: concat_joins(f.joins, [JoinClause(Inner, table, on_expr)]) })
+  Query(f) -> Query({ f with joins: concat_joins(f.joins, [JoinClause(Ast.Inner, table, on_expr)]) })
   end
 end
 
 --- Appends a LEFT JOIN clause.
 ---
---- march> match left_join(from("t"), "u", Eq(Col("t.id"), Col("u.id"))) do | Query(f) -> match f.joins do | Cons(JoinClause(Left, _, _), Nil) -> true | _ -> false end end
+--- march> match left_join(from("t"), "u", Eq(Col("t.id"), Col("u.id"))) do | Query(f) -> match f.joins do | Cons(JoinClause(Ast.Left, _, _), Nil) -> true | _ -> false end end
 --- true
 fn left_join(q, table, on_expr) do
   match q do
-  Query(f) -> Query({ f with joins: concat_joins(f.joins, [JoinClause(Left, table, on_expr)]) })
+  Query(f) -> Query({ f with joins: concat_joins(f.joins, [JoinClause(Ast.Left, table, on_expr)]) })
   end
 end
 
 --- Appends a RIGHT JOIN clause.
 ---
---- march> match right_join(from("t"), "u", Eq(Col("t.id"), Col("u.id"))) do | Query(f) -> match f.joins do | Cons(JoinClause(Right, _, _), Nil) -> true | _ -> false end end
+--- march> match right_join(from("t"), "u", Eq(Col("t.id"), Col("u.id"))) do | Query(f) -> match f.joins do | Cons(JoinClause(Ast.Right, _, _), Nil) -> true | _ -> false end end
 --- true
 fn right_join(q, table, on_expr) do
   match q do
-  Query(f) -> Query({ f with joins: concat_joins(f.joins, [JoinClause(Right, table, on_expr)]) })
+  Query(f) -> Query({ f with joins: concat_joins(f.joins, [JoinClause(Ast.Right, table, on_expr)]) })
   end
 end
 
@@ -216,7 +216,7 @@ end
 
 --- Appends an ORDER BY expression with direction.
 ---
---- march> match order_by(from("t"), Col("id"), Desc) do | Query(f) -> match f.orders do | Cons(OrderExpr(_, Desc), Nil) -> true | _ -> false end end
+--- march> match order_by(from("t"), Col("id"), Ast.Desc) do | Query(f) -> match f.orders do | Cons(OrderExpr(_, Ast.Desc), Nil) -> true | _ -> false end end
 --- true
 fn order_by(q, expr, dir) do
   match q do
@@ -226,15 +226,15 @@ end
 
 --- Appends an ORDER BY expr ASC.
 ---
---- march> match order_asc(from("t"), Col("id")) do | Query(f) -> match f.orders do | Cons(OrderExpr(_, Asc), Nil) -> true | _ -> false end end
+--- march> match order_asc(from("t"), Col("id")) do | Query(f) -> match f.orders do | Cons(OrderExpr(_, Ast.Asc), Nil) -> true | _ -> false end end
 --- true
-fn order_asc(q, expr) do order_by(q, expr, Asc) end
+fn order_asc(q, expr) do order_by(q, expr, Ast.Asc) end
 
 --- Appends an ORDER BY expr DESC.
 ---
---- march> match order_desc(from("t"), Col("id")) do | Query(f) -> match f.orders do | Cons(OrderExpr(_, Desc), Nil) -> true | _ -> false end end
+--- march> match order_desc(from("t"), Col("id")) do | Query(f) -> match f.orders do | Cons(OrderExpr(_, Ast.Desc), Nil) -> true | _ -> false end end
 --- true
-fn order_desc(q, expr) do order_by(q, expr, Desc) end
+fn order_desc(q, expr) do order_by(q, expr, Ast.Desc) end
 
 --- Appends GROUP BY expressions.
 ---

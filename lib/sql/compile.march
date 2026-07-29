@@ -242,9 +242,9 @@ pfn compile_joins_acc(joins, st, acc) do
     Nil -> (acc_, st_)
     Cons(JoinClause(kind, table, on_expr), rest) -> do
       let k = match kind do
-        Inner    -> " INNER JOIN "
-        Left     -> " LEFT JOIN "
-        Right    -> " RIGHT JOIN "
+        Ast.Inner    -> " INNER JOIN "
+        Ast.Left     -> " LEFT JOIN "
+        Ast.Right    -> " RIGHT JOIN "
         FullOuter -> " FULL OUTER JOIN "
         Cross    -> " CROSS JOIN "
         -- Unreachable for Ast.JoinKind (all 5 ctors handled above); the catch-all
@@ -266,9 +266,9 @@ pfn compile_joins_inline(joins) do
     Nil -> acc
     Cons(JoinClause(kind, table, on_expr), rest) -> do
       let k = match kind do
-        Inner    -> " INNER JOIN "
-        Left     -> " LEFT JOIN "
-        Right    -> " RIGHT JOIN "
+        Ast.Inner    -> " INNER JOIN "
+        Ast.Left     -> " LEFT JOIN "
+        Ast.Right    -> " RIGHT JOIN "
         FullOuter -> " FULL OUTER JOIN "
         Cross    -> " CROSS JOIN "
         -- Unreachable for Ast.JoinKind (all 5 ctors handled above); the catch-all
@@ -427,11 +427,11 @@ pfn compile_order_parts(orders, st, acc) do
   fn go(rem, st_, acc_) do
     match rem do
     Nil -> (acc_, st_)
-    Cons(OrderExpr(e, Asc), rest) -> do
+    Cons(OrderExpr(e, Ast.Asc), rest) -> do
       let (s, st2) = compile_expr(e, st_)
       go(rest, st2, Cons(s ++ " ASC", acc_))
     end
-    Cons(OrderExpr(e, Desc), rest) -> do
+    Cons(OrderExpr(e, Ast.Desc), rest) -> do
       let (s, st2) = compile_expr(e, st_)
       go(rest, st2, Cons(s ++ " DESC", acc_))
     end
@@ -486,8 +486,8 @@ end
 
 pfn compile_one_order_inline(order_expr) do
   match order_expr do
-  OrderExpr(e, Asc)            -> compile_expr_inline(e) ++ " ASC"
-  OrderExpr(e, Desc)           -> compile_expr_inline(e) ++ " DESC"
+  OrderExpr(e, Ast.Asc)            -> compile_expr_inline(e) ++ " ASC"
+  OrderExpr(e, Ast.Desc)           -> compile_expr_inline(e) ++ " DESC"
   OrderExpr(e, AscNullsFirst)  -> compile_expr_inline(e) ++ " ASC NULLS FIRST"
   OrderExpr(e, AscNullsLast)   -> compile_expr_inline(e) ++ " ASC NULLS LAST"
   OrderExpr(e, DescNullsFirst) -> compile_expr_inline(e) ++ " DESC NULLS FIRST"
@@ -873,9 +873,9 @@ pfn subq_order_items(orders) do
   fn go(rem, acc) do
     match rem do
     Nil -> List.reverse(acc)
-    Cons(OrderExpr(e, Asc), rest) ->
+    Cons(OrderExpr(e, Ast.Asc), rest) ->
       go(rest, Cons(subq_expr(e) ++ " ASC", acc))
-    Cons(OrderExpr(e, Desc), rest) ->
+    Cons(OrderExpr(e, Ast.Desc), rest) ->
       go(rest, Cons(subq_expr(e) ++ " DESC", acc))
     Cons(OrderExpr(e, AscNullsFirst), rest) ->
       go(rest, Cons(subq_expr(e) ++ " ASC NULLS FIRST", acc))
