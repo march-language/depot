@@ -44,14 +44,15 @@ end
 ---
 --- march> read_cstring(Bytes.from_list([0]), 0)
 --- ("", 1)
-fn read_cstring(b, pos) do
-  fn go(i, acc) do
-    let byte = Bytes.get(b, i)
-    if byte == 0 do (Bytes.to_string(Bytes.from_list(List.reverse(acc))), i + 1)
-    else go(i + 1, Cons(byte, acc))
-    end
+pfn read_cstring_go(b, i, acc) do
+  let byte = Bytes.get(b, i)
+  if byte == 0 do (Bytes.to_string(Bytes.from_list(List.reverse(acc))), i + 1)
+  else read_cstring_go(b, i + 1, Cons(byte, acc))
   end
-  go(pos, Nil)
+end
+
+fn read_cstring(b, pos) do
+  read_cstring_go(b, pos, Nil)
 end
 
 --- Reads a length-prefixed byte field (NULL if length == -1).
@@ -71,32 +72,33 @@ end
 
 -- ---- Error/Notice field parsing ----
 
-fn parse_error_fields(b, pos) do
-  fn go(i, severity, code, message, detail, hint, position) do
-    if i >= Bytes.length(b) do
+pfn parse_error_fields_go(b, i, severity, code, message, detail, hint, position) do
+  if i >= Bytes.length(b) do
+    { severity: severity, code: code, message: message,
+      detail: detail, hint: hint, position: position }
+  else
+    match Bytes.get(b, i) do
+    0 ->
       { severity: severity, code: code, message: message,
         detail: detail, hint: hint, position: position }
-    else
-      match Bytes.get(b, i) do
-      0 ->
-        { severity: severity, code: code, message: message,
-          detail: detail, hint: hint, position: position }
-      field_type -> do
-        let (value, next) = read_cstring(b, i + 1)
-        match field_type do
-        83 -> go(next, value,    code,    message, detail,        hint,        position)
-        67 -> go(next, severity, value,   message, detail,        hint,        position)
-        77 -> go(next, severity, code,    value,   detail,        hint,        position)
-        68 -> go(next, severity, code,    message, Some(value),   hint,        position)
-        72 -> go(next, severity, code,    message, detail,        Some(value), position)
-        80 -> go(next, severity, code,    message, detail,        hint,        string_to_int(value))
-        _  -> go(next, severity, code,    message, detail,        hint,        position)
-        end
-      end
+    field_type -> do
+      let (value, next) = read_cstring(b, i + 1)
+      match field_type do
+      83 -> parse_error_fields_go(b, next, value,    code,    message, detail,        hint,        position)
+      67 -> parse_error_fields_go(b, next, severity, value,   message, detail,        hint,        position)
+      77 -> parse_error_fields_go(b, next, severity, code,    value,   detail,        hint,        position)
+      68 -> parse_error_fields_go(b, next, severity, code,    message, Some(value),   hint,        position)
+      72 -> parse_error_fields_go(b, next, severity, code,    message, detail,        Some(value), position)
+      80 -> parse_error_fields_go(b, next, severity, code,    message, detail,        hint,        string_to_int(value))
+      _  -> parse_error_fields_go(b, next, severity, code,    message, detail,        hint,        position)
       end
     end
+    end
   end
-  go(pos, "", "", "", None, None, None)
+end
+
+fn parse_error_fields(b, pos) do
+  parse_error_fields_go(b, pos, "", "", "", None, None, None)
 end
 
 -- ---- RowDescription / DataRow parsing ----
