@@ -231,11 +231,21 @@ end
 -- Private: record diff for cast_record
 -- ---------------------------------------------------------------------------
 
+-- `base_entries`/`param_entries` must already be stringified (String, String)
+-- pairs — see `stringify_entry` below. Comparing values while their type is
+-- still the type variable that `record_entries` hands back (i.e. calling
+-- `to_string` on each side of the `!=` right here) crashes the native
+-- backend: an erased-type value that survives to a generic `to_string`/`!=`
+-- inside a helper function (recursive or not) reads its heap header as if it
+-- were the concrete type, and non-pointer payloads like Int/Bool are tagged
+-- immediates, not headers, so this segfaults. Pinning the type to String
+-- immediately at the `record_entries` boundary (in `cast_record`, before any
+-- lookup/helper call sees the value) avoids the erased type entirely.
 pfn cast_diff_entry(base_entries, k, v, rest, fields, acc) do
   if str_member(fields, k) do
     let base_val = alist_get(base_entries, k)
     let is_changed = match base_val do
-      Some(bv) -> to_string(bv) != to_string(v)
+      Some(bv) -> bv != v
       None     -> true
     end
     if is_changed do
@@ -253,6 +263,15 @@ pfn cast_diff(base_entries, param_entries, fields, acc) do
     Nil -> List.reverse(acc)
     Cons((k, v), rest) -> cast_diff_entry(base_entries, k, v, rest, fields, acc)
   end
+end
+
+-- Stringify a single `record_entries` pair. Must run as the map function of
+-- a builtin `List.map` (not a hand-rolled recursive walk) over the raw
+-- `record_entries` result — that's the only call shape that safely resolves
+-- `to_string` on the still-erased value; see the note on `cast_diff_entry`.
+pfn stringify_entry(entry) do
+  let (k, v) = entry
+  (k, to_string(v))
 end
 
 -- ---------------------------------------------------------------------------
@@ -293,8 +312,8 @@ Update flow: base is a DB record, so only actual modifications appear
 in `changes`.
 """
 fn cast_record(base, params, fields) do
-  let base_entries = record_entries(base)
-  let param_entries = record_entries(params)
+  let base_entries = List.map(record_entries(base), stringify_entry)
+  let param_entries = List.map(record_entries(params), stringify_entry)
   let changes = cast_diff(base_entries, param_entries, fields, Nil)
   Gate(base_entries, changes, Nil, true, Nil)
 end

@@ -44,7 +44,14 @@ type WhereExpr =
   | OrWhere(Expr)
 
 --- JOIN kind.
-type JoinKind = Inner | Left | Right | FullOuter | Cross
+-- Named JoinXxx (not the bare Inner/Left/Right/FullOuter/Cross this type used
+-- to have) to avoid colliding with stdlib DataFrame.JoinKind, which shares
+-- Inner/Left/Right: whole-program builds that pull in DataFrame alongside
+-- this type mis-dispatch `match` on the shared-name variants at runtime (Ast.Left
+-- silently falls through to a match's catch-all instead of its own arm) even
+-- though both sides are written fully-qualified — see depot commit history
+-- for the compile.march workaround this replaces.
+type JoinKind = JoinInner | JoinLeft | JoinRight | JoinFullOuter | JoinCross
 
 --- A JOIN clause: kind, table name, ON expression.
 type JoinClause = JoinClause(JoinKind, String, Expr)

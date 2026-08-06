@@ -1228,7 +1228,7 @@ end
 
 test "compile ORDER BY ASC DESC in mutation module" do
   let q = Query({ from_: FromTable("t"), selects: Nil,
-    orders: [OrderExpr(Expr.Col("name"), Asc), OrderExpr(Expr.Col("created_at"), Desc)],
+    orders: [OrderExpr(Expr.Col("name"), Ast.Asc), OrderExpr(Expr.Col("created_at"), Ast.Desc)],
     wheres: Nil, joins: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1240,7 +1240,7 @@ end
 
 test "compile INNER JOIN in mutation module" do
   let q = Query({ from_: FromTable("a"), selects: Nil,
-    joins: [JoinClause(Inner, "b", Expr.Eq(QCol("a", "bid"), QCol("b", "id")))],
+    joins: [JoinClause(Ast.JoinInner, "b", Expr.Eq(QCol("a", "bid"), QCol("b", "id")))],
     wheres: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1250,7 +1250,7 @@ end
 
 test "compile LEFT JOIN in mutation module" do
   let q = Query({ from_: FromTable("posts"), selects: Nil,
-    joins: [JoinClause(Left, "tags", Expr.Eq(QCol("posts", "id"), QCol("tags", "post_id")))],
+    joins: [JoinClause(Ast.JoinLeft, "tags", Expr.Eq(QCol("posts", "id"), QCol("tags", "post_id")))],
     wheres: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1260,7 +1260,7 @@ end
 
 test "compile RIGHT JOIN in mutation module" do
   let q = Query({ from_: FromTable("a"), selects: Nil,
-    joins: [JoinClause(Right, "b", Expr.Eq(QCol("a", "bid"), QCol("b", "id")))],
+    joins: [JoinClause(Ast.JoinRight, "b", Expr.Eq(QCol("a", "bid"), QCol("b", "id")))],
     wheres: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)

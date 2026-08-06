@@ -18,9 +18,9 @@ fn soft_schema() do
   Depot.Schema.Schema(
     "widgets",
     [
-      ("id",         ("int",       Nil)),
-      ("name",       ("text",      Nil)),
-      ("deleted_at", ("timestamp", Nil))
+      ("id",         ("int",       Nil, false, false)),
+      ("name",       ("text",      Nil, false, false)),
+      ("deleted_at", ("timestamp", Nil, false, false))
     ],
     Nil,
     "id"
@@ -31,8 +31,8 @@ fn hard_schema() do
   Depot.Schema.Schema(
     "hard_widgets",
     [
-      ("id",   ("int",  Nil)),
-      ("name", ("text", Nil))
+      ("id",   ("int",  Nil, false, false)),
+      ("name", ("text", Nil, false, false))
     ],
     Nil,
     "id"
