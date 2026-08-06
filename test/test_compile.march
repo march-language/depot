@@ -104,7 +104,7 @@ end
 test "ORDER BY DESC" do
   let q = Query({
     from_: FromTable("logs"), selects: Nil, wheres: Nil,
-    joins: Nil, orders: [OrderExpr(Expr.Col("created_at"), Desc)],
+    joins: Nil, orders: [OrderExpr(Expr.Col("created_at"), Ast.Desc)],
     group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct
   })
@@ -253,7 +253,7 @@ end
 test "INNER JOIN" do
   let q = Query({
     from_: FromTable("orders"), selects: Nil, wheres: Nil,
-    joins: [JoinClause(Inner, "users", Expr.Eq(QCol("orders", "user_id"), QCol("users", "id")))],
+    joins: [JoinClause(Ast.JoinInner, "users", Expr.Eq(QCol("orders", "user_id"), QCol("users", "id")))],
     orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct
   })
@@ -264,7 +264,7 @@ end
 test "LEFT JOIN" do
   let q = Query({
     from_: FromTable("users"), selects: Nil, wheres: Nil,
-    joins: [JoinClause(Left, "posts", Expr.Eq(QCol("posts", "user_id"), QCol("users", "id")))],
+    joins: [JoinClause(Ast.JoinLeft, "posts", Expr.Eq(QCol("posts", "user_id"), QCol("users", "id")))],
     orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct
   })
@@ -546,14 +546,14 @@ end
 
 test "compile_inline RIGHT JOIN and FULL OUTER JOIN" do
   let rj_q = Query({ from_: FromTable("a"), selects: Nil,
-    joins: [JoinClause(Right, "b", Expr.Eq(Expr.Col("a_id"), Expr.Col("id")))],
+    joins: [JoinClause(Ast.JoinRight, "b", Expr.Eq(Expr.Col("a_id"), Expr.Col("id")))],
     wheres: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let rj = compile_inline(rj_q)
   assert rj.sql == "SELECT * FROM \"a\" RIGHT JOIN \"b\" ON \"a_id\" = \"id\""
 
   let fj_q = Query({ from_: FromTable("a"), selects: Nil,
-    joins: [JoinClause(FullOuter, "b", Expr.Eq(Expr.Col("a_id"), Expr.Col("id")))],
+    joins: [JoinClause(Ast.JoinFullOuter, "b", Expr.Eq(Expr.Col("a_id"), Expr.Col("id")))],
     wheres: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let fj = compile_inline(fj_q)
@@ -562,7 +562,7 @@ end
 
 test "compile_inline CROSS JOIN" do
   let q = Query({ from_: FromTable("a"), selects: Nil,
-    joins: [JoinClause(Cross, "b", Raw("TRUE"))],
+    joins: [JoinClause(Ast.JoinCross, "b", Raw("TRUE"))],
     wheres: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -669,7 +669,7 @@ end
 
 test "compile_inline ORDER BY ASC and DESC" do
   let q = Query({ from_: FromTable("t"), selects: Nil, wheres: Nil, joins: Nil,
-    orders: [OrderExpr(Expr.Col("name"), Asc), OrderExpr(Expr.Col("score"), Desc)],
+    orders: [OrderExpr(Expr.Col("name"), Ast.Asc), OrderExpr(Expr.Col("score"), Ast.Desc)],
     group_bys: Nil, havings: Nil, limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
   assert r.sql == "SELECT * FROM \"t\" ORDER BY \"name\" ASC, \"score\" DESC"
@@ -736,7 +736,7 @@ test "compile_inline full query: WHERE + GROUP BY + HAVING + ORDER + LIMIT" do
     selects: [SelectField(Expr.Col("level")), SelectAs(CountAll, "cnt")],
     wheres: [Where(Expr.Gte(Expr.Col("severity"), Lit(PInt(3))))],
     joins: Nil,
-    orders: [OrderExpr(Expr.Col("cnt"), Desc)],
+    orders: [OrderExpr(Expr.Col("cnt"), Ast.Desc)],
     group_bys: [Expr.Col("level")],
     havings: [Where(Expr.Gt(CountAll, Lit(PInt(10))))],
     limit_: Some(5), offset_: None, distinct_: NoDistinct })
@@ -752,7 +752,7 @@ end
 
 test "compile RIGHT JOIN parameterized" do
   let q = Query({ from_: FromTable("a"), selects: Nil,
-    joins: [JoinClause(Right, "b", Expr.Eq(Expr.Col("a_id"), Expr.Col("id")))],
+    joins: [JoinClause(Ast.JoinRight, "b", Expr.Eq(Expr.Col("a_id"), Expr.Col("id")))],
     wheres: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -761,7 +761,7 @@ end
 
 test "compile FULL OUTER JOIN parameterized" do
   let q = Query({ from_: FromTable("a"), selects: Nil,
-    joins: [JoinClause(FullOuter, "b", Expr.Eq(Expr.Col("a_id"), Expr.Col("id")))],
+    joins: [JoinClause(Ast.JoinFullOuter, "b", Expr.Eq(Expr.Col("a_id"), Expr.Col("id")))],
     wheres: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -770,7 +770,7 @@ end
 
 test "compile CROSS JOIN parameterized" do
   let q = Query({ from_: FromTable("a"), selects: Nil,
-    joins: [JoinClause(Cross, "b", Lit(PBool(true)))],
+    joins: [JoinClause(Ast.JoinCross, "b", Lit(PBool(true)))],
     wheres: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -888,7 +888,7 @@ end
 test "compile_inline INNER JOIN" do
   let q = Query({ from_: FromTable("orders"),
     selects: Nil,
-    joins: [JoinClause(Inner, "users", Expr.Eq(QCol("orders","user_id"), QCol("users","id")))],
+    joins: [JoinClause(Ast.JoinInner, "users", Expr.Eq(QCol("orders","user_id"), QCol("users","id")))],
     wheres: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -898,7 +898,7 @@ end
 test "compile_inline LEFT JOIN" do
   let q = Query({ from_: FromTable("orders"),
     selects: Nil,
-    joins: [JoinClause(Left, "users", Expr.Eq(QCol("orders","user_id"), QCol("users","id")))],
+    joins: [JoinClause(Ast.JoinLeft, "users", Expr.Eq(QCol("orders","user_id"), QCol("users","id")))],
     wheres: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -908,7 +908,7 @@ end
 test "compile_inline RIGHT JOIN" do
   let q = Query({ from_: FromTable("a"),
     selects: Nil,
-    joins: [JoinClause(Right, "b", Expr.Eq(Expr.Col("a_id"), Expr.Col("id")))],
+    joins: [JoinClause(Ast.JoinRight, "b", Expr.Eq(Expr.Col("a_id"), Expr.Col("id")))],
     wheres: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -918,7 +918,7 @@ end
 test "compile_inline FULL OUTER JOIN" do
   let q = Query({ from_: FromTable("a"),
     selects: Nil,
-    joins: [JoinClause(FullOuter, "b", Expr.Eq(Expr.Col("a_id"), Expr.Col("id")))],
+    joins: [JoinClause(Ast.JoinFullOuter, "b", Expr.Eq(Expr.Col("a_id"), Expr.Col("id")))],
     wheres: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -928,7 +928,7 @@ end
 test "compile_inline CROSS JOIN" do
   let q = Query({ from_: FromTable("a"),
     selects: Nil,
-    joins: [JoinClause(Cross, "b", Lit(PBool(true)))],
+    joins: [JoinClause(Ast.JoinCross, "b", Lit(PBool(true)))],
     wheres: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -996,7 +996,7 @@ end
 test "compile_inline ORDER BY ASC" do
   let q = Query({ from_: FromTable("users"),
     selects: Nil,
-    orders: [OrderExpr(Expr.Col("name"), Asc)],
+    orders: [OrderExpr(Expr.Col("name"), Ast.Asc)],
     wheres: Nil, joins: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -1759,7 +1759,7 @@ end
 
 test "compile INNER JOIN" do
   let q = Query({ from_: FromTable("orders"), selects: Nil,
-    joins: [JoinClause(Inner, "users", Expr.Eq(QCol("orders", "user_id"), QCol("users", "id")))],
+    joins: [JoinClause(Ast.JoinInner, "users", Expr.Eq(QCol("orders", "user_id"), QCol("users", "id")))],
     wheres: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1769,7 +1769,7 @@ end
 
 test "compile LEFT JOIN" do
   let q = Query({ from_: FromTable("posts"), selects: Nil,
-    joins: [JoinClause(Left, "comments", Expr.Eq(QCol("posts", "id"), QCol("comments", "post_id")))],
+    joins: [JoinClause(Ast.JoinLeft, "comments", Expr.Eq(QCol("posts", "id"), QCol("comments", "post_id")))],
     wheres: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1778,8 +1778,8 @@ end
 
 test "compile multiple JOINs" do
   let q = Query({ from_: FromTable("a"), selects: Nil,
-    joins: [JoinClause(Inner, "b", Expr.Eq(Expr.Col("a_id"), Expr.Col("id"))),
-             JoinClause(Left, "c", Expr.Eq(Expr.Col("b_id"), Expr.Col("id")))],
+    joins: [JoinClause(Ast.JoinInner, "b", Expr.Eq(Expr.Col("a_id"), Expr.Col("id"))),
+             JoinClause(Ast.JoinLeft, "c", Expr.Eq(Expr.Col("b_id"), Expr.Col("id")))],
     wheres: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1791,7 +1791,7 @@ end
 
 test "compile ORDER BY ASC" do
   let q = Query({ from_: FromTable("products"), selects: Nil,
-    orders: [OrderExpr(Expr.Col("price"), Asc)],
+    orders: [OrderExpr(Expr.Col("price"), Ast.Asc)],
     wheres: Nil, joins: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1801,7 +1801,7 @@ end
 
 test "compile ORDER BY DESC" do
   let q = Query({ from_: FromTable("products"), selects: Nil,
-    orders: [OrderExpr(Expr.Col("price"), Desc)],
+    orders: [OrderExpr(Expr.Col("price"), Ast.Desc)],
     wheres: Nil, joins: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1811,7 +1811,7 @@ end
 
 test "compile multiple ORDER BY columns" do
   let q = Query({ from_: FromTable("users"), selects: Nil,
-    orders: [OrderExpr(Expr.Col("last_name"), Asc), OrderExpr(Expr.Col("first_name"), Asc)],
+    orders: [OrderExpr(Expr.Col("last_name"), Ast.Asc), OrderExpr(Expr.Col("first_name"), Ast.Asc)],
     wheres: Nil, joins: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile(q)
@@ -1928,7 +1928,7 @@ end
 
 test "compile_inline WITH JOIN" do
   let q = Query({ from_: FromTable("orders"), selects: Nil,
-    joins: [JoinClause(Left, "users", Expr.Eq(QCol("orders", "user_id"), QCol("users", "id")))],
+    joins: [JoinClause(Ast.JoinLeft, "users", Expr.Eq(QCol("orders", "user_id"), QCol("users", "id")))],
     wheres: [Where(Expr.Eq(Expr.Col("status"), Lit(PString("open"))))],
     orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
@@ -1939,7 +1939,7 @@ end
 
 test "compile_inline ORDER BY" do
   let q = Query({ from_: FromTable("products"), selects: Nil,
-    orders: [OrderExpr(Expr.Col("name"), Asc)],
+    orders: [OrderExpr(Expr.Col("name"), Ast.Asc)],
     wheres: Nil, joins: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -2247,7 +2247,7 @@ end
 
 test "compile_inline INNER JOIN" do
   let q = Query({ from_: FromTable("a"), selects: Nil,
-    joins: [JoinClause(Inner, "b", Expr.Eq(QCol("a", "b_id"), QCol("b", "id")))],
+    joins: [JoinClause(Ast.JoinInner, "b", Expr.Eq(QCol("a", "b_id"), QCol("b", "id")))],
     wheres: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -2256,7 +2256,7 @@ end
 
 test "compile_inline LEFT JOIN" do
   let q = Query({ from_: FromTable("a"), selects: Nil,
-    joins: [JoinClause(Left, "b", Expr.Eq(QCol("a", "b_id"), QCol("b", "id")))],
+    joins: [JoinClause(Ast.JoinLeft, "b", Expr.Eq(QCol("a", "b_id"), QCol("b", "id")))],
     wheres: Nil, orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let r = compile_inline(q)
@@ -2276,11 +2276,11 @@ end
 test "compile_inline full complex query" do
   let q = Query({ from_: FromTable("orders"),
     selects: [SelectField(Expr.Col("user_id")), SelectAs(Expr.Sum(Expr.Col("amount")), "total")],
-    joins: [JoinClause(Inner, "users", Expr.Eq(QCol("orders", "user_id"), QCol("users", "id")))],
+    joins: [JoinClause(Ast.JoinInner, "users", Expr.Eq(QCol("orders", "user_id"), QCol("users", "id")))],
     wheres: [Where(Expr.Eq(Expr.Col("status"), Lit(PString("completed"))))],
     group_bys: [Expr.Col("user_id")],
     havings: [Where(Expr.Gt(Expr.Sum(Expr.Col("amount")), Lit(PInt(100))))],
-    orders: [OrderExpr(Expr.Col("total"), Desc)],
+    orders: [OrderExpr(Expr.Col("total"), Ast.Desc)],
     limit_: Some(10), offset_: Some(0), distinct_: NoDistinct })
   let r = compile_inline(q)
   assert String.contains(r.sql, "GROUP BY") == true
@@ -2314,7 +2314,7 @@ end
 
 test "compile parameterized RIGHT JOIN" do
   let q = Query({ from_: FromTable("a"), selects: Nil, wheres: Nil,
-    joins: [JoinClause(Right, "b", Expr.Eq(QCol("a", "id"), QCol("b", "a_id")))],
+    joins: [JoinClause(Ast.JoinRight, "b", Expr.Eq(QCol("a", "id"), QCol("b", "a_id")))],
     orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile(q)).sql, "RIGHT JOIN") == true
@@ -2322,7 +2322,7 @@ end
 
 test "compile parameterized FULL OUTER JOIN" do
   let q = Query({ from_: FromTable("a"), selects: Nil, wheres: Nil,
-    joins: [JoinClause(FullOuter, "b", Expr.Eq(QCol("a", "id"), QCol("b", "a_id")))],
+    joins: [JoinClause(Ast.JoinFullOuter, "b", Expr.Eq(QCol("a", "id"), QCol("b", "a_id")))],
     orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile(q)).sql, "FULL OUTER JOIN") == true
@@ -2330,7 +2330,7 @@ end
 
 test "compile parameterized CROSS JOIN" do
   let q = Query({ from_: FromTable("a"), selects: Nil, wheres: Nil,
-    joins: [JoinClause(Cross, "b", Raw("TRUE"))],
+    joins: [JoinClause(Ast.JoinCross, "b", Raw("TRUE"))],
     orders: Nil, group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile(q)).sql, "CROSS JOIN") == true
@@ -2338,17 +2338,17 @@ end
 
 -- ---- SortDir variants ----
 
-test "compile parameterized Asc" do
+test "compile parameterized Ast.Asc" do
   let q = Query({ from_: FromTable("t"), selects: Nil, wheres: Nil,
-    joins: Nil, orders: [OrderExpr(Expr.Col("a"), Asc)],
+    joins: Nil, orders: [OrderExpr(Expr.Col("a"), Ast.Asc)],
     group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile(q)).sql, "ASC") == true
 end
 
-test "compile parameterized Desc" do
+test "compile parameterized Ast.Desc" do
   let q = Query({ from_: FromTable("t"), selects: Nil, wheres: Nil,
-    joins: Nil, orders: [OrderExpr(Expr.Col("a"), Desc)],
+    joins: Nil, orders: [OrderExpr(Expr.Col("a"), Ast.Desc)],
     group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   assert String.contains((compile(q)).sql, "DESC") == true
@@ -2410,9 +2410,9 @@ test "subquery order DescNullsLast" do
   assert String.contains((compile_inline(q)).sql, "DESC NULLS LAST") == true
 end
 
-test "subquery Desc direction" do
+test "subquery Ast.Desc direction" do
   let sub = Query({ from_: FromTable("t"), selects: Nil, wheres: Nil,
-    joins: Nil, orders: [OrderExpr(Expr.Col("x"), Desc)],
+    joins: Nil, orders: [OrderExpr(Expr.Col("x"), Ast.Desc)],
     group_bys: Nil, havings: Nil,
     limit_: None, offset_: None, distinct_: NoDistinct })
   let q = Query({ from_: FromTable("u"), selects: [SelectAs(SubqueryExpr(sub), "s")],

@@ -37,7 +37,10 @@ mod Depot.Schema do
 -- The opts_pairs values are polymorphic (Bool, Int, Float, String, …) — they
 -- mirror whatever the user writes in the schema record. `a` is the field-opts
 -- value type, `b` is the assoc-opts value type.
-type Schema(a, b) = Schema(String, List((String, (String, List((String, a))))), List((String, String, String, List((String, b)))), String)
+-- Field-info tuple carries `nullable`/`virtual` as concrete Bools computed
+-- up front (see `parse_field_spec`) rather than left inside the erased
+-- `List((String, a))` opts alist alongside `a`-typed values like `default`.
+type Schema(a, b) = Schema(String, List((String, (String, List((String, a)), Bool, Bool))), List((String, String, String, List((String, b)))), String)
 
 -- ---------------------------------------------------------------------------
 -- Private helpers
@@ -63,48 +66,101 @@ pfn alist_get_opt(lst, key) do
   end
 end
 
--- Parse a field spec: bare string like "String" becomes ("String", []),
--- tuple ("Int", { default: 0 }) becomes ("Int", [("default", 0)]).
-fn parse_field_spec(spec) do
-  match spec do
-    (typ, opts) -> (to_string(typ), record_entries(opts))
-    -- Bare spec: no options.  The value arrives type-erased (via
-    -- record_entries), so the tuple arm cannot be exhaustive at runtime —
-    -- without this arm every bare spec is a match-failure panic natively.
-    _ -> (to_string(spec), Nil)
+-- Stringify one `record_entries` (name, spec) pair. Must run as the map
+-- function of a builtin `List.map` over the raw `record_entries` result
+-- (see the `str_lookup` locals below) — that's the only call shape that
+-- safely resolves `to_string` on a still-erased value.
+pfn stringify_spec_entry(entry) do
+  let (n, sp) = entry
+  (n, to_string(sp))
+end
+
+pfn alist_get_str(lst, key) do
+  match lst do
+    Nil -> ""
+    Cons((k, v), rest) -> if k == key do v else alist_get_str(rest, key) end
   end
 end
 
-fn parse_field_entry(entry) do
+-- Parse a field spec: bare string like "String" becomes ("String", []),
+-- tuple ("Int", { default: 0 }) becomes ("Int", [("default", 0)]).
+--
+-- `str_lookup` is `List.map(record_entries(<fields record>), stringify_spec_entry)`,
+-- computed once by the caller (`parse_fields`). The bare-spec arm reads from
+-- it instead of calling `to_string(spec)` directly: `spec`'s type is unified
+-- with the `(typ, opts)` tuple pattern in the arm above, and once a
+-- still-erased value's type has been unified with a tuple shape anywhere in
+-- the function, a later generic `to_string` on THAT SAME value reads the
+-- wrong representation and crashes the native backend — even in a `_` arm
+-- that never itself sees a tuple at runtime. Doing the stringification in a
+-- wholly separate function (`stringify_spec_entry`) that never sees the
+-- tuple arm avoids the corruption.
+-- `nullable`/`virtual` are read via `record_get` directly on the ORIGINAL
+-- (pre-erasure) opts record — not via `alist_get(record_entries(opts), key,
+-- false)` on the erased alist. The erased alist's value type `a` is a
+-- SINGLE type variable shared by every key (`default`, `nullable`,
+-- `virtual`, ...); pinning it to Bool via a `false` default (as the old code
+-- did) corrupts other keys' values read from the same list later — e.g. a
+-- String `default: "user"` comes back as the text "true". `record_get`
+-- resolves each key with its own independent type variable, so it's safe.
+pfn nullable_flag(opts) do
+  match record_get(opts, "nullable") do
+    Some(true) -> true
+    _          -> false
+  end
+end
+
+pfn virtual_flag(opts) do
+  match record_get(opts, "virtual") do
+    Some(true) -> true
+    _          -> false
+  end
+end
+
+fn parse_field_spec(name, spec, str_lookup) do
+  match spec do
+    (typ, opts) -> (to_string(typ), record_entries(opts), nullable_flag(opts), virtual_flag(opts))
+    -- Bare spec: no options.  The value arrives type-erased (via
+    -- record_entries), so the tuple arm cannot be exhaustive at runtime —
+    -- without this arm every bare spec is a match-failure panic natively.
+    _ -> (alist_get_str(str_lookup, name), Nil, false, false)
+  end
+end
+
+fn parse_field_entry(str_lookup, entry) do
   let (n, sp) = entry
-  let result = (n, parse_field_spec(sp))
+  let result = (n, parse_field_spec(n, sp, str_lookup))
   result
 end
 
 pfn parse_fields(fields_record) do
   let entries = record_entries(fields_record)
-  List.map(entries, parse_field_entry)
+  let str_lookup = List.map(entries, stringify_spec_entry)
+  List.map(entries, fn entry -> parse_field_entry(str_lookup, entry))
 end
 
-fn parse_one_assoc(kind, name, spec) do
+-- See `parse_field_spec` for why the bare-spec arm reads `str_lookup`
+-- instead of calling `to_string(spec)` directly.
+fn parse_one_assoc(kind, name, spec, str_lookup) do
   match spec do
     (target, opts) -> (kind, name, to_string(target), record_entries(opts))
     -- Bare spec (e.g. posts: "Post"): target only, no options.  The value
     -- arrives type-erased (via record_entries), so the tuple arm cannot be
     -- exhaustive at runtime — without this arm a bare target is a match
     -- failure.
-    _ -> (kind, name, to_string(spec), Nil)
+    _ -> (kind, name, alist_get_str(str_lookup, name), Nil)
   end
 end
 
-fn parse_assoc_entry(kind, entry) do
+fn parse_assoc_entry(kind, str_lookup, entry) do
   let (n, sp) = entry
-  parse_one_assoc(kind, n, sp)
+  parse_one_assoc(kind, n, sp, str_lookup)
 end
 
 pfn parse_assoc_record(kind, record) do
   let entries = record_entries(record)
-  List.map(entries, fn e -> parse_assoc_entry(kind, e))
+  let str_lookup = List.map(entries, stringify_spec_entry)
+  List.map(entries, fn e -> parse_assoc_entry(kind, str_lookup, e))
 end
 
 pfn parse_assocs_for(spec, key, kind) do
@@ -118,6 +174,20 @@ end
 -- to allow heterogeneous field types (Int 0, Float 0.0, Bool false, None).
 -- Each type case is a separate pfn because march forbids match arms of
 -- mixed types within a single function return value.
+-- `d` arrives type-erased (opts came from a nested `record_entries` call in
+-- `parse_field_spec`) and is written straight into `r`. Unlike the String
+-- case in `put_string_default` below, there's no generic (type-preserving)
+-- materialization available here that keeps `opts` polymorphic across the
+-- put_int_default/put_float_default/put_bool_default/put_string_default
+-- siblings that `put_typed_default` calls with the SAME `opts` value: an
+-- arithmetic identity op (`d + 0`) would work like `to_string` does for
+-- Strings, but it pins `opts`'s erased value type to Int for every sibling,
+-- which fails to typecheck. Separately, `record_put` adding a NEW Float
+-- field to a record (as opposed to updating an existing one) segfaults
+-- natively regardless of erasure — confirmed with a hardcoded literal,
+-- `record_put(record_from_list([]), "y", 0.5)` — so `score: ("Float",
+-- {default: 0.5})`-style explicit Float defaults are a known-broken march
+-- primitive, not something fixable from here.
 pfn put_int_default(r, name, opts) do
   match alist_get_opt(opts, "default") do
     Some(d) -> record_put(r, name, d)
@@ -141,7 +211,13 @@ end
 
 pfn put_string_default(r, name, opts) do
   match alist_get_opt(opts, "default") do
-    Some(d) -> record_put(r, name, d)
+    -- `d` arrives type-erased (opts came from a nested `record_entries` call
+    -- in `parse_field_spec`). Coercing it through `to_string` here — even
+    -- though it's already a String — materializes it before `record_put`;
+    -- writing the still-erased value straight into a monomorphic String
+    -- field crashes reads of that field later (`b.role == "user"` segfaults
+    -- in `march_string_eq`).
+    Some(d) -> record_put(r, name, to_string(d))
     None    -> record_put(r, name, "")
   end
 end
@@ -163,8 +239,8 @@ pfn put_typed_default(r, name, type_str, opts) do
   end
 end
 
-fn put_default(r, name, type_str, opts) do
-  match alist_get(opts, "nullable", false) do
+fn put_default(r, name, type_str, opts, nullable) do
+  match nullable do
     true  -> record_put(r, name, None)
     false -> put_typed_default(r, name, type_str, opts)
   end
@@ -172,8 +248,8 @@ end
 
 fn is_not_virtual(field_entry) do
   let (_, spec) = field_entry
-  let (_, opts) = spec
-  !alist_get(opts, "virtual", false)
+  let (_, _, _, virtual) = spec
+  !virtual
 end
 
 fn field_entry_name(field_entry) do
@@ -183,8 +259,8 @@ end
 
 fn put_field_default(r, field_entry) do
   let (n, spec) = field_entry
-  let (ts, opts) = spec
-  put_default(r, n, ts, opts)
+  let (ts, opts, nullable, _) = spec
+  put_default(r, n, ts, opts, nullable)
 end
 
 pfn find_assoc(lst, name) do
@@ -230,16 +306,24 @@ end
 fn field_type(schema, name) do
   let fs = fields(schema)
   match alist_get_opt(fs, name) do
-    Some((typ, _)) -> Some(typ)
-    None           -> None
+    Some((typ, _, _, _)) -> Some(typ)
+    None                 -> None
   end
 end
 
 fn field_opts(schema, name) do
   let fs = fields(schema)
   match alist_get_opt(fs, name) do
-    Some((_, opts)) -> Some(opts)
-    None            -> None
+    Some((_, opts, _, _)) -> Some(opts)
+    None                  -> None
+  end
+end
+
+fn field_is_virtual(schema, name) do
+  let fs = fields(schema)
+  match alist_get_opt(fs, name) do
+    Some((_, _, _, virtual)) -> virtual
+    None                     -> false
   end
 end
 
@@ -263,10 +347,7 @@ fn is_soft_deletable(schema) do
 end
 
 fn is_virtual(schema, field_name) do
-  match field_opts(schema, field_name) do
-    Some(opts) -> alist_get(opts, "virtual", false)
-    None       -> false
-  end
+  field_is_virtual(schema, field_name)
 end
 
 fn associations(schema) do

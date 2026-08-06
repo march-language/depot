@@ -166,51 +166,51 @@ end
 
 --- Appends an INNER JOIN clause.
 ---
---- march> match join(from("t"), "u", Eq(Col("t.id"), Col("u.id"))) do | Query(f) -> match f.joins do | Cons(JoinClause(Ast.Inner, name, _), Nil) -> name | _ -> "" end end
+--- march> match join(from("t"), "u", Eq(Col("t.id"), Col("u.id"))) do | Query(f) -> match f.joins do | Cons(JoinClause(Ast.JoinInner, name, _), Nil) -> name | _ -> "" end end
 --- "u"
 fn join(q, table, on_expr) do
   match q do
-  Query(f) -> Query({ f with joins: concat_joins(f.joins, [JoinClause(Ast.Inner, table, on_expr)]) })
+  Query(f) -> Query({ f with joins: concat_joins(f.joins, [JoinClause(Ast.JoinInner, table, on_expr)]) })
   end
 end
 
 --- Appends a LEFT JOIN clause.
 ---
---- march> match left_join(from("t"), "u", Eq(Col("t.id"), Col("u.id"))) do | Query(f) -> match f.joins do | Cons(JoinClause(Ast.Left, _, _), Nil) -> true | _ -> false end end
+--- march> match left_join(from("t"), "u", Eq(Col("t.id"), Col("u.id"))) do | Query(f) -> match f.joins do | Cons(JoinClause(Ast.JoinLeft, _, _), Nil) -> true | _ -> false end end
 --- true
 fn left_join(q, table, on_expr) do
   match q do
-  Query(f) -> Query({ f with joins: concat_joins(f.joins, [JoinClause(Ast.Left, table, on_expr)]) })
+  Query(f) -> Query({ f with joins: concat_joins(f.joins, [JoinClause(Ast.JoinLeft, table, on_expr)]) })
   end
 end
 
 --- Appends a RIGHT JOIN clause.
 ---
---- march> match right_join(from("t"), "u", Eq(Col("t.id"), Col("u.id"))) do | Query(f) -> match f.joins do | Cons(JoinClause(Ast.Right, _, _), Nil) -> true | _ -> false end end
+--- march> match right_join(from("t"), "u", Eq(Col("t.id"), Col("u.id"))) do | Query(f) -> match f.joins do | Cons(JoinClause(Ast.JoinRight, _, _), Nil) -> true | _ -> false end end
 --- true
 fn right_join(q, table, on_expr) do
   match q do
-  Query(f) -> Query({ f with joins: concat_joins(f.joins, [JoinClause(Ast.Right, table, on_expr)]) })
+  Query(f) -> Query({ f with joins: concat_joins(f.joins, [JoinClause(Ast.JoinRight, table, on_expr)]) })
   end
 end
 
 --- Appends a FULL OUTER JOIN clause.
 ---
---- march> match full_join(from("t"), "u", Eq(Col("t.id"), Col("u.id"))) do | Query(f) -> match f.joins do | Cons(JoinClause(FullOuter, _, _), Nil) -> true | _ -> false end end
+--- march> match full_join(from("t"), "u", Eq(Col("t.id"), Col("u.id"))) do | Query(f) -> match f.joins do | Cons(JoinClause(Ast.JoinFullOuter, _, _), Nil) -> true | _ -> false end end
 --- true
 fn full_join(q, table, on_expr) do
   match q do
-  Query(f) -> Query({ f with joins: concat_joins(f.joins, [JoinClause(FullOuter, table, on_expr)]) })
+  Query(f) -> Query({ f with joins: concat_joins(f.joins, [JoinClause(Ast.JoinFullOuter, table, on_expr)]) })
   end
 end
 
 --- Appends a CROSS JOIN clause.
 ---
---- march> match cross_join(from("t"), "u") do | Query(f) -> match f.joins do | Cons(JoinClause(Cross, name, _), Nil) -> name | _ -> "" end end
+--- march> match cross_join(from("t"), "u") do | Query(f) -> match f.joins do | Cons(JoinClause(Ast.JoinCross, name, _), Nil) -> name | _ -> "" end end
 --- "u"
 fn cross_join(q, table) do
   match q do
-  Query(f) -> Query({ f with joins: concat_joins(f.joins, [JoinClause(Cross, table, Lit(PBool(true)))]) })
+  Query(f) -> Query({ f with joins: concat_joins(f.joins, [JoinClause(Ast.JoinCross, table, Lit(PBool(true)))]) })
   end
 end
 

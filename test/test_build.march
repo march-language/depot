@@ -91,11 +91,11 @@ test "distinct" do
 end
 
 test "order_by ASC" do
-  let q = order_by(from("logs"), Expr.Col("created_at"), Asc)
+  let q = order_by(from("logs"), Expr.Col("created_at"), Ast.Asc)
   match q do
   Query(f) ->
     match f.orders do
-    Cons(OrderExpr(e, Asc), Nil) ->
+    Cons(OrderExpr(e, Ast.Asc), Nil) ->
       match e do
       Expr.Col(name) -> assert name == "created_at"
       _ -> assert false
@@ -110,7 +110,7 @@ test "INNER JOIN" do
   match q do
   Query(f) ->
     match f.joins do
-    Cons(JoinClause(Inner, "users", _), Nil) -> ()
+    Cons(JoinClause(Ast.JoinInner, "users", _), Nil) -> ()
     _ -> assert false
     end
   end
@@ -129,7 +129,7 @@ test "LEFT JOIN" do
   match q do
   Query(f) ->
     match f.joins do
-    Cons(JoinClause(Left, "users", _), Nil) -> ()
+    Cons(JoinClause(Ast.JoinLeft, "users", _), Nil) -> ()
     _ -> assert false
     end
   end
@@ -140,7 +140,7 @@ test "RIGHT JOIN" do
   match q do
   Query(f) ->
     match f.joins do
-    Cons(JoinClause(Right, "users", _), Nil) -> ()
+    Cons(JoinClause(Ast.JoinRight, "users", _), Nil) -> ()
     _ -> assert false
     end
   end
@@ -151,7 +151,7 @@ test "FULL OUTER JOIN" do
   match q do
   Query(f) ->
     match f.joins do
-    Cons(JoinClause(FullOuter, "b", _), Nil) -> ()
+    Cons(JoinClause(Ast.JoinFullOuter, "b", _), Nil) -> ()
     _ -> assert false
     end
   end
@@ -162,7 +162,7 @@ test "CROSS JOIN" do
   match q do
   Query(f) ->
     match f.joins do
-    Cons(JoinClause(Cross, "b", _), Nil) -> ()
+    Cons(JoinClause(Ast.JoinCross, "b", _), Nil) -> ()
     _ -> assert false
     end
   end
@@ -180,11 +180,11 @@ test "having clause" do
 end
 
 test "order_by DESC" do
-  let q = order_by(from("logs"), Expr.Col("created_at"), Desc)
+  let q = order_by(from("logs"), Expr.Col("created_at"), Ast.Desc)
   match q do
   Query(f) ->
     match f.orders do
-    Cons(OrderExpr(e, Desc), Nil) ->
+    Cons(OrderExpr(e, Ast.Desc), Nil) ->
       match e do
       Expr.Col(name) -> assert name == "created_at"
       _ -> assert false
@@ -231,7 +231,7 @@ test "chained builder" do
   let q = from("users")
          |> select([Expr.Col("id"), Expr.Col("name")])
          |> where_(Expr.Eq(Expr.Col("active"), Lit(PBool(true))))
-         |> order_by(Expr.Col("name"), Asc)
+         |> order_by(Expr.Col("name"), Ast.Asc)
          |> limit(50)
   match q do
   Query(f) -> do
@@ -248,7 +248,7 @@ test "order_asc shorthand" do
   match q do
   Query(f) ->
     match f.orders do
-    Cons(OrderExpr(e, Asc), Nil) ->
+    Cons(OrderExpr(e, Ast.Asc), Nil) ->
       match e do
       Expr.Col(name) -> assert name == "created_at"
       _ -> assert false
@@ -263,7 +263,7 @@ test "order_desc shorthand" do
   match q do
   Query(f) ->
     match f.orders do
-    Cons(OrderExpr(e, Desc), Nil) ->
+    Cons(OrderExpr(e, Ast.Desc), Nil) ->
       match e do
       Expr.Col(name) -> assert name == "points"
       _ -> assert false

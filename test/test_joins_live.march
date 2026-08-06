@@ -60,7 +60,7 @@ test "INNER JOIN returns only rows with a matching key" do
                       Expr.QCol("j_posts", "title")])
            |> join("j_posts", Expr.Eq(Expr.QCol("j_users", "id"),
                                        Expr.QCol("j_posts", "user_id")))
-           |> order_by(Expr.QCol("j_users", "id"), Asc)
+           |> order_by(Expr.QCol("j_users", "id"), Ast.Asc)
     match run_rows(conn, q) do
       Err(e) -> do
         let _ = println("inner join: " ++ e)
@@ -85,7 +85,7 @@ test "LEFT JOIN keeps unmatched left rows and decodes nulls to None" do
                       Expr.QCol("j_posts", "title")])
            |> left_join("j_posts", Expr.Eq(Expr.QCol("j_users", "id"),
                                             Expr.QCol("j_posts", "user_id")))
-           |> order_by(Expr.QCol("j_users", "id"), Asc)
+           |> order_by(Expr.QCol("j_users", "id"), Ast.Asc)
     match run_rows(conn, q) do
       Err(e) -> do
         let _ = println("left join: " ++ e)

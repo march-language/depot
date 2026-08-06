@@ -127,34 +127,64 @@ pfn column_sql_with_opts(name, type_str, opts) do
   with_ref
 end
 
+-- Stringify one `record_entries` (name, spec) pair. Must run as the map
+-- function of a builtin `List.map` over the raw `record_entries` result
+-- (see `str_lookup` below) — that's the only call shape that safely
+-- resolves `to_string` on a still-erased value.
+pfn stringify_col_entry(entry) do
+  let (name, spec) = entry
+  (name, to_string(spec))
+end
+
+pfn alist_get_str(lst, key) do
+  match lst do
+    Nil -> ""
+    Cons((k, v), rest) -> if k == key do v else alist_get_str(rest, key) end
+  end
+end
+
 -- Build SQL for a single column definition.
 -- Bare string spec ("String") generates plain type; tuple spec includes opts.
-fn column_sql(name, spec) do
+--
+-- `str_lookup` is `List.map(record_entries(<the column record>), stringify_col_entry)`
+-- computed once by the caller (see `columns_sql`). It supplies the bare-spec
+-- string here instead of calling `to_string(spec)` directly: `spec`'s type is
+-- unified with the `(typ, opts)` tuple pattern in the arm above, and once a
+-- still-erased value's type has been unified with a tuple shape anywhere in
+-- the function, a later generic `to_string` on THAT SAME value reads the
+-- wrong representation and crashes the native backend — even in a `_` arm
+-- that never itself sees a tuple at runtime. Doing the stringification in a
+-- wholly separate function (`stringify_col_entry`) that never sees the tuple
+-- arm avoids the corruption.
+fn column_sql(name, spec, str_lookup) do
   match spec do
     (typ, opts) -> column_sql_with_opts(name, to_string(typ), opts)
     -- Bare spec: plain type, no options.  The value arrives type-erased (via
     -- record_entries), so the tuple arm cannot be exhaustive at runtime —
     -- without this arm a bare "String" spec is a match-failure panic natively.
-    _ -> "\"" ++ name ++ "\" " ++ sql_type(to_string(spec))
+    _ -> "\"" ++ name ++ "\" " ++ sql_type(alist_get_str(str_lookup, name))
   end
 end
 
 -- parse_col_spec is kept for alter_modify_entry which only needs the type.
-fn parse_col_spec(spec) do
+-- See `column_sql` for why the bare-spec arm reads `str_lookup` instead of
+-- calling `to_string(spec)` directly.
+fn parse_col_spec(spec, name, str_lookup) do
   match spec do
     (typ, _opts) -> to_string(typ)
-    _ -> to_string(spec)
+    _ -> alist_get_str(str_lookup, name)
   end
 end
 
-fn col_entry_sql(entry) do
+fn col_entry_sql(str_lookup, entry) do
   let (name, spec) = entry
-  column_sql(name, spec)
+  column_sql(name, spec, str_lookup)
 end
 
 -- Map column entries to SQL fragments.
 pfn columns_sql(entries) do
-  List.map(entries, col_entry_sql)
+  let str_lookup = List.map(entries, stringify_col_entry)
+  List.map(entries, fn entry -> col_entry_sql(str_lookup, entry))
 end
 
 -- Join a list of strings with a separator.
@@ -209,15 +239,15 @@ changes is a record with optional fields:
       remove: ["legacy_field"]
     })
 """
-fn alter_add_entry(prefix, entry) do
+fn alter_add_entry(prefix, str_lookup, entry) do
   let (col_name, spec) = entry
-  let col = column_sql(col_name, spec)
+  let col = column_sql(col_name, spec, str_lookup)
   prefix ++ "ADD COLUMN " ++ col
 end
 
-fn alter_modify_entry(prefix, entry) do
+fn alter_modify_entry(prefix, str_lookup, entry) do
   let (col_name, spec) = entry
-  let type_str = parse_col_spec(spec)
+  let type_str = parse_col_spec(spec, col_name, str_lookup)
   prefix ++ "ALTER COLUMN \"" ++ col_name ++ "\" TYPE " ++ sql_type(type_str)
 end
 
@@ -226,13 +256,15 @@ fn alter_table(name, changes) do
   let add_stmts = match record_get(changes, "add") do
     Some(add_rec) ->
       let add_entries = record_entries(add_rec)
-      List.map(add_entries, fn entry -> alter_add_entry(prefix, entry))
+      let str_lookup = List.map(add_entries, stringify_col_entry)
+      List.map(add_entries, fn entry -> alter_add_entry(prefix, str_lookup, entry))
     None -> Nil
   end
   let modify_stmts = match record_get(changes, "modify") do
     Some(mod_rec) ->
       let mod_entries = record_entries(mod_rec)
-      List.map(mod_entries, fn entry -> alter_modify_entry(prefix, entry))
+      let str_lookup = List.map(mod_entries, stringify_col_entry)
+      List.map(mod_entries, fn entry -> alter_modify_entry(prefix, str_lookup, entry))
     None -> Nil
   end
   let remove_stmts = match record_get(changes, "remove") do

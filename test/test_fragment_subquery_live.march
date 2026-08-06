@@ -100,7 +100,7 @@ test "where_in_subquery restricts to ids present in subselect" do
     let q = from("fs_users")
            |> select([Expr.Col("id")])
            |> where_in_subquery("id", admins)
-           |> order_by(Expr.Col("id"), Asc)
+           |> order_by(Expr.Col("id"), Ast.Asc)
     match run_rows(conn, q) do
       Err(e) -> do
         let _ = println("in subquery: " ++ e)
@@ -126,7 +126,7 @@ test "where_exists keeps rows with a matching admin record" do
     let q = from("fs_users")
            |> select([Expr.Col("id")])
            |> where_exists(admins)
-           |> order_by(Expr.Col("id"), Asc)
+           |> order_by(Expr.Col("id"), Ast.Asc)
     match run_rows(conn, q) do
       Err(e) -> do
         let _ = println("exists: " ++ e)

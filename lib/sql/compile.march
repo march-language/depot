@@ -241,16 +241,20 @@ pfn compile_joins_acc(joins, st, acc) do
     match rem do
     Nil -> (acc_, st_)
     Cons(JoinClause(kind, table, on_expr), rest) -> do
+      -- The exhaustiveness checker reports a spurious "missing case: Right"
+      -- here (it still associates this type with stdlib DataFrame.JoinKind,
+      -- which shares names) even though JoinKind's variants were renamed to
+      -- JoinInner/JoinLeft/... specifically to stop colliding with it. Do
+      -- NOT add a `_ -> ...` catch-all to silence this: a wildcard arm is
+      -- what caused Ast.JoinLeft to mis-dispatch into the catch-all at
+      -- runtime before the rename (compiler conflated the two types' tags
+      -- through the wildcard). This match is genuinely exhaustive.
       let k = match kind do
-        Ast.Inner    -> " INNER JOIN "
-        Ast.Left     -> " LEFT JOIN "
-        Ast.Right    -> " RIGHT JOIN "
-        FullOuter -> " FULL OUTER JOIN "
-        Cross    -> " CROSS JOIN "
-        -- Unreachable for Ast.JoinKind (all 5 ctors handled above); the catch-all
-        -- only satisfies the exhaustiveness checker, which merges this with the
-        -- stdlib DataFrame.JoinKind (a same-named type that has an `Outer` ctor).
-        _        -> " JOIN "
+        Ast.JoinInner    -> " INNER JOIN "
+        Ast.JoinLeft     -> " LEFT JOIN "
+        Ast.JoinRight    -> " RIGHT JOIN "
+        Ast.JoinFullOuter -> " FULL OUTER JOIN "
+        Ast.JoinCross    -> " CROSS JOIN "
       end
       let (on_sql, st2) = compile_expr(on_expr, st_)
       go(rest, st2, acc_ ++ k ++ quote_ident(table) ++ " ON " ++ on_sql)
@@ -265,16 +269,20 @@ pfn compile_joins_inline(joins) do
     match rem do
     Nil -> acc
     Cons(JoinClause(kind, table, on_expr), rest) -> do
+      -- The exhaustiveness checker reports a spurious "missing case: Right"
+      -- here (it still associates this type with stdlib DataFrame.JoinKind,
+      -- which shares names) even though JoinKind's variants were renamed to
+      -- JoinInner/JoinLeft/... specifically to stop colliding with it. Do
+      -- NOT add a `_ -> ...` catch-all to silence this: a wildcard arm is
+      -- what caused Ast.JoinLeft to mis-dispatch into the catch-all at
+      -- runtime before the rename (compiler conflated the two types' tags
+      -- through the wildcard). This match is genuinely exhaustive.
       let k = match kind do
-        Ast.Inner    -> " INNER JOIN "
-        Ast.Left     -> " LEFT JOIN "
-        Ast.Right    -> " RIGHT JOIN "
-        FullOuter -> " FULL OUTER JOIN "
-        Cross    -> " CROSS JOIN "
-        -- Unreachable for Ast.JoinKind (all 5 ctors handled above); the catch-all
-        -- only satisfies the exhaustiveness checker, which merges this with the
-        -- stdlib DataFrame.JoinKind (a same-named type that has an `Outer` ctor).
-        _        -> " JOIN "
+        Ast.JoinInner    -> " INNER JOIN "
+        Ast.JoinLeft     -> " LEFT JOIN "
+        Ast.JoinRight    -> " RIGHT JOIN "
+        Ast.JoinFullOuter -> " FULL OUTER JOIN "
+        Ast.JoinCross    -> " CROSS JOIN "
       end
       go(rest, acc ++ k ++ quote_ident(table) ++ " ON " ++ compile_expr_inline(on_expr))
     end
