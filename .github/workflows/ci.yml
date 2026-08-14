@@ -39,6 +39,26 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+      # test/test_scram_live.march exercises the SASL/SCRAM-SHA-256 auth path,
+      # which the trust-auth service above cannot reach. It expects a
+      # scram-sha-256 Postgres at 127.0.0.1:5544 with these exact credentials —
+      # keep them in sync with `scram_config()` in that file.
+      scram_postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: scram_user
+          POSTGRES_PASSWORD: s3cret
+          POSTGRES_DB: depot_test
+          POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+          POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+        ports:
+          - 5544:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     env:
       PGHOST: localhost
       PGPORT: 5432
@@ -74,10 +94,15 @@ jobs:
       # toolchain, so an unrelated upstream regression on march's main can
       # turn depot's CI red with nothing to fix on depot's side. Bump this
       # SHA deliberately when picking up new march changes.
+      #
+      # 2026-08-13: bumped from 6f29e6f5. depot's lib/ had moved on to march
+      # features the old pin predates (record_* introspection, to_string on
+      # still-erased values), so `forge build` failed to typecheck against it
+      # with 22 errors in depot_schema/depot_migration/depot_gate.
       - name: Set up March
         uses: march-language/setup-march@main
         with:
-          march-version: 6f29e6f5f78f58bfa5e78575123e3aa89d02ea54
+          march-version: 595bfecc2362540955b3c3584b21116d8ea52c0a
 
       - name: Build
         run: forge build
