@@ -6,6 +6,7 @@ mod TestFragmentSubqueryLive do
 
 needs IO.NetConnect
 needs IO.Random
+needs IO.Console
 
 import Connection
 import Ast

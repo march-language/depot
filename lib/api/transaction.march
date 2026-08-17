@@ -21,6 +21,7 @@ import Db
 import Pool
 
 needs IO.NetConnect
+needs IO.Mut
 needs IO.Random
 needs IO.Spawn
 

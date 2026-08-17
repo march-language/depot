@@ -20,6 +20,7 @@ mod Depot.Migration do
 import Db
 import Depot.Transaction
 
+needs IO.Mut
 needs IO.NetConnect
 needs IO.Random
 needs IO.Spawn

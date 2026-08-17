@@ -8,6 +8,8 @@ needs IO.Foreign
 needs IO.NetConnect
 needs IO.Random
 needs IO.Spawn
+needs IO.Mut
+needs IO.Console
 
 import Ast
 import Build

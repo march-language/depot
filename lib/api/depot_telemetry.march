@@ -26,6 +26,8 @@
 --   Depot.Telemetry.detach("stdout")
 
 mod Depot.Telemetry do
+needs IO.Mut
+
 
 --- A completed-query event, delivered to every attached handler.
 ---

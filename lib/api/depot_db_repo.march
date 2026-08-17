@@ -37,6 +37,8 @@
 mod Depot.DbRepo do
 
 needs Ffi
+needs IO.Mut
+needs IO.Process
 needs IO.Foreign
 needs IO.NetConnect
 needs IO.Random

@@ -11,6 +11,8 @@ needs IO.Foreign
 needs IO.NetConnect
 needs IO.Random
 needs IO.Spawn
+needs IO.Mut
+needs IO.Process
 
 import Db
 import Depot.DbRepo
