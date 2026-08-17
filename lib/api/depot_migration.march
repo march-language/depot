@@ -20,6 +20,7 @@ mod Depot.Migration do
 import Db
 import Depot.Transaction
 
+needs IO.Mut
 needs IO.NetConnect
 needs IO.Random
 needs IO.Spawn
@@ -158,7 +159,7 @@ end
 -- arm avoids the corruption.
 fn column_sql(name, spec, str_lookup) do
   match spec do
-    (typ, opts) -> column_sql_with_opts(name, to_string(typ), opts)
+    (typ, opts) when true -> column_sql_with_opts(name, to_string(typ), opts)
     -- Bare spec: plain type, no options.  The value arrives type-erased (via
     -- record_entries), so the tuple arm cannot be exhaustive at runtime —
     -- without this arm a bare "String" spec is a match-failure panic natively.
@@ -171,7 +172,7 @@ end
 -- calling `to_string(spec)` directly.
 fn parse_col_spec(spec, name, str_lookup) do
   match spec do
-    (typ, _opts) -> to_string(typ)
+    (typ, _opts) when true -> to_string(typ)
     _ -> alist_get_str(str_lookup, name)
   end
 end

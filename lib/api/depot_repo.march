@@ -22,6 +22,7 @@
 mod Depot.Repo do
 
 needs IO.Clock
+needs IO.Mut
 
 -- ---------------------------------------------------------------------------
 -- Private helpers

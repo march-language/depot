@@ -9,6 +9,8 @@
 -- test failure via the same mechanism as in-body asserts.
 
 mod TestDepotTelemetry do
+needs IO.Mut
+
 
 -- ---- Per-test "was invoked" marker ---------------------------------------
 

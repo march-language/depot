@@ -229,6 +229,19 @@ end
 
 -- ---- JOIN ----
 
+-- Keep the join-kind match in a function with an explicit Ast.JoinKind
+-- parameter.  This prevents the exhaustiveness checker from confusing the
+-- constructors with the same-named stdlib DataFrame.JoinKind constructors.
+pfn join_keyword(kind : Ast.JoinKind) : String do
+  match kind do
+    Ast.JoinInner     when true -> " INNER JOIN "
+    Ast.JoinLeft      -> " LEFT JOIN "
+    Ast.JoinRight     -> " RIGHT JOIN "
+    Ast.JoinFullOuter -> " FULL OUTER JOIN "
+    Ast.JoinCross     -> " CROSS JOIN "
+  end
+end
+
 pfn compile_joins(joins, st, _depth) do
   match joins do
   Nil -> ("", st)
@@ -241,21 +254,7 @@ pfn compile_joins_acc(joins, st, acc) do
     match rem do
     Nil -> (acc_, st_)
     Cons(JoinClause(kind, table, on_expr), rest) -> do
-      -- The exhaustiveness checker reports a spurious "missing case: Right"
-      -- here (it still associates this type with stdlib DataFrame.JoinKind,
-      -- which shares names) even though JoinKind's variants were renamed to
-      -- JoinInner/JoinLeft/... specifically to stop colliding with it. Do
-      -- NOT add a `_ -> ...` catch-all to silence this: a wildcard arm is
-      -- what caused Ast.JoinLeft to mis-dispatch into the catch-all at
-      -- runtime before the rename (compiler conflated the two types' tags
-      -- through the wildcard). This match is genuinely exhaustive.
-      let k = match kind do
-        Ast.JoinInner    -> " INNER JOIN "
-        Ast.JoinLeft     -> " LEFT JOIN "
-        Ast.JoinRight    -> " RIGHT JOIN "
-        Ast.JoinFullOuter -> " FULL OUTER JOIN "
-        Ast.JoinCross    -> " CROSS JOIN "
-      end
+      let k = join_keyword(kind)
       let (on_sql, st2) = compile_expr(on_expr, st_)
       go(rest, st2, acc_ ++ k ++ quote_ident(table) ++ " ON " ++ on_sql)
     end
@@ -269,21 +268,7 @@ pfn compile_joins_inline(joins) do
     match rem do
     Nil -> acc
     Cons(JoinClause(kind, table, on_expr), rest) -> do
-      -- The exhaustiveness checker reports a spurious "missing case: Right"
-      -- here (it still associates this type with stdlib DataFrame.JoinKind,
-      -- which shares names) even though JoinKind's variants were renamed to
-      -- JoinInner/JoinLeft/... specifically to stop colliding with it. Do
-      -- NOT add a `_ -> ...` catch-all to silence this: a wildcard arm is
-      -- what caused Ast.JoinLeft to mis-dispatch into the catch-all at
-      -- runtime before the rename (compiler conflated the two types' tags
-      -- through the wildcard). This match is genuinely exhaustive.
-      let k = match kind do
-        Ast.JoinInner    -> " INNER JOIN "
-        Ast.JoinLeft     -> " LEFT JOIN "
-        Ast.JoinRight    -> " RIGHT JOIN "
-        Ast.JoinFullOuter -> " FULL OUTER JOIN "
-        Ast.JoinCross    -> " CROSS JOIN "
-      end
+      let k = join_keyword(kind)
       go(rest, acc ++ k ++ quote_ident(table) ++ " ON " ++ compile_expr_inline(on_expr))
     end
     end

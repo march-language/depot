@@ -18,6 +18,7 @@ needs IO.Foreign
 needs IO.NetConnect
 needs IO.Random
 needs IO.Spawn
+needs IO.Console
 
 import Connection
 import Db
