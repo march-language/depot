@@ -1,6 +1,6 @@
 [package]
 name = "depot"
-version = "0.2.1"
+version = "0.3.0"
 type = "lib"
 description = "A composable ORM toolkit for March — schemas, queries, validation, migrations, and a built-in PostgreSQL wire client"
 author = "Chase Gilliam"
