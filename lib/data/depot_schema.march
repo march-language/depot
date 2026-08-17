@@ -119,7 +119,7 @@ end
 
 fn parse_field_spec(name, spec, str_lookup) do
   match spec do
-    (typ, opts) -> (to_string(typ), record_entries(opts), nullable_flag(opts), virtual_flag(opts))
+    (typ, opts) when true -> (to_string(typ), record_entries(opts), nullable_flag(opts), virtual_flag(opts))
     -- Bare spec: no options.  The value arrives type-erased (via
     -- record_entries), so the tuple arm cannot be exhaustive at runtime —
     -- without this arm every bare spec is a match-failure panic natively.
@@ -143,7 +143,7 @@ end
 -- instead of calling `to_string(spec)` directly.
 fn parse_one_assoc(kind, name, spec, str_lookup) do
   match spec do
-    (target, opts) -> (kind, name, to_string(target), record_entries(opts))
+    (target, opts) when true -> (kind, name, to_string(target), record_entries(opts))
     -- Bare spec (e.g. posts: "Post"): target only, no options.  The value
     -- arrives type-erased (via record_entries), so the tuple arm cannot be
     -- exhaustive at runtime — without this arm a bare target is a match

@@ -144,7 +144,7 @@ Returns the callback's `Result` directly (unwrapped from the pool layer
 so success and failure paths collapse to a single `Result`).
 """
 fn run_pool(rp_pool, rp_cb) do
-  match with_conn_pinned(rp_pool, fn rp_conn -> run(rp_conn, rp_cb)) do
+  match Pool.with_conn_pinned(rp_pool, fn rp_conn -> run(rp_conn, rp_cb)) do
     Ok(inner) -> inner
     Err(e)    -> Err("transaction checkout: " ++ e)
   end
