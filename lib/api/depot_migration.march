@@ -43,13 +43,28 @@ pfn alist_get_opt(lst, key) do
   end
 end
 
--- Ensure the migration vault table exists.
-pfn ensure_vault() do
-  match Vault.whereis("depot_migrations") do
+-- Ensure the pending-SQL log table exists.
+--
+-- The log (List(String)) and the applied-version list (List(Int)) live in two
+-- separate tables on purpose. A Vault handle is `Vault(v)`, phantom in the type
+-- of the values it holds, so one table cannot hold both — see the typed-handle
+-- rules in the March typechecker (`demote_vault_handle_vars`).
+pfn ensure_log_vault() do
+  match Vault.whereis("depot_migrations_log") do
     Some(t) -> t
     None ->
-      let t = Vault.new("depot_migrations")
+      let t = Vault.new("depot_migrations_log")
       Vault.set(t, "log", Nil)
+      t
+  end
+end
+
+-- Ensure the applied-migration-versions table exists.
+pfn ensure_versions_vault() do
+  match Vault.whereis("depot_migrations_versions") do
+    Some(t) -> t
+    None ->
+      let t = Vault.new("depot_migrations_versions")
       Vault.set(t, "versions", Nil)
       t
   end
@@ -57,7 +72,7 @@ end
 
 -- Append SQL to the migration log and return the SQL string.
 pfn log_sql(sql) do
-  let t = ensure_vault()
+  let t = ensure_log_vault()
   let current = match Vault.get(t, "log") do
     Some(lst) -> lst
     None -> Nil
@@ -473,7 +488,7 @@ Record a migration version as applied.
     Depot.Migration.record_migration(20240101120000)
 """
 fn record_migration(version) do
-  let t = ensure_vault()
+  let t = ensure_versions_vault()
   let current = match Vault.get(t, "versions") do
     Some(lst) -> lst
     None -> Nil
@@ -489,7 +504,7 @@ Return the list of applied migration versions.
     Depot.Migration.applied_migrations()
 """
 fn applied_migrations() do
-  let t = ensure_vault()
+  let t = ensure_versions_vault()
   match Vault.get(t, "versions") do
     Some(lst) -> lst
     None -> Nil
@@ -519,7 +534,7 @@ end
 
 -- Clear the pending SQL log and return the previous contents (oldest first).
 pfn drain_log() do
-  let t = ensure_vault()
+  let t = ensure_log_vault()
   let current = match Vault.get(t, "log") do
     Some(lst) -> lst
     None      -> Nil
