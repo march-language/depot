@@ -3,7 +3,7 @@
 -- A thin callback registry for observing every SQL query that passes
 -- through Depot. Callers register a handler with `attach(name, fn)`;
 -- every subsequent query emits a `QueryEvent` to every registered
--- handler. Handlers are invoked inside `__try_call`, so a panicking
+-- handler. Handlers are invoked inside `__try_call_val`, so a panicking
 -- handler is isolated — other handlers still fire and the calling
 -- query is unaffected.
 --
@@ -108,7 +108,7 @@ end
 doc """
 Emit a `QueryEvent` to every registered handler.
 
-Each handler runs inside `__try_call`; if one raises, the event is
+Each handler runs inside `__try_call_val`; if one raises, the event is
 still delivered to the remaining handlers and `emit` itself never
 raises.
 """
@@ -127,7 +127,11 @@ pfn emit_to_all(t, ks, event) do
         Some(handler) ->
           -- Isolate handler failures: a panicking listener must not
           -- cascade into sibling handlers or the calling query.
-          let _ = __try_call(fn _ -> handler(event))
+          -- __try_call requires its thunk to return Bool (see its signature
+          -- comment in typecheck.ml); handlers here return Unit, so use the
+          -- generic __try_call_val instead (same one Depot.Transaction.run
+          -- already uses for a non-Bool callback).
+          let _ = __try_call_val(fn _ -> handler(event))
           ()
       end
       emit_to_all(t, rest, event)
