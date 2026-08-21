@@ -1,6 +1,7 @@
 -- Tests for Depot.Test: test-scoped transaction isolation.
 
 mod TestDepotTest do
+needs IO.Mut
 
 fn user_schema() do
   Depot.Schema.define("depot_test_users", {

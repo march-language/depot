@@ -34,30 +34,51 @@ needs IO.Mut
 -- ---------------------------------------------------------------------------
 
 -- Get or create the sandbox state Vault table.
-pfn sandbox_vault() do
-  match Vault.whereis("__depot_test_sandbox__") do
+-- Vault table handles are typed `Vault(v)` and cannot mix value types
+-- within one table, so the sandbox state (a Bool flag + a List of
+-- snapshots) is split into two tables.
+pfn sandbox_bool_vault() do
+  match Vault.whereis("__depot_test_sandbox_bool__") do
     Some(t) -> t
     None ->
-      let t = Vault.new("__depot_test_sandbox__")
+      let t = Vault.new("__depot_test_sandbox_bool__")
       Vault.set(t, "active", false)
+      t
+  end
+end
+
+pfn sandbox_snapshots_vault() do
+  match Vault.whereis("__depot_test_sandbox_snapshots__") do
+    Some(t) -> t
+    None ->
+      let t = Vault.new("__depot_test_sandbox_snapshots__")
       Vault.set(t, "snapshots", Nil)
       t
   end
 end
 
 pfn is_active() do
-  let t = sandbox_vault()
+  let t = sandbox_bool_vault()
   match Vault.get(t, "active") do
     Some(true) -> true
     _ -> false
   end
 end
 
--- Snapshot a single Vault table: returns list of (key, value) pairs.
-fn snapshot_one(tbl, k) do
+-- Snapshot a Vault table: returns list of (key, value) pairs.
+--
+-- Uses filter_map (dropping the vanished-key case) rather than the old
+-- snapshot_one helper whose `None -> (k, None)` arm unified the table's
+-- element type with Option(_): a Vault(Option(_)) element type makes
+-- Vault.get return a nested Option(Option(_)), which is niche-unsafe and
+-- currently mis-decodes on the compiled backend (upstream compiler bug —
+-- see march's specs/todos/ nested-option-vault entry). A key returned by
+-- Vault.keys can only vanish in a concurrent-mutation race that this
+-- test-scoped sandbox doesn't have.
+pfn snapshot_entry(tbl, k) do
   match Vault.get(tbl, k) do
-    Some(v) -> (k, v)
-    None -> (k, None)
+    Some(v) -> Some((k, v))
+    None -> None
   end
 end
 
@@ -66,7 +87,7 @@ fn snapshot_table(table_name) do
     None -> Nil
     Some(tbl) ->
       let ks = Vault.keys(tbl)
-      List.map(ks, fn k -> snapshot_one(tbl, k))
+      List.filter_map(ks, fn k -> snapshot_entry(tbl, k))
   end
 end
 
@@ -129,9 +150,8 @@ Enables checkout/checkin lifecycle for test isolation.
     Depot.Test.start_sandbox()
 """
 fn start_sandbox() do
-  let t = sandbox_vault()
-  Vault.set(t, "active", true)
-  Vault.set(t, "snapshots", Nil)
+  Vault.set(sandbox_bool_vault(), "active", true)
+  Vault.set(sandbox_snapshots_vault(), "snapshots", Nil)
   ()
 end
 
@@ -144,9 +164,15 @@ tables is a list of table name strings matching your schemas.
     Depot.Test.checkout(["users", "posts"])
 """
 fn checkout(tables) do
-  let t = sandbox_vault()
+  let t = sandbox_snapshots_vault()
   if is_active() do
-    let snaps = List.map(tables, fn tbl_name -> (tbl_name, snapshot_table(tbl_name)))
+    -- Depot.Repo tracks each schema's id list in a separate "<name>:ids"
+    -- Vault table (typed Vault(v) handles can't mix ids with records), so
+    -- snapshot that table alongside each records table or rollback would
+    -- restore rows while leaving a stale id list behind.
+    let all_tables = List.flat_map(tables, fn tbl_name ->
+      [tbl_name, tbl_name ++ ":ids"])
+    let snaps = List.map(all_tables, fn tbl_name -> (tbl_name, snapshot_table(tbl_name)))
     Vault.set(t, "snapshots", snaps)
     ()
   else
@@ -161,7 +187,7 @@ Call after each test to undo any writes.
     Depot.Test.checkin()
 """
 fn checkin() do
-  let t = sandbox_vault()
+  let t = sandbox_snapshots_vault()
   if is_active() do
     let snaps = match Vault.get(t, "snapshots") do
       Some(s) -> s
@@ -181,9 +207,8 @@ Stop the sandbox. Call at the end of a test suite.
     Depot.Test.stop_sandbox()
 """
 fn stop_sandbox() do
-  let t = sandbox_vault()
-  Vault.set(t, "active", false)
-  Vault.set(t, "snapshots", Nil)
+  Vault.set(sandbox_bool_vault(), "active", false)
+  Vault.set(sandbox_snapshots_vault(), "snapshots", Nil)
   ()
 end
 
