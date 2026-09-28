@@ -9,6 +9,8 @@ needs IO.NetConnect
 needs IO.Random
 needs IO.Console
 needs IO.Mut
+needs IO.Clock
+needs IO.Process
 
 import Connection
 import Db

@@ -28,6 +28,10 @@ mod TestScramLive do
 
 needs IO.NetConnect
 needs IO.Random
+needs IO.Process
+needs IO.Mut
+needs IO.Console
+needs IO.Clock
 
 import Connection
 
