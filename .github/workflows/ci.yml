@@ -108,6 +108,24 @@ jobs:
         with:
           march-version: 5f4aa31dcc73462d90f0cae8b2db957f77c7a2d7
 
+      # The nightly release tarball ships runtime/march_blake3.c but not the
+      # vendored runtime/third_party/blake3/ it #includes, so every test that
+      # compiles native code fails with "'third_party/blake3/blake3.h' file not
+      # found". Restore the vendored files from march at the pinned commit.
+      # Remove once march's release packaging includes runtime/third_party/.
+      - name: Restore vendored blake3 into the toolchain runtime
+        run: |
+          MARCH_SHA=5f4aa31dcc73462d90f0cae8b2db957f77c7a2d7
+          # forge compiles with the toolchain named in .march-version.
+          RT="$HOME/.march/versions/$(cat .march-version)/runtime"
+          test -d "$RT" || { echo "no toolchain runtime at $RT"; exit 1; }
+          mkdir -p "$RT/third_party/blake3"
+          for f in blake3.h blake3_impl.h blake3.c blake3_dispatch.c blake3_portable.c; do
+            curl -fsSL "https://raw.githubusercontent.com/march-language/march/$MARCH_SHA/runtime/third_party/blake3/$f" \
+              -o "$RT/third_party/blake3/$f"
+          done
+          ls -la "$RT/third_party/blake3"
+
       - name: Build
         run: forge build
 
