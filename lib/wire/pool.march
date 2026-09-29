@@ -145,8 +145,14 @@ actor Pool do
   -- the runtime as field[0], so the handler receives it here as a parameter.
   on Checkout(reply_to) do
     let result = handle_checkout(state)
+    -- Bind the new state to a local before returning it. A handler whose final
+    -- expression is a field projection (`result.new_state`) loses the state
+    -- update in compiled code (march bug; the interpreter is correct), so every
+    -- checkout left idle/checked_out unchanged and handed out already-owned
+    -- connections, corrupting the heap on first use.
+    let new_state = result.new_state
     let _ = actor_reply(reply_to, result.conn)
-    result.new_state
+    new_state
   end
 
   -- Returns a connection to the idle pool.
