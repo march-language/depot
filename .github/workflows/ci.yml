@@ -108,10 +108,14 @@ jobs:
         with:
           march-version: 5f4aa31dcc73462d90f0cae8b2db957f77c7a2d7
 
+      - name: Build
+        run: forge build
+
       # The nightly release tarball ships runtime/march_blake3.c but not the
       # vendored runtime/third_party/blake3/ it #includes, so every test that
       # compiles native code fails with "'third_party/blake3/blake3.h' file not
-      # found". Restore the vendored files from march at the pinned commit.
+      # found". Restore the vendored files from march at the pinned commit. Runs
+      # after Build: forge downloads the .march-version toolchain lazily there.
       # Remove once march's release packaging includes runtime/third_party/.
       - name: Restore vendored blake3 into the toolchain runtime
         run: |
@@ -125,9 +129,6 @@ jobs:
               -o "$RT/third_party/blake3/$f"
           done
           ls -la "$RT/third_party/blake3"
-
-      - name: Build
-        run: forge build
 
       # Run tests through the interpreter. Native test binaries currently fail
       # to link against march's record_* introspection builtins (interpreter-only;
