@@ -93,7 +93,10 @@ jobs:
       # Pinned (not @main): depot's CI doubles as a canary for march's stdlib/
       # toolchain, so an unrelated upstream regression on march's main can
       # turn depot's CI red with nothing to fix on depot's side. Bump this
-      # SHA deliberately when picking up new march changes.
+      # pin deliberately when picking up new march changes.
+      #
+      # 2026-11-04: moved from nightly-20260927 (5f4aa31d) to the v0.7.0
+      # release tag, matching .march-version.
       #
       # 2026-09-29: bumped from 595bfecc to nightly-20260927 (5f4aa31d), the
       # toolchain depot main now needs (sha256 returns String, #5), matching
@@ -106,7 +109,7 @@ jobs:
       - name: Set up March
         uses: march-language/setup-march@main
         with:
-          march-version: 5f4aa31dcc73462d90f0cae8b2db957f77c7a2d7
+          march-version: v0.7.0
 
       # Use the toolchain setup-march just built from source (at the pin above),
       # not the release .march-version names. The release binaries are
@@ -123,11 +126,10 @@ jobs:
       - name: Build
         run: forge build
 
-      # Run tests through the interpreter. Native test binaries currently fail
-      # to link against march's record_* introspection builtins (interpreter-only;
-      # no native lowering yet), so the interpreter is the validated path until
-      # that lands. The full suite (5275 tests) passes this way.
+      # Run the compiled test binary. Native tests link fine now (1342 pass on
+      # v0.7.0). The interpreter path (MARCH_TEST_INTERPRETER=1) is not usable
+      # on v0.7.0: it also runs march's own stdlib doctests in every test file,
+      # and the Vault/Config ones share state across files, so ~340 stdlib
+      # doctests fail from the second file on with nothing wrong in depot.
       - name: Test
         run: forge test
-        env:
-          MARCH_TEST_INTERPRETER: "1"
